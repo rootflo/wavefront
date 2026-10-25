@@ -12,10 +12,11 @@ import { validationMessage } from '@app/utils/form-validation';
 import { emailRegex } from '@app/utils/regex';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
+import { useMountEffect } from '@app/hooks/use-mount-effect';
 
 export const LoginSchema = z.object({
   email: z
@@ -54,21 +55,20 @@ const Login = () => {
       localStorage.setItem(TOKEN_KEY, data?.data?.user.access_token || '');
       setAuthenticatedState(true);
       navigate('/apps');
-    } catch (err) {
+    } catch {
       notifyError('Email or password incorrect. \nPlease try again');
-      console.log(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
+  useMountEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       setAuthenticatedState(true);
       navigate('/apps');
     }
-  }, []);
+  });
 
   return (
     <div

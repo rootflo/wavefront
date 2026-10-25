@@ -94,7 +94,7 @@ export class AgentService {
 
   async runInference(
     id: string,
-    inputs: string | string[],
+    inputs: string | unknown[],
     variables: Record<string, unknown> = {},
     llmInferenceConfigId?: string,
     toolNames?: string[],
@@ -102,7 +102,7 @@ export class AgentService {
   ): Promise<InferenceResponse> {
     const requestBody: {
       variables: Record<string, unknown>;
-      inputs: string | string[];
+      inputs: string | unknown[];
       llm_inference_config_id?: string;
       tool_names?: string[];
       output_json_enabled: boolean;

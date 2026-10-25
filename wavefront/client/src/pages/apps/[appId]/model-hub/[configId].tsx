@@ -12,11 +12,11 @@ import { Spinner } from '@app/components/ui/spinner';
 import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
 import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
 import { useDeleteLLMConfig, useGetLLMConfig, useUpdateLLMConfig } from '@app/hooks';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { InferenceEngineType, LLMInferenceConfig, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
@@ -115,15 +115,17 @@ const ModelDetail: React.FC = () => {
     mode: 'onChange',
   });
 
-  const resetToSaved = (saved: LLMInferenceConfig) => {
-    form.reset(buildFormValues(saved));
-    setParameters(savedParameters(saved));
-  };
+  const resetToSaved = useCallback(
+    (saved: LLMInferenceConfig) => {
+      form.reset(buildFormValues(saved));
+      setParameters(savedParameters(saved));
+    },
+    [form]
+  );
 
   useEffect(() => {
     if (config) resetToSaved(config);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]);
+  }, [config, resetToSaved]);
 
   const type = form.watch('type');
   const llmModel = form.watch('llm_model');

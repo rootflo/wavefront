@@ -12,7 +12,8 @@ import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteWorkflow, useGetNamespaces, useGetWorkflows } from '@app/hooks';
 import { getWorkflowsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/utils/download';
 import { useNotifyStore } from '@app/store';
 import { WorkflowListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
@@ -22,7 +23,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
 import { parseUploadedWorkflow } from './workflow-utils';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';

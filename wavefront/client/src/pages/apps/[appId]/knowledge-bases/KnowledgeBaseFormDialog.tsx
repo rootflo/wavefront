@@ -1,4 +1,5 @@
-import { KbData, KNOWLEDGE_BASE_TYPES } from '@app/api/knowledge-base-service';
+import { KNOWLEDGE_BASE_TYPES } from '@app/constants/knowledge-base';
+import { KbData } from '@app/types/knowledge-base';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,

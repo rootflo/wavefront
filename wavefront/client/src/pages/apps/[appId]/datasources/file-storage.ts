@@ -1,4 +1,4 @@
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { DatasourceBrowseFileEntry, DatasourceFileEntry, DatasourceFolderEntry } from '@app/types/datasource';
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, FileVideo } from 'lucide-react';
 import { PickedFile } from './dropped-files';
@@ -129,3 +129,6 @@ export const formatBytes = (bytes: number | null) => {
 };
 
 /** One folder in the left-hand tree; its sub-folders load the first time it is expanded. */
+
+/** How a folder prefix is shown to the user: `reports/2024/` → `reports/2024`, the root → `/`. */
+export const locationLabelFor = (prefix: string) => (prefix ? prefix.replace(/\/$/, '') : '/');

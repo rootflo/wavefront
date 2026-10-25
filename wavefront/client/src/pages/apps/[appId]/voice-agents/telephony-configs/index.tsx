@@ -13,7 +13,7 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import TelephonyConfigFormDialog from './TelephonyConfigFormDialog';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const TelephonyConfigsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

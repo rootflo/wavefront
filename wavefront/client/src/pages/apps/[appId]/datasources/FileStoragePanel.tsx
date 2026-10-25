@@ -13,12 +13,14 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Skeleton } from '@app/components/ui/skeleton';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { cn, copyToClipboard, downloadBlobFile, extractErrorMessage } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { downloadBlobFile } from '@app/utils/download';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { DatasourceFileEntry } from '@app/types/datasource';
 import dayjs from 'dayjs';
 import {
-  Check,
   ChevronRight,
   Copy,
   Download,
@@ -26,23 +28,19 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
-  FolderUp,
   HardDrive,
   Loader2,
-  X,
   RefreshCw,
   Search,
   Trash2,
   Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PickedFile, pickedFromDrop, pickedFromInput, toBatches } from './dropped-files';
+import { PickedFile, pickedFromDrop } from './dropped-files';
 import {
   FilePreviewState,
   FolderState,
-  QueuedUpload,
   TEXT_PREVIEW_MAX_BYTES,
-  QUEUE_ROWS_SHOWN,
   PAGE_SIZE,
   getDownloadErrorMessage,
   mimeTypeOf,
@@ -54,8 +52,10 @@ import {
   fileIconFor,
   fileTypeLabel,
   formatBytes,
+  locationLabelFor,
 } from './file-storage';
 import { TreeFolder } from './FileStorageTree';
+import FileUploadDialog from './FileUploadDialog';
 
 interface FileStoragePanelProps {
   datasourceId: string;
@@ -63,8 +63,6 @@ interface FileStoragePanelProps {
 
 const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement | null>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
   const previewRequestIdRef = useRef(0);
 
@@ -79,9 +77,7 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   // Bumped on refresh, so a load that started before it can't write stale results back.
   const generationRef = useRef(0);
 
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState<QueuedUpload[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploadDialog, setUploadDialog] = useState<{ open: boolean; files: PickedFile[] }>({ open: false, files: [] });
   const [dragging, setDragging] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -197,79 +193,15 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
 
   useEffect(() => () => clearPreview(), [clearPreview]);
 
-  /** Adds files to the upload list, replacing any still-pending one with the same path. */
-  const queueFiles = (picked: PickedFile[]) => {
-    if (picked.length === 0) return;
-    const paths = new Set(picked.map((item) => item.relativePath));
-    setUploadQueue((queue) => [
-      ...queue.filter((item) => item.status !== 'pending' || !paths.has(item.relativePath)),
-      ...picked.map((item) => ({ ...item, status: 'pending' as const })),
-    ]);
-  };
+  const openUploadDialog = (picked?: PickedFile[]) => setUploadDialog({ open: true, files: picked ?? [] });
 
-  const openUploadDialog = (picked?: PickedFile[]) => {
-    setUploadQueue([]);
-    if (picked) queueFiles(picked);
-    setUploadDialogOpen(true);
-  };
-
-  /** Files (and folders) dropped from the desktop, opened up into a flat list with their paths. */
-  const dropFiles = async (dataTransfer: DataTransfer, intoDialog: boolean) => {
+  /** Files (and folders) dropped on the list open the upload dialog with them queued. */
+  const dropFiles = async (dataTransfer: DataTransfer) => {
     try {
-      const picked = await pickedFromDrop(dataTransfer);
-      if (intoDialog) queueFiles(picked);
-      else openUploadDialog(picked);
+      openUploadDialog(await pickedFromDrop(dataTransfer));
     } catch {
       notifyError('Could not read the dropped files');
     }
-  };
-
-  /**
-   * Uploads everything not yet done into the open folder, keeping each file's sub-folder path. Files go in
-   * batches (50 files or 25 MB per request); each file is marked done or failed from its batch's results.
-   */
-  const handleUpload = async () => {
-    const target = currentPrefix;
-    const todo = uploadQueue.map((item, index) => ({ ...item, index })).filter((item) => item.status !== 'done');
-    const setStatus = (indexes: number[], patch: (index: number) => Partial<QueuedUpload>) => {
-      const wanted = new Set(indexes);
-      setUploadQueue((queue) => queue.map((entry, i) => (wanted.has(i) ? { ...entry, ...patch(i) } : entry)));
-    };
-
-    setUploading(true);
-    let uploaded = 0;
-    let failed = 0;
-    for (const batch of toBatches(todo)) {
-      const indexes = batch.map((item) => item.index);
-      setStatus(indexes, () => ({ status: 'uploading', error: undefined }));
-      try {
-        const response = await floConsoleService.datasourcesService.uploadFilesBatch(
-          datasourceId,
-          batch.map((item) => ({ file: item.file, path: `${target}${item.relativePath}` }))
-        );
-        const results = response.data?.data?.results ?? [];
-        const errors = new Map(results.filter((r) => r.error).map((r) => [indexes[r.index], r.error!]));
-        setStatus(indexes, (index) =>
-          errors.has(index) ? { status: 'failed', error: errors.get(index) } : { status: 'done' }
-        );
-        failed += errors.size;
-        uploaded += batch.length - errors.size;
-      } catch (error) {
-        const message = extractErrorMessage(error) || 'Upload failed';
-        setStatus(indexes, () => ({ status: 'failed', error: message }));
-        failed += batch.length;
-      }
-    }
-    setUploading(false);
-
-    if (uploaded > 0) {
-      notifySuccess(`Uploaded ${uploaded} file${uploaded === 1 ? '' : 's'}`);
-      // The open folder, plus any expanded folder under it, since a folder upload can add files to those too.
-      reloadFolders([target, ...[...expanded].filter((prefix) => prefix.startsWith(target) && prefix !== target)]);
-    }
-    if (failed > 0) notifyError(`${failed} file${failed === 1 ? '' : 's'} failed to upload`);
-    // Close when everything went up; stay open to show what failed otherwise.
-    else setUploadDialogOpen(false);
   };
 
   const folderNameProblem = (name: string) => {
@@ -402,7 +334,7 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
     if (opening) void loadFolder(prefix);
   };
 
-  const locationLabel = currentPrefix ? currentPrefix.replace(/\/$/, '') : '/';
+  const locationLabel = locationLabelFor(currentPrefix);
   // The file being previewed, known from the click even before its bytes arrive.
   const previewEntry = preview?.entry ?? current?.files.find((entry) => entry.path === previewLoadingPath) ?? null;
   const loadingAny = Object.values(cache).some((state) => state.loading);
@@ -518,7 +450,7 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
 
         {/* Files dropped anywhere on the list go to the upload dialog, headed for the open folder. */}
         <div
-          className={cn('relative min-h-0 flex-1 overflow-auto', dragging && !uploadDialogOpen && 'bg-brand/5')}
+          className={cn('relative min-h-0 flex-1 overflow-auto', dragging && !uploadDialog.open && 'bg-brand/5')}
           onDragOver={(e) => {
             if (!e.dataTransfer.types.includes('Files')) return;
             e.preventDefault();
@@ -531,10 +463,10 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
             if (!e.dataTransfer.types.includes('Files')) return;
             e.preventDefault();
             setDragging(false);
-            void dropFiles(e.dataTransfer, false);
+            void dropFiles(e.dataTransfer);
           }}
         >
-          {dragging && !uploadDialogOpen ? (
+          {dragging && !uploadDialog.open ? (
             <div className="border-brand text-brand pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium">
               Drop to upload into {locationLabel}
             </div>
@@ -698,188 +630,18 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
         ) : null}
       </div>
 
-      <Dialog open={uploadDialogOpen} onOpenChange={(open) => !uploading && setUploadDialogOpen(open)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Upload files</DialogTitle>
-            <DialogDescription className="flex items-center gap-1.5">
-              Into
-              <span className="frost-text inline-flex min-w-0 items-center gap-1 font-medium">
-                {currentPrefix ? (
-                  <Folder className="size-3.5 shrink-0 text-amber-500" />
-                ) : (
-                  <HardDrive className="size-3.5 shrink-0" />
-                )}
-                <span className="truncate font-mono text-xs">{locationLabel}</span>
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Drop files here or click to pick; the folder open in the browser is where they go. */}
-          <label
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              void dropFiles(e.dataTransfer, true);
-            }}
-            className={cn(
-              'flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors',
-              dragging ? 'border-brand bg-brand/10' : 'border-frost-border hover:border-brand/50 hover:bg-frost-glass'
-            )}
-          >
-            <span className="bg-brand/12 text-brand flex size-10 items-center justify-center rounded-xl">
-              <Upload className="size-5" />
-            </span>
-            <span className="frost-text text-sm font-medium">Drop files or folders here, or click to choose files</span>
-            <span className="frost-text-muted text-xs">Folders keep their sub-folders.</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              disabled={uploading}
-              onChange={(e) => {
-                if (e.target.files) queueFiles(pickedFromInput(e.target.files));
-                e.target.value = '';
-              }}
-            />
-          </label>
-          <div className="-mt-1 flex items-center justify-center gap-2 text-xs">
-            <span className="frost-text-muted">or</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={uploading}
-              onClick={() => folderInputRef.current?.click()}
-            >
-              <FolderUp className="size-4" />
-              Choose a folder
-            </Button>
-            {/* webkitdirectory isn't in React's input types, so it's set on the element itself. */}
-            <input
-              ref={(element) => {
-                folderInputRef.current = element;
-                element?.setAttribute('webkitdirectory', '');
-              }}
-              type="file"
-              multiple
-              className="sr-only"
-              tabIndex={-1}
-              onChange={(e) => {
-                if (e.target.files) queueFiles(pickedFromInput(e.target.files));
-                e.target.value = '';
-              }}
-            />
-          </div>
-
-          {uploadQueue.length > 0 ? (
-            <div className="frost-text-muted flex items-center justify-between gap-2 text-xs">
-              <span>
-                {uploadQueue.length} file{uploadQueue.length === 1 ? '' : 's'} ·{' '}
-                {formatBytes(uploadQueue.reduce((total, item) => total + item.file.size, 0))}
-                {uploadQueue.some((item) => item.status === 'done')
-                  ? ` · ${uploadQueue.filter((item) => item.status === 'done').length} uploaded`
-                  : ''}
-              </span>
-              {!uploading ? (
-                <button
-                  type="button"
-                  onClick={() => setUploadQueue((queue) => queue.filter((item) => item.status === 'done'))}
-                  className="hover:text-frost-text cursor-pointer"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          {uploadQueue.length > 0 ? (
-            <ul className="divide-frost-border border-frost-border max-h-60 divide-y overflow-y-auto rounded-lg border">
-              {/* A whole folder can be thousands of files; the list shows the first few hundred. */}
-              {uploadQueue.slice(0, QUEUE_ROWS_SHOWN).map((item, index) => {
-                // Only a file landing directly in the open folder can clash with what's listed there.
-                const replaces =
-                  !item.relativePath.includes('/') &&
-                  (current?.files ?? []).some((entry) => entry.name === item.file.name);
-                const Icon = fileIconFor(item.file.name);
-                return (
-                  <li key={`${item.relativePath}-${index}`} className="flex items-center gap-3 px-3 py-2">
-                    <Icon className="frost-text-muted size-4 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="frost-text truncate text-sm" title={item.relativePath}>
-                        {item.relativePath}
-                      </p>
-                      <p
-                        className={cn(
-                          'truncate text-xs',
-                          item.status === 'failed'
-                            ? 'text-red-500'
-                            : replaces && item.status === 'pending'
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'frost-text-muted'
-                        )}
-                      >
-                        {item.status === 'failed'
-                          ? item.error
-                          : item.status === 'done'
-                            ? 'Uploaded'
-                            : item.status === 'uploading'
-                              ? 'Uploading…'
-                              : replaces
-                                ? `${formatBytes(item.file.size)} · replaces the file with this name`
-                                : formatBytes(item.file.size)}
-                      </p>
-                    </div>
-                    {item.status === 'uploading' ? (
-                      <Loader2 className="text-brand size-4 shrink-0 animate-spin" />
-                    ) : item.status === 'done' ? (
-                      <Check className="size-4 shrink-0 text-emerald-600" />
-                    ) : (
-                      <button
-                        type="button"
-                        aria-label={`Remove ${item.file.name}`}
-                        disabled={uploading}
-                        onClick={() => setUploadQueue((queue) => queue.filter((_, i) => i !== index))}
-                        className="frost-text-subtle hover:text-frost-text shrink-0 cursor-pointer"
-                      >
-                        <X className="size-4" />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-              {uploadQueue.length > QUEUE_ROWS_SHOWN ? (
-                <li className="frost-text-muted px-3 py-2 text-xs">
-                  and {(uploadQueue.length - QUEUE_ROWS_SHOWN).toLocaleString()} more
-                  {uploadQueue.slice(QUEUE_ROWS_SHOWN).some((item) => item.status === 'failed')
-                    ? ', some of which failed'
-                    : ''}
-                </li>
-              ) : null}
-            </ul>
-          ) : null}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadDialogOpen(false)} disabled={uploading}>
-              {uploadQueue.some((item) => item.status === 'done') ? 'Close' : 'Cancel'}
-            </Button>
-            <Button
-              onClick={() => void handleUpload()}
-              loading={uploading}
-              disabled={uploading || !uploadQueue.some((item) => item.status === 'pending' || item.status === 'failed')}
-            >
-              {uploadQueue.some((item) => item.status === 'failed')
-                ? 'Retry failed'
-                : `Upload${uploadQueue.length > 0 ? ` ${uploadQueue.length} file${uploadQueue.length === 1 ? '' : 's'}` : ''}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FileUploadDialog
+        open={uploadDialog.open}
+        onOpenChange={(open) => setUploadDialog((current) => ({ ...current, open }))}
+        datasourceId={datasourceId}
+        targetPrefix={currentPrefix}
+        initialFiles={uploadDialog.files}
+        existingFileNames={(current?.files ?? []).map((entry) => entry.name)}
+        onUploaded={(target) =>
+          // The folder, plus any expanded folder under it, since a folder upload can add files to those too.
+          reloadFolders([target, ...[...expanded].filter((prefix) => prefix.startsWith(target) && prefix !== target)])
+        }
+      />
 
       <Dialog
         open={newFolderOpen}

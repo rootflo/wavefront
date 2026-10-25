@@ -2,7 +2,7 @@ import { LLM_PROVIDERS_CONFIG } from '@app/config/llm-providers';
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import ModelCard from '@app/components/ModelCard';
+import ModelCard from './ModelCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { useDeleteLLMConfig, useGetLLMConfigs } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
@@ -12,7 +12,7 @@ import { useNavigate, useParams } from 'react-router';
 import CreateModelDialog from './CreateModelDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const ModelHub: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();

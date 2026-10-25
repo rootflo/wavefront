@@ -8,7 +8,7 @@ import { Button } from '@app/components/ui/button';
 import { Switch } from '@app/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteChatbot, useGetChatbots, useGetLLMConfigs, useGetNamespaces, useSetChatbotEnabled } from '@app/hooks';
-import { copyToClipboard } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { Chatbot } from '@app/types/chatbot';
 import { Copy, Pencil, Trash2, MessageSquare, Power } from 'lucide-react';
@@ -19,7 +19,7 @@ import ChatbotFormDialog from './ChatbotFormDialog';
 import { formatTemperature } from './schemas';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const ChatbotsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

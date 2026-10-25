@@ -31,13 +31,7 @@ import {
   UploadDatasourceFileResponse,
 } from '@app/types/datasource';
 import { AxiosInstance, AxiosResponse } from 'axios';
-
-/** What a dynamic query run takes besides its parameters: the `{{filters}}` filter and paging. */
-export interface DynamicQueryRunOptions {
-  filter?: string;
-  limit?: number;
-  offset?: number;
-}
+import { DynamicQueryRunOptions } from '@app/types/datasource';
 
 const dynamicQueryRunParams = ({ filter, limit, offset }: DynamicQueryRunOptions) => ({
   ...(filter ? { $filter: filter } : {}),

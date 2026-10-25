@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { PiiEntityGroup, PiiPreviewResult } from '@app/api/guardrails-service';
+import { PiiEntityGroup, PiiPreviewResult } from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,7 +11,7 @@ import {
 } from '@app/components/ui/dialog';
 import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import React, { useEffect, useMemo, useState } from 'react';
 import { buildEntityLabels } from './adapter-meta';
 

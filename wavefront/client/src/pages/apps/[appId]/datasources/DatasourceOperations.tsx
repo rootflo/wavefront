@@ -5,7 +5,9 @@ import { Checkbox } from '@app/components/ui/checkbox';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
-import { cn, copyToClipboard, extractErrorMessage } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { DatasourceTableInsert, DatasourceTableUpdate, GetDatasourceResourceParams } from '@app/types/datasource';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +33,7 @@ import {
   parseJson,
 } from './operations';
 import { Step, ModeSwitch, JsonBox } from './OperationParts';
+import { useGetDatasourceResources } from '@app/hooks';
 
 interface DatasourceOperationsProps {
   datasourceId: string;
@@ -74,12 +77,7 @@ const DatasourceOperations: React.FC<DatasourceOperationsProps> = ({ datasourceI
 
   const operation = OPERATIONS.find((op) => op.id === selectedOperation)!;
 
-  // Same key as the Data and Info tabs, so the list is fetched once for all three.
-  const tablesQuery = useQuery({
-    queryKey: ['datasource-tables', datasourceId],
-    queryFn: async () =>
-      (await floConsoleService.datasourcesService.getDatasourceResources(datasourceId)).data?.data?.resources ?? [],
-  });
+  const tablesQuery = useGetDatasourceResources(appId, datasourceId);
   const tables = tablesQuery.data ?? [];
 
   // One sample row tells us the table's columns, for suggestions in the filter and values steps.

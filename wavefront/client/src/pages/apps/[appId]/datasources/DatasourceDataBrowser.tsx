@@ -4,18 +4,22 @@ import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Skeleton } from '@app/components/ui/skeleton';
-import { cn, extractErrorMessage } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, Filter, RefreshCw, Search, Table2, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import FilterBuilder from './FilterBuilder';
 import { recordColumns, SortState } from './records';
 import RowsWorkspace from './RowsWorkspace';
+import { useParams } from 'react-router';
+import { useGetDatasourceResources } from '@app/hooks';
 
 const PAGE_SIZES = [25, 50, 100];
 
 /** A table browser: pick a table, page through its rows, sort, filter, and insert, edit or delete rows. */
 const DatasourceDataBrowser: React.FC<{ datasourceId: string }> = ({ datasourceId }) => {
+  const { app: appId } = useParams<{ app: string }>();
   const [tableSearch, setTableSearch] = useState('');
   const [table, setTable] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
@@ -25,11 +29,7 @@ const DatasourceDataBrowser: React.FC<{ datasourceId: string }> = ({ datasourceI
   const [filter, setFilter] = useState('');
   const [showFilter, setShowFilter] = useState(false);
 
-  const tablesQuery = useQuery({
-    queryKey: ['datasource-tables', datasourceId],
-    queryFn: async () =>
-      (await floConsoleService.datasourcesService.getDatasourceResources(datasourceId)).data?.data?.resources ?? [],
-  });
+  const tablesQuery = useGetDatasourceResources(appId, datasourceId);
   const tables = useMemo(() => tablesQuery.data ?? [], [tablesQuery.data]);
 
   // Open the first table once the list arrives.

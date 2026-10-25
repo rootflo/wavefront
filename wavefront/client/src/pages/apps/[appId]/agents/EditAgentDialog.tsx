@@ -29,7 +29,7 @@ import CodeEditor from '@app/components/CodeEditor';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs } from '@app/hooks';
 import { useValidateAgentYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
 import AgentFormFields, { type AgentFormSection } from './AgentFormFields';

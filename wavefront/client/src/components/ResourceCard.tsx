@@ -6,7 +6,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
-import { cn, copyToClipboard } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
 import { useNotifyStore } from '@app/store';
 import { ArrowUpRight, Box, Check, Copy, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';

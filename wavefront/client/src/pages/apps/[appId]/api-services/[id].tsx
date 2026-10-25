@@ -9,7 +9,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useDeleteApiService, useGetApiService, useUpdateApiService } from '@app/hooks';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';

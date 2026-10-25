@@ -6,7 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Button } from '@app/components/ui/button';
 import { useParams } from 'react-router';
-import { useGetLLMConfigs, useGetWorkflows, useGetTools } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs, useGetWorkflows, useGetTools } from '@app/hooks';
 import { AgentProperties } from './propertyPanel/AgentProperties';
 import { EntryAgentStatus } from './propertyPanel/EntryAgentStatus';
 import { FunctionProperties } from './propertyPanel/FunctionProperties';

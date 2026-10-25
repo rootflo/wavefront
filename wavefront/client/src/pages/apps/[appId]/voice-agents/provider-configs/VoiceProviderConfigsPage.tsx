@@ -13,7 +13,7 @@ import { useParams } from 'react-router';
 import { VOICE_PROVIDER_KINDS } from './kinds';
 import VoiceProviderConfigFormDialog, { VoiceProviderConfig } from './VoiceProviderConfigFormDialog';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 /** The STT and TTS config list pages: identical apart from the provider kind. */
 const VoiceProviderConfigsPage: React.FC<{ kind: VoiceProviderKind }> = ({ kind }) => {

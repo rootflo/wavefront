@@ -11,7 +11,7 @@ import { buildDynamicQueryYaml } from './dynamic-query-utils';
 import DynamicQueryResults from './DynamicQueryResults';
 import QueryInputs from './QueryInputs';
 import { collectParameters, undeclaredPlaceholders, usesFilters } from './query-params';
-import { DynamicQueryRunOptions } from '@app/api/datasources-service';
+import { DynamicQueryRunOptions } from '@app/types/datasource';
 
 const isEmptyResult = (result: unknown) =>
   result === null ||

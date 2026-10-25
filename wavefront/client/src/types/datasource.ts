@@ -264,3 +264,10 @@ export type ExecuteDynamicQueryResponse = IApiResponse<ExecuteDynamicQueryData>;
 export type DatasourceRowsMutationResponse = IApiResponse<DatasourceRowsMutationData>;
 export type ExportDynamicQueryResponse = IApiResponse<ExportDynamicQueryData>;
 export type DatasourceAuditLogsResponse = IApiResponse<DatasourceAuditLogsData>;
+
+/** What a dynamic query run takes besides its parameters: the `{{filters}}` filter and paging. */
+export interface DynamicQueryRunOptions {
+  filter?: string;
+  limit?: number;
+  offset?: number;
+}

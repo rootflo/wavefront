@@ -1,4 +1,4 @@
-import { FailureMode, GuardrailAdapterConfig, PiiEntityGroup, WorkflowStage } from '@app/api/guardrails-service';
+import { FailureMode, GuardrailAdapterConfig, PiiEntityGroup, WorkflowStage } from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Label } from '@app/components/ui/label';

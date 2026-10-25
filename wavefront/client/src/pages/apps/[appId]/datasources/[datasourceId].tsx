@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { DynamicQueryRunOptions } from '@app/api/datasources-service';
+import { DynamicQueryRunOptions } from '@app/types/datasource';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
@@ -7,17 +7,14 @@ import { PageActionsContext } from '@app/components/PageActionsContext';
 import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
-import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
+import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks';
 import { getAllDynamicQueriesKey } from '@app/hooks/data/query-keys';
-import {
-  copyToClipboard,
-  createZipBlob,
-  downloadBlobFile,
-  cn,
-  extractErrorMessage,
-  validateDynamicQueryYaml,
-  formatAppName,
-} from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { createZipBlob, downloadBlobFile } from '@app/utils/download';
+import { cn } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
+import { validateDynamicQueryYaml } from './dynamic-query-utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery, DynamicQueryItem } from '@app/types/datasource';
 import { useQueryClient } from '@tanstack/react-query';

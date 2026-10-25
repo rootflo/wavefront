@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -9,12 +8,11 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Checkbox } from '@app/components/ui/checkbox';
-import { extractErrorMessage, formatAppName } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import { formatAppName } from '@app/utils/string-formatting';
 import { IUser } from '@app/types/user';
 import { App } from '@app/types/app';
 import React, { useEffect, useState } from 'react';
-import { useGetAllApps, useUpdateUserAppAccess } from '@app/hooks';
+import { useGetAllApps, useGetUserApps, useUpdateUserAppAccess } from '@app/hooks';
 
 interface ManageAppAccessDialogProps {
   isOpen: boolean;
@@ -23,32 +21,16 @@ interface ManageAppAccessDialogProps {
 }
 
 const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, onOpenChange, user }) => {
-  const { notifyError } = useNotifyStore();
   const { data: allApps = [] } = useGetAllApps(true);
 
+  const { data: savedAppIds, isLoading: loading } = useGetUserApps(user?.id, isOpen);
   const [userAppIds, setUserAppIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const updateAccess = useUpdateUserAppAccess();
 
-  // Fetch user's apps when dialog opens
+  // The checkboxes start from the user's saved access each time the dialog opens
   useEffect(() => {
-    const fetchUserApps = async () => {
-      if (!user || !isOpen) return;
-
-      setLoading(true);
-      try {
-        const response = await floConsoleService.appUserService.listUserApps(user.id);
-        setUserAppIds(response.data.data?.app_ids || []);
-      } catch (error) {
-        const errorMessage = extractErrorMessage(error);
-        notifyError(errorMessage || 'Failed to load user apps');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserApps();
-  }, [user, isOpen, notifyError]);
+    if (isOpen && savedAppIds) setUserAppIds(savedAppIds);
+  }, [isOpen, savedAppIds]);
 
   const handleToggleApp = (appId: string, checked: boolean) => {
     if (checked) {

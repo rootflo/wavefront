@@ -3,13 +3,7 @@ import { CURRENT_PATH_KEY } from '@app/lib/constants';
 import { App } from '@app/types/app';
 import { useCallback, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
-
-interface IUser {
-  first_name: string;
-  last_name: string;
-  email: string;
-  id: string;
-}
+import { IUser } from '@app/types/user';
 
 const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const currentPath = useLocation();
@@ -23,6 +17,10 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
     typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('timeout') : null
   );
 
+  // The timer logs out with whatever navigate is current when it fires, so it stays stable across pages
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
   const resetTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -30,7 +28,7 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
 
     timeoutRef.current = setTimeout(
       () => {
-        navigate('/logout');
+        navigateRef.current('/logout');
       },
       30 * 60 * 1000 // 30 minutes
     );

@@ -6,7 +6,7 @@ import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { copyToClipboard } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery } from '@app/types/datasource';
 import { Copy, Download, Pencil, Trash2, Upload } from 'lucide-react';

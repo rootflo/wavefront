@@ -1,8 +1,8 @@
 import ListHeader from '@app/components/ListHeader';
-import { KbData } from '@app/api/knowledge-base-service';
+import { KbData } from '@app/types/knowledge-base';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import KnowledgeBaseCard from '@app/components/KnowledgeBaseCard';
+import KnowledgeBaseCard from './KnowledgeBaseCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { useDeleteKnowledgeBase, useGetKnowledgeBases } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
@@ -11,7 +11,7 @@ import { useNavigate, useParams } from 'react-router';
 import KnowledgeBaseFormDialog from './KnowledgeBaseFormDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const KnowledgeBasesListPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();

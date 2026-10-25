@@ -1,4 +1,4 @@
-import { NamespaceItem } from '@app/api/namespace-service';
+import { NamespaceItem } from '@app/types/namespace';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { Button } from '@app/components/ui/button';
 import {
@@ -21,7 +21,7 @@ import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
-import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs } from '@app/hooks';
 import { useValidateAgentYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
 import AgentFormFields, { type AgentFormSection } from './AgentFormFields';

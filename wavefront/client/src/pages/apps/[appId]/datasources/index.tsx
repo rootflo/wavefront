@@ -1,5 +1,5 @@
 import ListHeader from '@app/components/ListHeader';
-import DatasourceCard from '@app/components/DatasourceCard';
+import DatasourceCard from './DatasourceCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
@@ -11,7 +11,7 @@ import { useNavigate, useParams } from 'react-router';
 import CreateDatasourceDialog from './CreateDatasourceDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const DatasourcesManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();

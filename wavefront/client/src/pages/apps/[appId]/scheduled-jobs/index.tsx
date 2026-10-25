@@ -30,7 +30,7 @@ import {
 } from './scheduled-job-utils';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const statusBadgeClass: Record<string, string> = {
   active: toneClass.success,

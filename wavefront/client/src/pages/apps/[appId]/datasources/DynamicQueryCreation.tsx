@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
-import { validateDynamicQueryYaml } from '@app/lib/utils';
+import { validateDynamicQueryYaml } from './dynamic-query-utils';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';
 import clsx from 'clsx';

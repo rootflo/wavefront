@@ -12,7 +12,8 @@ import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteMessageProcessor, useGetMessageProcessors } from '@app/hooks';
 import { getMessageProcessorsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/utils/download';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { MessageProcessorListItem } from '@app/types/message-processor';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,7 +24,7 @@ import CreateFunctionDialog from './CreateFunctionDialog';
 import { parseUploadedFunction } from './function-utils';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';

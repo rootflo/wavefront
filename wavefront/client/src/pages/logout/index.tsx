@@ -3,8 +3,8 @@ import { clearSession } from '@app/lib/session';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import { useDashboardStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { useMountEffect } from '@app/hooks/use-mount-effect';
 
 const resetAllStores = () => {
   useAuthStore.getState().reset();
@@ -26,16 +26,16 @@ const Logout = () => {
   const handleLogOut = async () => {
     try {
       await floConsoleService.consoleAuthService.logout();
-    } catch (err) {
-      console.log(err);
+    } catch {
+      // The local session ends whether or not the server heard about it
     } finally {
       onLogout();
     }
   };
 
-  useEffect(() => {
+  useMountEffect(() => {
     handleLogOut();
-  }, []);
+  });
 
   return null;
 };

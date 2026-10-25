@@ -8,7 +8,7 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const ConfigurationDetail: React.FC = () => {

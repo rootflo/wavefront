@@ -2,7 +2,7 @@ import { appEnv } from '@app/config/env';
 import { TOKEN_KEY } from '@app/lib/constants';
 import { getRouteAppId } from '@app/lib/current-app';
 import { clearSession } from '@app/lib/session';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 

@@ -48,8 +48,8 @@ const ResetPasswordPage = () => {
         notifySuccess('Your password has been updated successfully');
         navigate('/login');
       }
-    } catch (err) {
-      console.log('in error', err);
+    } catch {
+      // The request's error toast has already told the user what went wrong
     }
   };
 

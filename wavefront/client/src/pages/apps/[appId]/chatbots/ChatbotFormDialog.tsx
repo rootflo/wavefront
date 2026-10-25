@@ -1,4 +1,4 @@
-import { NamespaceItem } from '@app/api/namespace-service';
+import { NamespaceItem } from '@app/types/namespace';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,

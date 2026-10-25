@@ -1,4 +1,4 @@
-import { PiiEntity, PiiEntityGroup } from '@app/api/guardrails-service';
+import { PiiEntity, PiiEntityGroup } from '@app/types/guardrails';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popo
 import { Check, ChevronDown, ChevronRight, ChevronsUpDown, Search, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { LOOSE_PATTERN_SCORE, PRECISION_TOOLTIPS, PRECISION_WARNINGS } from './adapter-meta';
+import { matchesSearch } from '@app/utils/search';
 
 const GLOBAL_GROUP = 'Global';
 
@@ -76,6 +77,13 @@ const EntityRow: React.FC<{
   );
 };
 
+const entityMatches = (query: string) => (entity: PiiEntity) =>
+  matchesSearch(query, entity.label, entity.id, entity.description);
+
+/** A group cut down to the entities matching `query`; the whole group when there's no query. */
+const filterGroup = (group: PiiEntityGroup, query: string): PiiEntityGroup =>
+  query ? { ...group, entities: group.entities.filter(entityMatches(query)) } : group;
+
 const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChange }) => {
   const [search, setSearch] = useState('');
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
@@ -111,22 +119,14 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
   }, [countryGroups, selectedSet]);
 
   const query = search.trim().toLowerCase();
-  const matches = (entity: PiiEntity) =>
-    entity.label.toLowerCase().includes(query) ||
-    entity.id.toLowerCase().includes(query) ||
-    entity.description.toLowerCase().includes(query);
-
-  const filterGroup = (group: PiiEntityGroup) =>
-    query ? { ...group, entities: group.entities.filter(matches) } : group;
 
   // Global first, then whichever countries have been added. One list, so the
   // sections behave identically - Global just cannot be removed.
   const visibleGroups = useMemo(
     () =>
       [...(globalGroup ? [globalGroup] : []), ...countryGroups.filter((g) => pickedCountries.includes(g.group))]
-        .map(filterGroup)
+        .map((group) => filterGroup(group, query))
         .filter((group) => group.entities.length > 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [globalGroup, countryGroups, pickedCountries, query]
   );
 
@@ -136,9 +136,8 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
     if (!query) return [];
     return countryGroups
       .filter((group) => !pickedCountries.includes(group.group))
-      .map((group) => ({ group: group.group, count: group.entities.filter(matches).length }))
+      .map((group) => ({ group: group.group, count: group.entities.filter(entityMatches(query)).length }))
       .filter((entry) => entry.count > 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryGroups, pickedCountries, query]);
 
   const toggle = (id: string, checked: boolean) => {

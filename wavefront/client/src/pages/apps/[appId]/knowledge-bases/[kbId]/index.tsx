@@ -27,7 +27,7 @@ import dayjs from 'dayjs';
 import { TrashIcon } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import IndexStatusSummary from './IndexStatusSummary';
 import IndexStatusPill from './IndexStatusPill';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';

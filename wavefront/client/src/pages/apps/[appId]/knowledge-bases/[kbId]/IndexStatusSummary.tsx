@@ -1,4 +1,4 @@
-import { IndexStatus, KnowledgeBaseIndexStatusData } from '@app/api/knowledge-base-service';
+import { IndexStatus, KnowledgeBaseIndexStatusData } from '@app/types/knowledge-base';
 import { Button } from '@app/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';

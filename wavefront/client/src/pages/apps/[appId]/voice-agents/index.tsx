@@ -7,7 +7,8 @@ import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteVoiceAgent, useGetVoiceAgents } from '@app/hooks';
-import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { getLanguageName } from '@app/constants/languages';
@@ -18,7 +19,7 @@ import VoiceAgentFormDialog from './VoiceAgentFormDialog';
 import VoiceAgentOperationsDialog from './VoiceAgentOperationsDialog';
 import floConsoleService from '@app/api';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const VoiceAgentsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

@@ -13,33 +13,40 @@ import {
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import {
-  documentMimeTypeFor,
-  documentTypeFor,
-  validateDocumentUpload,
-  validateImageUpload,
-} from '@app/constants/upload';
 import { ArrowLeft, MoreVertical } from 'lucide-react';
 import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion, useUpdateAgent } from '@app/hooks';
-import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
+import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { AgentStreamEvent } from '@app/types/agent';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
 import { selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useChatAttachments } from '@app/hooks/use-chat-attachments';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
   const updateAgent = useUpdateAgent(appId);
 
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  // Images and documents attached to the next message
+  const {
+    images: uploadedImages,
+    documents: uploadedDocuments,
+    uploadingImage,
+    uploadingDocument,
+    addImages: handleImageUpload,
+    addDocuments: handleDocumentUpload,
+    removeImage: handleRemoveImage,
+    removeDocument: handleRemoveDocument,
+    clear: clearAttachments,
+  } = useChatAttachments({ onAdded: () => setShowUploadMenu(false) });
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [yamlContent, setYamlContent] = useState('');
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -59,28 +66,6 @@ const AgentDetail: React.FC = () => {
   // LLM Config selection state
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
 
-  // Image upload state
-  const [uploadedImages, setUploadedImages] = useState<
-    Array<{
-      file: File;
-      base64: string; // Full data URL for display
-      base64Content: string; // Just base64 content for API
-      mimeType: string;
-    }>
-  >([]);
-  const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Document upload state
-  const [uploadedDocuments, setUploadedDocuments] = useState<
-    Array<{
-      file: File;
-      base64: string; // Full data URL for display
-      base64Content: string; // Just base64 content for API
-      mimeType: string;
-      documentType: string;
-    }>
-  >([]);
-  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   // Streaming state
@@ -161,133 +146,6 @@ const AgentDetail: React.FC = () => {
     }
   };
 
-  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // Validate all files before processing
-    for (let i = 0; i < files.length; i++) {
-      const imageError = validateImageUpload(files[i]);
-      if (imageError) {
-        notifyError(imageError);
-        return;
-      }
-    }
-
-    setUploadingImage(true);
-
-    // Process all files
-    const filePromises = Array.from(files).map(
-      (file) =>
-        new Promise<{
-          file: File;
-          base64: string;
-          base64Content: string;
-          mimeType: string;
-        }>((resolve, reject) => {
-          const reader = new FileReader();
-
-          reader.onload = (e) => {
-            const base64 = e.target?.result as string;
-            // Extract just the base64 content without the data URL prefix
-            const base64Content = base64.split(',')[1] || base64;
-            resolve({
-              file,
-              base64,
-              base64Content,
-              mimeType: file.type,
-            });
-          };
-
-          reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-          reader.readAsDataURL(file);
-        })
-    );
-
-    Promise.all(filePromises)
-      .then((newImages) => {
-        setUploadedImages((prev) => [...prev, ...newImages]);
-        setUploadingImage(false);
-        notifySuccess(`${newImages.length} image(s) uploaded successfully`);
-        // Reset file input
-        event.target.value = '';
-        // Close the upload menu after successful upload
-        setShowUploadMenu(false);
-      })
-      .catch((error) => {
-        notifyError(error.message || 'Error reading image files');
-        setUploadingImage(false);
-      });
-  }, []);
-
-  const handleRemoveImage = useCallback((index: number) => {
-    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const handleDocumentUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // Validate all files before processing
-    for (let i = 0; i < files.length; i++) {
-      const documentError = validateDocumentUpload(files[i]);
-      if (documentError) {
-        notifyError(documentError);
-        return;
-      }
-    }
-
-    setUploadingDocument(true);
-
-    // Process all files
-    const filePromises = Array.from(files).map((file) => {
-      return new Promise<{
-        file: File;
-        base64: string;
-        base64Content: string;
-        mimeType: string;
-        documentType: string;
-      }>((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-          const dataUrl = e.target?.result as string;
-          const base64 = dataUrl.split(',')[1];
-
-          resolve({
-            file,
-            base64: dataUrl,
-            base64Content: base64,
-            mimeType: documentMimeTypeFor(file),
-            documentType: documentTypeFor(file),
-          });
-        };
-
-        reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-        reader.readAsDataURL(file);
-      });
-    });
-
-    Promise.all(filePromises)
-      .then((newDocuments) => {
-        setUploadedDocuments((prev) => [...prev, ...newDocuments]);
-        setUploadingDocument(false);
-        notifySuccess(`${newDocuments.length} document(s) uploaded successfully`);
-        // Reset file input
-        event.target.value = '';
-        // Close the upload menu after successful upload
-        setShowUploadMenu(false);
-      })
-      .catch((error) => {
-        notifyError(error.message || 'Error reading document files');
-        setUploadingDocument(false);
-      });
-  }, []);
-
-  const handleRemoveDocument = useCallback((index: number) => {
-    setUploadedDocuments((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
   const handleSave = async (yamlContent: string, options: { createNewVersion: boolean }) => {
     if (!appId || !id || !agent) return;
 
@@ -362,8 +220,7 @@ const AgentDetail: React.FC = () => {
       }
 
       // Prepare inputs based on what's provided
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let inputs: string | any[];
+      let inputs: string | Array<{ role: string; content: ChatMessageContent }>;
       const finalTextInput = inferenceInput.trim();
       // Handle different input combinations
       const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
@@ -456,9 +313,7 @@ const AgentDetail: React.FC = () => {
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
-      //clearing the documents and images
-      setUploadedDocuments([]);
-      setUploadedImages([]);
+      clearAttachments();
     } catch (error) {
       console.error('Error running inference:', error);
     } finally {

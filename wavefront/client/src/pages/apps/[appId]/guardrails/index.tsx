@@ -7,7 +7,7 @@ import {
   GuardrailAdapterConfig,
   StreamPreference,
   WorkflowStage,
-} from '@app/api/guardrails-service';
+} from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';

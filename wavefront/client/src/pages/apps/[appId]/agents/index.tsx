@@ -1,5 +1,5 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
-import AgentCard from '@app/components/AgentCard';
+import AgentCard from './AgentCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
@@ -8,7 +8,8 @@ import { useListView } from '@app/lib/list-view';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteAgent, useGetAgents, useGetNamespaces } from '@app/hooks';
-import { copyToClipboard, formatAppName } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { AgentListItem } from '@app/types/agent';
 import dayjs from 'dayjs';
@@ -18,7 +19,7 @@ import { useNavigate, useParams } from 'react-router';
 import CreateAgentDialog from './CreateAgentDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const AgentManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();

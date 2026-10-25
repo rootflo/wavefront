@@ -6,11 +6,12 @@ import {
   PolicyPreviewStage,
   PolicyPreviewResult,
   StreamPreference,
-} from '@app/api/guardrails-service';
+} from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
-import { cn, extractErrorMessage } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { adapterLabel, buildEntityLabels } from './adapter-meta';

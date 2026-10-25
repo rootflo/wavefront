@@ -1,4 +1,4 @@
-import { NamespaceItem } from '@app/api/namespace-service';
+import { NamespaceItem } from '@app/types/namespace';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';

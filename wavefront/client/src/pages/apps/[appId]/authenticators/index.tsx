@@ -1,5 +1,5 @@
 import ListHeader from '@app/components/ListHeader';
-import AuthenticatorCard from '@app/components/AuthenticatorCard';
+import AuthenticatorCard from './AuthenticatorCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
@@ -11,7 +11,7 @@ import { useNavigate, useParams } from 'react-router';
 import CreateAuthenticatorDialog from './CreateAuthenticatorDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const AuthenticatorsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

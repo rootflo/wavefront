@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popo
 import { cn } from '@app/lib/utils';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const identity = (id: string) => id;
 

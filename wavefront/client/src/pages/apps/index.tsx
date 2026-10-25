@@ -1,8 +1,8 @@
 import AppsBackdrop from '@app/components/AppsBackdrop';
-import AppCompactCard from '@app/components/AppCompactCard';
-import AppShowcaseCard from '@app/components/AppShowcaseCard';
-import AppsHero from '@app/components/AppsHero';
-import ColumnsToggle from '@app/components/ColumnsToggle';
+import AppCompactCard from './AppCompactCard';
+import AppShowcaseCard from './AppShowcaseCard';
+import AppsHero from './AppsHero';
+import ColumnsToggle from './ColumnsToggle';
 import { FilterSelect } from '@app/components/ListHeader';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Button } from '@app/components/ui/button';
@@ -10,12 +10,13 @@ import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { useDeleteApp, useGetAllApps, useGetCurrentUser } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
 import { App } from '@app/types/app';
-import { cn, formatAppName } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { Box, Pin, Plus } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const COLUMNS_KEY = 'wavefront-apps-columns';
 const PINNED_KEY = 'wavefront-pinned-apps';

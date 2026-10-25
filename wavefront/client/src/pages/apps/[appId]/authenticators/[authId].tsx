@@ -17,8 +17,9 @@ import {
   mergeParameters,
   ParameterConfig,
 } from '@app/config/authenticators';
-import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
-import { copyToClipboard, formatAppName } from '@app/lib/utils';
+import { useGetAuthenticator } from '@app/hooks';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useNotifyStore } from '@app/store';
 import {
   getBooleanNestedParameter,

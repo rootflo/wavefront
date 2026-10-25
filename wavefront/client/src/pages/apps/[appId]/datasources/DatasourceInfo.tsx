@@ -11,6 +11,8 @@ import { Copy } from 'lucide-react';
 import React from 'react';
 import { ConnectionTest } from './connection-test';
 import { DATASOURCE_TYPE_LABELS } from './datasource-types';
+import { useParams } from 'react-router';
+import { useGetDatasourceResources } from '@app/hooks';
 
 dayjs.extend(relativeTime);
 
@@ -86,13 +88,8 @@ const DatasourceInfo: React.FC<DatasourceInfoProps> = ({
   onTest,
   onCopyId,
 }) => {
-  // Same key as the Data tab, so whichever opens first fetches the list for both.
-  const tablesQuery = useQuery({
-    queryKey: ['datasource-tables', datasource.id],
-    queryFn: async () =>
-      (await floConsoleService.datasourcesService.getDatasourceResources(datasource.id)).data?.data?.resources ?? [],
-    enabled: !isFileStorage,
-  });
+  const { app: appId } = useParams<{ app: string }>();
+  const tablesQuery = useGetDatasourceResources(appId, datasource.id, !isFileStorage);
 
   const lastActivityQuery = useQuery({
     queryKey: ['datasource-last-activity', datasource.id],

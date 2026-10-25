@@ -18,17 +18,12 @@ import { Checkbox } from '@app/components/ui/checkbox';
 import { Label } from '@app/components/ui/label';
 import { Slider } from '@app/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
-import {
-  useGetLLMConfigs,
-  useGetSttConfigs,
-  useGetTelephonyConfigs,
-  useGetTtsConfigs,
-} from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs, useGetSttConfigs, useGetTelephonyConfigs, useGetTtsConfigs } from '@app/hooks';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { CreateVoiceAgentRequest, UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
 import FieldHelp from '@app/components/FieldHelp';
-import { VoiceIdsSection } from '@app/components/VoiceIdsSection';
+import { VoiceIdsSection } from './VoiceIdsSection';
 import { getTelephonyProviderConfig } from '@app/config/telephony-providers';
 import {
   getProviderConfig,

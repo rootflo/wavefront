@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Type definitions for Tools
  *
@@ -56,7 +55,7 @@ export interface ToolsDetailsData {
 export interface ToolNamesData {
   message: string;
   data: {
-    tool_details: ToolDetails;
+    tool_details: ToolDetails[];
     count: number;
   };
 }
@@ -129,7 +128,7 @@ export interface VoiceAgentTool {
   description: string;
   tool_type: ToolType;
   config: ApiToolConfig | PythonToolConfig | AppToolConfig;
-  parameter_schema?: Record<string, any>;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
   created_by?: string;
   created_at: string;
@@ -145,7 +144,7 @@ export interface VoiceAgentToolAssociation {
   voice_agent_id: string;
   tool_id: string;
   is_enabled: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority: number;
   created_at: string;
   updated_at: string;
@@ -158,7 +157,7 @@ export interface VoiceAgentToolWithAssociation extends VoiceAgentTool {
   association: {
     id: string;
     is_enabled: boolean;
-    config_overrides?: Record<string, any>;
+    config_overrides?: Record<string, unknown>;
     priority: number;
   };
 }
@@ -172,7 +171,7 @@ export interface CreateToolRequest {
   description: string;
   tool_type: ToolType;
   config: ApiToolConfig | PythonToolConfig | AppToolConfig;
-  parameter_schema?: Record<string, any>;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
 }
 
@@ -183,7 +182,7 @@ export interface UpdateToolRequest {
   display_name?: string;
   description?: string;
   config?: ApiToolConfig | PythonToolConfig | AppToolConfig;
-  parameter_schema?: Record<string, any>;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
 }
 
@@ -193,7 +192,7 @@ export interface UpdateToolRequest {
 export interface AttachToolToAgentRequest {
   tool_id: string;
   is_enabled?: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority?: number;
 }
 
@@ -202,7 +201,7 @@ export interface AttachToolToAgentRequest {
  */
 export interface UpdateAgentToolRequest {
   is_enabled?: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority?: number;
 }
 
@@ -213,16 +212,6 @@ export interface ListToolsParams {
   tool_type?: ToolType;
   limit?: number;
   offset?: number;
-}
-
-/**
- * Tool execution result (from Pipecat)
- */
-export interface ToolExecutionResult {
-  success: boolean;
-  status_code?: number;
-  data?: any;
-  error?: string;
 }
 
 /**

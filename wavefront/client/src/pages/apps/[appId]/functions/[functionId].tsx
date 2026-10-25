@@ -14,7 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useParams } from 'react-router';
 import { z } from 'zod';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const functionFormSchema = z.object({

@@ -63,7 +63,7 @@ const CreateApp: React.FC = () => {
         setCreating(false);
       }
     },
-    [navigate]
+    [navigate, notifySuccess]
   );
 
   // Effect to handle polling

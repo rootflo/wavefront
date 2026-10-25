@@ -11,7 +11,8 @@ import {
   useSetPrimaryEmailConnection,
   useVerifyEmailConnection,
 } from '@app/hooks';
-import { cn, formatAppName } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { EmailCapability, EmailConnection } from '@app/types/email';
 import React, { useState } from 'react';
@@ -19,7 +20,7 @@ import { useParams } from 'react-router';
 import ConnectMailboxDialog from './ConnectMailboxDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 /** Which capabilities a connection's granted scopes actually cover. Scopes are
  *  provider strings, so match on the capability name they contain. */

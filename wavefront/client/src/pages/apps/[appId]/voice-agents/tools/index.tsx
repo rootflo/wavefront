@@ -9,14 +9,14 @@ import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { Badge } from '@app/components/ui/badge';
 import { useDeleteTool, useGetVoiceAgentTools } from '@app/hooks';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { VoiceAgentTool } from '@app/types/tool';
 import { Pencil, Trash2, Wrench } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import ToolFormDialog from './ToolFormDialog';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const ToolsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

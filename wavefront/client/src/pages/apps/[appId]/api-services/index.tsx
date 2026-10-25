@@ -1,5 +1,5 @@
 import ListHeader from '@app/components/ListHeader';
-import ApiServiceCard from '@app/components/ApiServiceCard';
+import ApiServiceCard from './ApiServiceCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { useDeleteApiService, useGetApiServices } from '@app/hooks';
@@ -11,7 +11,7 @@ import CreateApiServiceDialog from './CreateApiServiceDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const ApiServiceManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();

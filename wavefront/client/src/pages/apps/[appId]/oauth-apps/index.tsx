@@ -6,7 +6,8 @@ import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { EMAIL_PROVIDERS_CONFIG } from '@app/config/email-providers';
 import { useDeleteOAuthApp, useGetOAuthApps, useSetOAuthAppEnabled } from '@app/hooks';
-import { extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { OAuthApp } from '@app/types/oauth-app';
 import React, { useState } from 'react';
@@ -14,7 +15,7 @@ import { useParams } from 'react-router';
 import OAuthAppFormDialog from './OAuthAppFormDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const OAuthAppsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();

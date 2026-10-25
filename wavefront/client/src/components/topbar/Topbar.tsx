@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
 import { isLiveStatus } from '@app/lib/app-status';
-import { formatAppName } from '@app/lib/utils';
-import { IUser } from '@app/pages/types';
+import { formatAppName } from '@app/utils/string-formatting';
+import { IUser } from '@app/types/user';
 import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { useThemeStore } from '@app/store/theme-store';

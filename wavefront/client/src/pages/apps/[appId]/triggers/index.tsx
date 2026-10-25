@@ -25,7 +25,7 @@ import { useParams } from 'react-router';
 import CreateTriggerDialog from './CreateTriggerDialog';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const formatDateTime = (value: string | null | undefined) => {
   if (!value) return '—';

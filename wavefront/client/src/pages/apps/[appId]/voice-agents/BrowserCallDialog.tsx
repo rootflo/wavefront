@@ -16,7 +16,7 @@ import {
 import { appEnv } from '@app/config/env';
 import { useGetVoiceAgents } from '@app/hooks';
 import { TOKEN_KEY } from '@app/lib/constants';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { CreateVoiceAgentRoomRequest, VoiceAgent, VoiceAgentRoom, VoiceAgentRoomAgent } from '@app/types/voice-agent';
 import { PipecatClient } from '@pipecat-ai/client-js';
@@ -199,23 +199,24 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({
     }
   };
 
+  // The effects below run on unmount / close only, but must call the current teardown
+  const latest = useRef({ teardown, resetSwitchState });
+  latest.current = { teardown, resetSwitchState };
+
   useEffect(() => {
     return () => {
-      void teardown();
+      void latest.current.teardown();
     };
-    // Unmount-only cleanup; teardown only touches refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Parent Dialog (e.g. operations) owns open state; tear down when it closes.
   useEffect(() => {
     if (embedded && !isOpen) {
-      void teardown();
+      void latest.current.teardown();
       setStatus('idle');
       setError(null);
-      resetSwitchState();
+      latest.current.resetSwitchState();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embedded, isOpen]);
 
   const fail = (attempt: number, callError: BrowserCallError, toast = true) => {

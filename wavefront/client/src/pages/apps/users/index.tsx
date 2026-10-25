@@ -14,7 +14,7 @@ import React, { useMemo, useState } from 'react';
 import UserFormDialog from './UserFormDialog';
 import ManageAppAccessDialog from './ManageAppAccessDialog';
 import { useDeleteConfirm } from '@app/hooks';
-import { matchesSearch } from '@app/lib/search';
+import { matchesSearch } from '@app/utils/search';
 
 const UsersPage: React.FC = () => {
   const deleteUser = useDeleteUser();
