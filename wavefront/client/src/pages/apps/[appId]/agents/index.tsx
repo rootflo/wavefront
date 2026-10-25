@@ -5,13 +5,6 @@ import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteAgent, useGetAgents, useGetNamespaces } from '@app/hooks';
@@ -23,6 +16,9 @@ import { Copy, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateAgentDialog from './CreateAgentDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const AgentManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
@@ -31,11 +27,11 @@ const AgentManagement: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [namespace, setNamespace] = useState('');
-  const [deleteItem, setDeleteItem] = useState<AgentListItem | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { selectedApp } = useDashboardStore();
   const deleteAgentMutation = useDeleteAgent(appId);
+  const deletion = useDeleteConfirm<AgentListItem>((item) => deleteAgentMutation.mutateAsync(item.id));
 
   // Get the namespace value for the query (undefined if 'all' or empty)
   const namespaceForQuery = namespace === 'all' || !namespace ? undefined : namespace;
@@ -43,36 +39,14 @@ const AgentManagement: React.FC = () => {
   const { data: agents = [], isLoading: agentsLoading } = useGetAgents(appId, namespaceForQuery);
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
-  const filteredAgents = agents.filter(
-    (agent) =>
-      agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agent.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAgents = agents.filter((agent) => matchesSearch(searchTerm, agent.name, agent.id));
 
   const handleCreateAgent = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    setCreateDialogOpen(false);
-  };
-
   const handleAgentClick = (agentId: string) => {
     navigate(`/apps/${appId}/agents/${agentId}`);
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent, agent: AgentListItem) => {
-    e.stopPropagation(); // Prevent triggering the click handler for the card
-    setDeleteItem(agent);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-    deleteAgentMutation.mutate(deleteItem.id, {
-      onSuccess: () => {
-        setDeleteItem(null);
-      },
-    });
   };
 
   const handleCopyId = async (id: string) => {
@@ -89,29 +63,7 @@ const AgentManagement: React.FC = () => {
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/agents`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Agents
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Agents', to: `/apps/${appId}/agents` }]} />
 
       <ListHeader
         title="Agents"
@@ -152,7 +104,12 @@ const AgentManagement: React.FC = () => {
         <ResourceList
           view={view}
           cards={filteredAgents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} onClick={handleAgentClick} onDeleteClick={handleDeleteClick} />
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onClick={handleAgentClick}
+              onDeleteClick={(e, item) => deletion.ask(item, e)}
+            />
           ))}
           table={
             <Table>
@@ -190,7 +147,7 @@ const AgentManagement: React.FC = () => {
                       {agent.updated_at ? dayjs(agent.updated_at).format('DD MMM YYYY') : '—'}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" title="Delete" onClick={(e) => handleDeleteClick(e, agent)}>
+                      <Button variant="ghost" size="sm" title="Delete" onClick={(e) => deletion.ask(agent, e)}>
                         <Trash2 className="h-4 w-4 text-red-600" />
                       </Button>
                     </TableCell>
@@ -204,12 +161,9 @@ const AgentManagement: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Agent"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleteAgentMutation.isPending}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       {/* Create Agent Dialog */}
@@ -218,7 +172,6 @@ const AgentManagement: React.FC = () => {
           isOpen={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
           appId={appId}
-          onSuccess={handleCreateSuccess}
           namespaces={namespaces}
         />
       )}

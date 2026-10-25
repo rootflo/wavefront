@@ -2,92 +2,44 @@ import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetTelephonyConfigs } from '@app/hooks';
-import { getTelephonyConfigsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import { useDeleteTelephonyConfig, useGetTelephonyConfigs } from '@app/hooks';
 import { TelephonyConfig } from '@app/types/telephony-config';
-import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, PhoneCall } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
-import CreateTelephonyConfigDialog from './CreateTelephonyConfigDialog';
-import EditTelephonyConfigDialog from './EditTelephonyConfigDialog';
+import TelephonyConfigFormDialog from './TelephonyConfigFormDialog';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const TelephonyConfigsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const [view, setView] = useListView('telephony-configs');
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteConfig = useDeleteTelephonyConfig(app);
+  const deletion = useDeleteConfirm<TelephonyConfig>((item) => deleteConfig.mutateAsync(item.id));
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<TelephonyConfig | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<TelephonyConfig | null>(null);
 
   // Fetch telephony configs
   const { data: configs = [], isLoading: configsLoading } = useGetTelephonyConfigs(app);
 
-  const handleDeleteClick = (e: React.MouseEvent, config: TelephonyConfig) => {
-    e.stopPropagation();
-    setDeleteItem(config);
-  };
-
   const handleEditClick = (e: React.MouseEvent, config: TelephonyConfig) => {
     e.stopPropagation();
     setEditItem(config);
-  };
-
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getTelephonyConfigsKey(app || '') });
-    setEditItem(null);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.telephonyConfigService.deleteTelephonyConfig(deleteItem.id);
-      notifySuccess('Telephony configuration deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getTelephonyConfigsKey(app || '') });
-      setDeleteItem(null);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete telephony configuration');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
   };
 
   const handleCreateTelephonyConfig = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getTelephonyConfigsKey(app || '') });
-    setCreateDialogOpen(false);
-  };
-
-  const filteredConfigs = configs.filter((config) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      config.display_name.toLowerCase().includes(query) ||
-      (config.description && config.description.toLowerCase().includes(query)) ||
-      config.provider.toLowerCase().includes(query) ||
-      config.connection_type.toLowerCase().includes(query)
-    );
-  });
+  const filteredConfigs = configs.filter((config) =>
+    matchesSearch(searchQuery, config.display_name, config.description, config.provider, config.connection_type)
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
@@ -130,7 +82,7 @@ const TelephonyConfigsPage: React.FC = () => {
                     { label: 'Created', value: new Date(config.created_at).toLocaleDateString() },
                   ]}
                   onEditClick={(e) => handleEditClick(e, config)}
-                  onDeleteClick={(e) => handleDeleteClick(e, config)}
+                  onDeleteClick={(e) => deletion.ask(config, e)}
                   deleteTitle="Delete config"
                 />
               ))}
@@ -161,7 +113,7 @@ const TelephonyConfigsPage: React.FC = () => {
                         <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, config)} title="Edit">
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, config)} title="Delete">
+                        <Button variant="ghost" size="sm" onClick={(e) => deletion.ask(config, e)} title="Delete">
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                       </div>
@@ -176,30 +128,20 @@ const TelephonyConfigsPage: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Telephony Configuration"
-        message={`Are you sure you want to delete "${deleteItem?.display_name}"? This action cannot be undone.`}
-        onConfirm={handleDelete}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.display_name}"? This action cannot be undone.`}
       />
 
       {/* Create Telephony Config Dialog */}
-      {app && (
-        <CreateTelephonyConfigDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {app && <TelephonyConfigFormDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} />}
 
       {/* Edit Telephony Config Dialog */}
       {app && editItem && (
-        <EditTelephonyConfigDialog
+        <TelephonyConfigFormDialog
           isOpen={!!editItem}
           onOpenChange={(open) => !open && setEditItem(null)}
           config={editItem}
-          onSuccess={handleEditSuccess}
         />
       )}
     </div>

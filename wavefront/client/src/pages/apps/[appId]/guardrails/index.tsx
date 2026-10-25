@@ -1,7 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { FlaskConical, Save } from 'lucide-react';
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
-import floConsoleService from '@app/api';
 import {
   EnforcementMode,
   FailureMode,
@@ -9,13 +8,6 @@ import {
   StreamPreference,
   WorkflowStage,
 } from '@app/api/guardrails-service';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
@@ -27,16 +19,15 @@ import {
   useGetGuardrailPiiEntities,
   useGetGuardrailPolicy,
   useGetNamespaces,
+  useSaveGuardrailPolicy,
 } from '@app/hooks';
-import { getGuardrailPoliciesKey, getGuardrailPolicyKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
-import { useQueryClient } from '@tanstack/react-query';
+import { useDashboardStore } from '@app/store';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import AdapterCard from './AdapterCard';
 import PolicyTestPanel from './PolicyTestPanel';
 import { ADAPTER_META, DEFAULT_UNAVAILABLE_HINT, adapterLabel } from './adapter-meta';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 /**
  * Canonical serialisation of a JSON-ish value: object keys and array members
@@ -72,9 +63,6 @@ const fingerprintPolicy = (
 
 const GuardrailsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
 
   const [namespace, setNamespace] = useState<string>('default');
@@ -82,7 +70,8 @@ const GuardrailsManagement: React.FC = () => {
   const [mode, setMode] = useState<EnforcementMode>('MONITOR');
   const [adapters, setAdapters] = useState<GuardrailAdapterConfig[]>([]);
   const [stream, setStream] = useState<StreamPreference>('BUFFERED');
-  const [saving, setSaving] = useState(false);
+  const saveGuardrailPolicy = useSaveGuardrailPolicy(appId);
+  const saving = saveGuardrailPolicy.isPending;
   const [testOpen, setTestOpen] = useState(false);
 
   const { data: namespaces = [] } = useGetNamespaces(appId);
@@ -161,59 +150,34 @@ const GuardrailsManagement: React.FC = () => {
     setAdapters((current) => current.map((adapter) => (adapter.name === name ? { ...adapter, ...patch } : adapter)));
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await floConsoleService.guardrailsService.updatePolicy(namespace, {
-        is_enabled: isEnabled,
-        mode,
-        adapters,
-        // Sent even when unchanged: the server replaces policy_config
-        // wholesale, so leaving it out would revert the namespace to
-        // buffered without anything on this page saying so.
-        stream,
-      });
-      // The refetch below lands on these same values and resets the baseline
-      // anyway, but not until it returns. Moving the baseline now stops the
-      // indicator from sitting there over an already-saved policy.
-      setSavedFingerprint(draftFingerprint);
-      queryClient.invalidateQueries({ queryKey: getGuardrailPolicyKey(appId || '', namespace) });
-      queryClient.invalidateQueries({ queryKey: getGuardrailPoliciesKey(appId || '') });
-      notifySuccess('Guardrail policy saved');
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to save guardrail policy');
-    } finally {
-      setSaving(false);
-    }
+  const handleSave = () => {
+    saveGuardrailPolicy.mutate(
+      {
+        namespace,
+        data: {
+          is_enabled: isEnabled,
+          mode,
+          adapters,
+          // Sent even when unchanged: the server replaces policy_config
+          // wholesale, so leaving it out would revert the namespace to
+          // buffered without anything on this page saying so.
+          stream,
+        },
+      },
+      {
+        // The refetch lands on these same values and resets the baseline
+        // anyway, but not until it returns. Moving the baseline now stops the
+        // indicator from sitting there over an already-saved policy.
+        onSuccess: () => setSavedFingerprint(draftFingerprint),
+      }
+    );
   };
 
   const namespaceOptions = namespaces.length ? namespaces.map((item) => item.name) : ['default'];
 
   return (
     <div className="flex h-full w-full flex-col p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/guardrails`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Guardrails
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Guardrails', to: `/apps/${appId}/guardrails` }]} />
 
       <ListHeader
         title="Guardrails & Security"

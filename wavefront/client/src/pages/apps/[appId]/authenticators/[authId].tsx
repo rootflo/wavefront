@@ -1,17 +1,8 @@
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
 import { Badge } from '@app/components/ui/badge';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Input } from '@app/components/ui/input';
@@ -27,8 +18,7 @@ import {
   ParameterConfig,
 } from '@app/config/authenticators';
 import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
-import { getAuthenticatorKey, getAuthenticatorsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { copyToClipboard, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import {
   getBooleanNestedParameter,
@@ -38,10 +28,11 @@ import {
   getStringNestedParameter,
   getStringParameter,
 } from '@app/utils/parameter-helpers';
-import { useQueryClient } from '@tanstack/react-query';
 import { Copy } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { useDeleteAuthenticator, useSetAuthenticatorEnabled, useUpdateAuthenticator } from '@app/hooks';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const formatFieldName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
@@ -50,14 +41,13 @@ const fieldId = (...parts: string[]) => ['authenticator', ...parts].join('-');
 const AuthenticatorDetailPage: React.FC = () => {
   const { app, authId } = useParams<{ app: string; authId: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [togglingEnabled, setTogglingEnabled] = useState(false);
+  const updateAuthenticator = useUpdateAuthenticator(app);
+  const deleteAuthenticator = useDeleteAuthenticator(app);
+  const setAuthenticatorEnabled = useSetAuthenticatorEnabled(app);
 
   const [authDesc, setAuthDesc] = useState('');
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
@@ -97,67 +87,22 @@ const AuthenticatorDetailPage: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!authId) return;
-
-    setSaveLoading(true);
-    try {
-      await floConsoleService.authenticatorService.updateAuthenticator(authId, {
-        auth_desc: authDesc.trim() || null,
-        config: cleanParameters(parameters),
-      });
-      notifySuccess('Authenticator updated successfully');
-      setIsEditing(false);
-      queryClient.invalidateQueries({
-        queryKey: getAuthenticatorKey(app || '', authId),
-      });
-      queryClient.invalidateQueries({ queryKey: getAuthenticatorsKey(app || '') });
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to update authenticator');
-    } finally {
-      setSaveLoading(false);
-    }
+    updateAuthenticator.mutate(
+      { authId, data: { auth_desc: authDesc.trim() || null, config: cleanParameters(parameters) } },
+      { onSuccess: () => setIsEditing(false) }
+    );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!authId) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.authenticatorService.deleteAuthenticator(authId);
-      notifySuccess('Authenticator deleted successfully');
-      navigate(`/apps/${app}/authenticators`);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete authenticator');
-    } finally {
-      setDeleting(false);
-    }
+    deleteAuthenticator.mutate(authId, { onSuccess: () => navigate(`/apps/${app}/authenticators`) });
   };
 
-  const handleToggleEnabled = async (enabled: boolean) => {
+  const handleToggleEnabled = (enabled: boolean) => {
     if (!authId || !authenticator) return;
-
-    setTogglingEnabled(true);
-    try {
-      if (enabled) {
-        await floConsoleService.authenticatorService.enableAuthenticator(authId);
-        notifySuccess('Authenticator enabled successfully');
-      } else {
-        await floConsoleService.authenticatorService.disableAuthenticator(authId);
-        notifySuccess('Authenticator disabled successfully');
-      }
-      queryClient.invalidateQueries({
-        queryKey: getAuthenticatorKey(app || '', authId),
-      });
-      queryClient.invalidateQueries({ queryKey: getAuthenticatorsKey(app || '') });
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to toggle authenticator');
-    } finally {
-      setTogglingEnabled(false);
-    }
+    setAuthenticatorEnabled.mutate({ authId, enabled });
   };
 
   const handleCopyId = async (id: string) => {
@@ -338,33 +283,12 @@ const AuthenticatorDetailPage: React.FC = () => {
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${app}/authenticators`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Authenticators
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={authenticatorLoading}>{authenticator?.auth_name || authId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        items={[
+          { label: 'Authenticators', to: `/apps/${app}/authenticators` },
+          { label: authenticator?.auth_name || authId, loading: authenticatorLoading },
+        ]}
+      />
 
       {authenticatorLoading ? (
         <>
@@ -394,7 +318,7 @@ const AuthenticatorDetailPage: React.FC = () => {
                   <Switch
                     checked={authenticator.is_enabled}
                     onCheckedChange={(checked) => void handleToggleEnabled(checked)}
-                    disabled={togglingEnabled}
+                    disabled={setAuthenticatorEnabled.isPending}
                     title={authenticator.is_enabled ? 'Enabled' : 'Disabled'}
                   />
                   {authenticator.is_enabled ? 'Enabled' : 'Disabled'}
@@ -407,7 +331,7 @@ const AuthenticatorDetailPage: React.FC = () => {
               onDelete={() => setShowDeleteModal(true)}
               onSave={() => void handleSave()}
               onCancel={handleCancel}
-              saving={saveLoading}
+              saving={updateAuthenticator.isPending}
             />
           </div>
 
@@ -482,7 +406,7 @@ const AuthenticatorDetailPage: React.FC = () => {
         message={`Are you sure you want to delete "${authenticator?.auth_name || ''}"? This action cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteModal(false)}
-        loading={deleting}
+        loading={deleteAuthenticator.isPending}
       />
     </div>
   );

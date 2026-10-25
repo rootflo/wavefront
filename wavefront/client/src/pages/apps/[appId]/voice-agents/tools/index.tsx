@@ -3,93 +3,46 @@ import { toneClass } from '@app/lib/tones';
 import ResourceCard from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { Badge } from '@app/components/ui/badge';
-import { useGetVoiceAgentTools } from '@app/hooks';
-import { getVoiceAgentToolsKey } from '@app/hooks/data/query-keys';
+import { useDeleteTool, useGetVoiceAgentTools } from '@app/hooks';
 import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
 import { VoiceAgentTool } from '@app/types/tool';
-import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, Wrench } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
-import CreateToolDialog from './CreateToolDialog';
-import EditToolDialog from './EditToolDialog';
+import ToolFormDialog from './ToolFormDialog';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const ToolsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const [view, setView] = useListView('voice-agent-tools');
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteTool = useDeleteTool(app);
+  const deletion = useDeleteConfirm<VoiceAgentTool>((item) => deleteTool.mutateAsync(item.id));
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<VoiceAgentTool | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<VoiceAgentTool | null>(null);
 
   // Fetch tools
-  const { data: tools = [], isLoading: toolsLoading, isError, error } = useGetVoiceAgentTools(app);
-
-  const handleDeleteClick = (e: React.MouseEvent, tool: VoiceAgentTool) => {
-    e.stopPropagation();
-    setDeleteItem(tool);
-  };
+  const { data: tools = [], isLoading: toolsLoading, isError, error, refetch } = useGetVoiceAgentTools(app);
 
   const handleEditClick = (e: React.MouseEvent, tool: VoiceAgentTool) => {
     e.stopPropagation();
     setEditItem(tool);
   };
 
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') });
-    setEditItem(null);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.toolService.deleteTool(deleteItem.id);
-      notifySuccess('Tool deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') });
-      setDeleteItem(null);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete tool');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   const handleCreateTool = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') });
-    setCreateDialogOpen(false);
-  };
-
-  const filteredTools = tools.filter((tool) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      tool.name.toLowerCase().includes(query) ||
-      tool.display_name.toLowerCase().includes(query) ||
-      (tool.description && tool.description.toLowerCase().includes(query)) ||
-      tool.tool_type.toLowerCase().includes(query)
-    );
-  });
+  const filteredTools = tools.filter((tool) =>
+    matchesSearch(searchQuery, tool.name, tool.display_name, tool.description, tool.tool_type)
+  );
 
   const getToolTypeColor = (type: string) => {
     if (type === 'api') return toneClass.info;
@@ -126,7 +79,7 @@ const ToolsPage: React.FC = () => {
             title="Error loading tools"
             description={extractErrorMessage(error) || 'Failed to fetch voice agent tools. Please try again.'}
             actionText="Retry"
-            onActionClick={() => queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') })}
+            onActionClick={() => refetch()}
           />
         </div>
       ) : toolsLoading ? (
@@ -160,7 +113,7 @@ const ToolsPage: React.FC = () => {
                     ...(getApiUrl(tool) ? [{ label: 'URL', value: getApiUrl(tool), isMono: true }] : []),
                   ]}
                   onEditClick={(e) => handleEditClick(e, tool)}
-                  onDeleteClick={(e) => handleDeleteClick(e, tool)}
+                  onDeleteClick={(e) => deletion.ask(tool, e)}
                   deleteTitle="Delete tool"
                 />
               ))}
@@ -195,7 +148,7 @@ const ToolsPage: React.FC = () => {
                         <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, tool)} title="Edit">
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, tool)} title="Delete">
+                        <Button variant="ghost" size="sm" onClick={(e) => deletion.ask(tool, e)} title="Delete">
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                       </div>
@@ -210,31 +163,17 @@ const ToolsPage: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Tool"
-        message={`Are you sure you want to delete "${deleteItem?.display_name}"? This will also detach it from all voice agents.`}
-        onConfirm={handleDelete}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.display_name}"? This will also detach it from all voice agents.`}
       />
 
       {/* Create Tool Dialog */}
-      {app && (
-        <CreateToolDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {app && <ToolFormDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} />}
 
       {/* Edit Tool Dialog */}
       {app && editItem && (
-        <EditToolDialog
-          isOpen={!!editItem}
-          onOpenChange={(open) => !open && setEditItem(null)}
-          tool={editItem}
-          onSuccess={handleEditSuccess}
-        />
+        <ToolFormDialog isOpen={!!editItem} onOpenChange={(open) => !open && setEditItem(null)} tool={editItem} />
       )}
     </div>
   );

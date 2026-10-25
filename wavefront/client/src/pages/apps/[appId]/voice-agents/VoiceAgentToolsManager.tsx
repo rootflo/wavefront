@@ -1,16 +1,17 @@
-import floConsoleService from '@app/api';
 import { toneClass } from '@app/lib/tones';
 import { Button } from '@app/components/ui/button';
 import { Switch } from '@app/components/ui/switch';
 import { Badge } from '@app/components/ui/badge';
-import { useGetVoiceAgentTools, useGetAgentTools } from '@app/hooks';
-import { getVoiceAgentToolsKey, getAgentToolsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import {
+  useAttachToolToAgent,
+  useDetachToolFromAgent,
+  useGetAgentTools,
+  useGetVoiceAgentTools,
+  useSetAgentToolEnabled,
+} from '@app/hooks';
 import { VoiceAgentToolWithAssociation } from '@app/types/tool';
-import { useQueryClient } from '@tanstack/react-query';
 import { Plus, X } from 'lucide-react';
-import React, { useState } from 'react';
+import React from 'react';
 
 /** A tool picked before the agent exists; it is attached once the agent is created. */
 export interface PendingAgentTool {
@@ -31,9 +32,15 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
   const { appId, agentId } = props;
   // Without an agent yet, attach / toggle / detach only edit the pending list
   const pending = props.agentId === undefined ? props : undefined;
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
-  const [loadingToolId, setLoadingToolId] = useState<string | null>(null);
+  const setToolEnabled = useSetAgentToolEnabled(appId, agentId);
+  const attachTool = useAttachToolToAgent(appId, agentId);
+  const detachTool = useDetachToolFromAgent(appId, agentId);
+  /** The tool whose attach, detach or toggle is in flight, to disable just its controls. */
+  const loadingToolId =
+    (attachTool.isPending && attachTool.variables) ||
+    (detachTool.isPending && detachTool.variables) ||
+    (setToolEnabled.isPending && setToolEnabled.variables?.toolId) ||
+    null;
 
   // Fetch all tools
   const { data: allTools = [], isLoading: allToolsLoading } = useGetVoiceAgentTools(appId);
@@ -51,7 +58,7 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
   const attachedToolIds = new Set(agentTools.map((t) => t.id));
   const availableTools = allTools.filter((t) => !attachedToolIds.has(t.id));
 
-  const handleToggleEnabled = async (toolId: string, currentEnabled: boolean) => {
+  const handleToggleEnabled = (toolId: string, currentEnabled: boolean) => {
     if (pending) {
       pending.onPendingToolsChange(
         pending.pendingTools.map((t) => (t.toolId === toolId ? { ...t, isEnabled: !currentEnabled } : t))
@@ -59,63 +66,25 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
       return;
     }
     if (!agentId) return;
-    setLoadingToolId(toolId);
-    try {
-      await floConsoleService.toolService.updateAgentTool(agentId, toolId, {
-        is_enabled: !currentEnabled,
-      });
-      notifySuccess(`Tool ${!currentEnabled ? 'enabled' : 'disabled'} successfully`);
-      queryClient.invalidateQueries({ queryKey: getAgentToolsKey(appId, agentId) });
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to toggle tool');
-    } finally {
-      setLoadingToolId(null);
-    }
+    setToolEnabled.mutate({ toolId, enabled: !currentEnabled });
   };
 
-  const handleAttachTool = async (toolId: string) => {
+  const handleAttachTool = (toolId: string) => {
     if (pending) {
       pending.onPendingToolsChange([...pending.pendingTools, { toolId, isEnabled: true }]);
       return;
     }
     if (!agentId) return;
-    setLoadingToolId(toolId);
-    try {
-      await floConsoleService.toolService.attachToolToAgent(agentId, {
-        tool_id: toolId,
-        is_enabled: true,
-        priority: 0,
-      });
-      notifySuccess('Tool attached successfully');
-      queryClient.invalidateQueries({ queryKey: getAgentToolsKey(appId, agentId) });
-      queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(appId) });
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to attach tool');
-    } finally {
-      setLoadingToolId(null);
-    }
+    attachTool.mutate(toolId);
   };
 
-  const handleDetachTool = async (toolId: string) => {
+  const handleDetachTool = (toolId: string) => {
     if (pending) {
       pending.onPendingToolsChange(pending.pendingTools.filter((t) => t.toolId !== toolId));
       return;
     }
     if (!agentId) return;
-    setLoadingToolId(toolId);
-    try {
-      await floConsoleService.toolService.detachToolFromAgent(agentId, toolId);
-      notifySuccess('Tool detached successfully');
-      queryClient.invalidateQueries({ queryKey: getAgentToolsKey(appId, agentId) });
-      queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(appId) });
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to detach tool');
-    } finally {
-      setLoadingToolId(null);
-    }
+    detachTool.mutate(toolId);
   };
 
   const getToolTypeColor = (type: string) => {

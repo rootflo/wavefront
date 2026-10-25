@@ -8,16 +8,9 @@ import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUpl
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetMessageProcessors } from '@app/hooks';
+import { useDeleteMessageProcessor, useGetMessageProcessors } from '@app/hooks';
 import { getMessageProcessorsKey } from '@app/hooks/data/query-keys';
 import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
@@ -28,6 +21,9 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateFunctionDialog from './CreateFunctionDialog';
 import { parseUploadedFunction } from './function-utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';
@@ -41,9 +37,9 @@ const FunctionsManagement: React.FC = () => {
   const navigate = useNavigate();
   const [view, setView] = useListView('functions');
   const queryClient = useQueryClient();
+  const deleteMessageProcessor = useDeleteMessageProcessor(appId);
+  const deletion = useDeleteConfirm<MessageProcessorListItem>((item) => deleteMessageProcessor.mutateAsync(item.id));
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<MessageProcessorListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
@@ -56,28 +52,15 @@ const FunctionsManagement: React.FC = () => {
   const { data: processors = [], isLoading: loading } = useGetMessageProcessors(appId);
 
   const filteredProcessors = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = term
-      ? processors.filter(
-          (processor) =>
-            processor.name.toLowerCase().includes(term) ||
-            processor.id.toLowerCase().includes(term) ||
-            (processor.description || '').toLowerCase().includes(term)
-        )
-      : processors;
+    const filtered = processors.filter((processor) =>
+      matchesSearch(searchTerm, processor.name, processor.id, processor.description)
+    );
 
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [processors, searchTerm]);
 
   const handleCreateProcessor = () => {
     setCreateDialogOpen(true);
-  };
-
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({
-      queryKey: getMessageProcessorsKey(appId || ''),
-    });
-    setCreateDialogOpen(false);
   };
 
   const handleProcessorClick = (processorId: string) => {
@@ -168,53 +151,14 @@ const FunctionsManagement: React.FC = () => {
 
     if (created > 0) {
       notifySuccess(`Created ${created} ${created === 1 ? 'function' : 'functions'}`);
+      queryClient.invalidateQueries({ queryKey: getMessageProcessorsKey(appId || '') });
     }
     setBulkError(failed.length > 0 ? `Failed to create functions: ${failed.join(', ')}` : '');
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.messageProcessorService.deleteMessageProcessor(deleteItem.id);
-      notifySuccess('Function deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getMessageProcessorsKey(appId || ''),
-      });
-      setDeleteItem(null);
-    } catch {
-      notifyError('Failed to delete function');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/functions`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Functions
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb className="shrink-0" items={[{ label: 'Functions', to: `/apps/${appId}/functions` }]} />
 
       <ListHeader
         extras={<ListViewToggle view={view} onChange={setView} />}
@@ -263,7 +207,7 @@ const FunctionsManagement: React.FC = () => {
                     { label: 'Created', value: formatCreatedAt(processor.created_at) },
                   ]}
                   onClick={() => handleProcessorClick(processor.id)}
-                  onDeleteClick={() => setDeleteItem(processor)}
+                  onDeleteClick={() => deletion.ask(processor)}
                   deleteTitle="Delete function"
                   extraActions={[
                     {
@@ -328,7 +272,7 @@ const FunctionsManagement: React.FC = () => {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(processor)}>
+                        <Button variant="ghost" size="sm" title="Delete" onClick={() => deletion.ask(processor)}>
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                       </div>
@@ -342,22 +286,12 @@ const FunctionsManagement: React.FC = () => {
       )}
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Function"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
-      {appId && (
-        <CreateFunctionDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <CreateFunctionDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
 
       <BulkDownloadDialog
         isOpen={bulkDownloadOpen}

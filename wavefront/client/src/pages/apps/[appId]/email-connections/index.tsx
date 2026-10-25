@@ -1,26 +1,25 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard, { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Mail, ShieldCheck, KeyRound, Star } from 'lucide-react';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { EMAIL_CAPABILITIES, EMAIL_PROVIDERS_CONFIG, getConnectionStatusBadge } from '@app/config/email-providers';
-import { useGetEmailConnections } from '@app/hooks';
-import { getEmailConnectionsKey } from '@app/hooks/data/query-keys';
-import { cn, extractErrorMessage, formatAppName } from '@app/lib/utils';
+import {
+  useAuthorizeEmailConnection,
+  useDeleteEmailConnection,
+  useGetEmailConnections,
+  useSetPrimaryEmailConnection,
+  useVerifyEmailConnection,
+} from '@app/hooks';
+import { cn, formatAppName } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { EmailCapability, EmailConnection } from '@app/types/email';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import ConnectMailboxDialog from './ConnectMailboxDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 /** Which capabilities a connection's granted scopes actually cover. Scopes are
  *  provider strings, so match on the capability name they contain. */
@@ -35,122 +34,63 @@ const grantedCapabilities = (connection: EmailConnection): EmailCapability[] => 
 
 const EmailConnectionsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
+  const authorizeConnection = useAuthorizeEmailConnection();
+  const setPrimary = useSetPrimaryEmailConnection(app);
+  const verifyConnection = useVerifyEmailConnection(app);
+  const deleteConnection = useDeleteEmailConnection(app);
+  const deletion = useDeleteConfirm<EmailConnection>((item) => deleteConnection.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<EmailConnection | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const { data: connections = [], isLoading } = useGetEmailConnections(app);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: getEmailConnectionsKey(app || '') });
-
-  const handleReauthorize = async (connection: EmailConnection) => {
-    setBusyKey(`${connection.id}:authorize`);
-    try {
-      const capabilities =
-        grantedCapabilities(connection).length > 0 ? grantedCapabilities(connection) : (['read'] as EmailCapability[]);
-      const emailsPageUrl = `${window.location.origin}/apps/${app}/email-connections`;
-      const response = await floConsoleService.emailConnectionService.authorizeEmailConnection(connection.id, {
-        capabilities,
-        success_redirect_url: emailsPageUrl,
-        failure_redirect_url: emailsPageUrl,
-      });
-      const authorizationUrl = response.data?.data?.authorization_url;
-      if (!authorizationUrl) {
-        notifyError('No consent URL was returned');
-        return;
+  const handleReauthorize = (connection: EmailConnection) => {
+    const capabilities =
+      grantedCapabilities(connection).length > 0 ? grantedCapabilities(connection) : (['read'] as EmailCapability[]);
+    const emailsPageUrl = `${window.location.origin}/apps/${app}/email-connections`;
+    authorizeConnection.mutate(
+      {
+        connectionId: connection.id,
+        data: { capabilities, success_redirect_url: emailsPageUrl, failure_redirect_url: emailsPageUrl },
+      },
+      {
+        onSuccess: (response) => {
+          const authorizationUrl = response.data?.data?.authorization_url;
+          if (!authorizationUrl) {
+            notifyError('No consent URL was returned');
+            return;
+          }
+          window.location.assign(authorizationUrl);
+        },
       }
-      window.location.assign(authorizationUrl);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to build the consent URL');
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleSetPrimary = async (connection: EmailConnection) => {
-    setBusyKey(`${connection.id}:primary`);
-    try {
-      await floConsoleService.emailConnectionService.setPrimaryEmailConnection(connection.id);
-      notifySuccess(`${connection.mailbox_email} is now the platform sender`);
-      refresh();
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to set the primary connection');
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleVerify = async (connection: EmailConnection) => {
-    setBusyKey(`${connection.id}:verify`);
-    try {
-      await floConsoleService.emailConnectionService.verifyEmailConnection(connection.id);
-      notifySuccess(`${connection.mailbox_email} is connected`);
-      refresh();
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to verify the email connection');
-      refresh();
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.emailConnectionService.deleteEmailConnection(deleteItem.id);
-      notifySuccess('Email connection deleted successfully');
-      refresh();
-      setDeleteItem(null);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to delete the email connection');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const filteredConnections = connections.filter((connection) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      connection.name.toLowerCase().includes(query) ||
-      connection.mailbox_email.toLowerCase().includes(query) ||
-      connection.provider.toLowerCase().includes(query)
     );
-  });
+  };
+
+  const handleSetPrimary = (connection: EmailConnection) => {
+    setPrimary.mutate({ connectionId: connection.id, mailboxEmail: connection.mailbox_email });
+  };
+
+  const handleVerify = (connection: EmailConnection) => {
+    verifyConnection.mutate({ connectionId: connection.id, mailboxEmail: connection.mailbox_email });
+  };
+
+  /** Whether `mutation` is running for this connection, to disable just that row's button. */
+  const isBusy = (mutation: { isPending: boolean; variables?: unknown }, connectionId: string) => {
+    if (!mutation.isPending) return false;
+    const vars = mutation.variables as { connectionId?: string } | undefined;
+    return vars?.connectionId === connectionId;
+  };
+
+  const filteredConnections = connections.filter((connection) =>
+    matchesSearch(searchQuery, connection.name, connection.mailbox_email, connection.provider)
+  );
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${app}/email-connections`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Emails
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb className="shrink-0" items={[{ label: 'Emails', to: `/apps/${app}/email-connections` }]} />
 
       <ListHeader
         title="Emails"
@@ -196,28 +136,26 @@ const EmailConnectionsPage: React.FC = () => {
                     ...(capabilities.length > 0 ? [{ label: 'Capabilities', value: capabilities.join(', ') }] : []),
                     ...(connection.is_primary ? [{ label: 'Platform sender', value: 'Primary' }] : []),
                   ]}
-                  onDeleteClick={() => setDeleteItem(connection)}
+                  onDeleteClick={() => deletion.ask(connection)}
                   deleteTitle="Delete connection"
                   extraActions={[
                     {
                       label: 'Verify',
                       icon: ShieldCheck,
-                      disabled: connection.status === 'pending_auth' || busyKey === `${connection.id}:verify`,
+                      disabled: connection.status === 'pending_auth' || isBusy(verifyConnection, connection.id),
                       onClick: () => void handleVerify(connection),
                     },
                     {
                       label: connection.status === 'active' ? 'Re-consent' : 'Authorize',
                       icon: KeyRound,
-                      disabled: busyKey === `${connection.id}:authorize`,
+                      disabled: isBusy(authorizeConnection, connection.id),
                       onClick: () => void handleReauthorize(connection),
                     },
                     {
                       label: 'Set as Primary',
                       icon: Star,
                       disabled:
-                        connection.is_primary ||
-                        connection.status !== 'active' ||
-                        busyKey === `${connection.id}:primary`,
+                        connection.is_primary || connection.status !== 'active' || isBusy(setPrimary, connection.id),
                       onClick: () => void handleSetPrimary(connection),
                     },
                   ]}
@@ -229,17 +167,12 @@ const EmailConnectionsPage: React.FC = () => {
       </div>
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Email Connection"
-        message={`Are you sure you want to delete "${deleteItem?.mailbox_email}"? Triggers, jobs and agents using it stop working.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.mailbox_email}"? Triggers, jobs and agents using it stop working.`}
       />
 
-      {app && (
-        <ConnectMailboxDialog isOpen={connectOpen} onOpenChange={setConnectOpen} appId={app} onSuccess={refresh} />
-      )}
+      {app && <ConnectMailboxDialog isOpen={connectOpen} onOpenChange={setConnectOpen} appId={app} />}
     </div>
   );
 };

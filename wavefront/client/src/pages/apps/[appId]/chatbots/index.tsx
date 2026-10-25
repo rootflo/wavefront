@@ -2,38 +2,31 @@ import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Switch } from '@app/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetChatbots, useGetLLMConfigs, useGetNamespaces } from '@app/hooks';
-import { getChatbotsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
+import { useDeleteChatbot, useGetChatbots, useGetLLMConfigs, useGetNamespaces, useSetChatbotEnabled } from '@app/hooks';
+import { copyToClipboard } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { Chatbot } from '@app/types/chatbot';
-import { useQueryClient } from '@tanstack/react-query';
 import { Copy, Pencil, Trash2, MessageSquare, Power } from 'lucide-react';
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 
-import CreateChatbotDialog from './CreateChatbotDialog';
-import EditChatbotDialog from './EditChatbotDialog';
+import ChatbotFormDialog from './ChatbotFormDialog';
 import { formatTemperature } from './schemas';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const ChatbotsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const navigate = useNavigate();
   const [view, setView] = useListView('chatbots');
-  const queryClient = useQueryClient();
+  const setChatbotEnabled = useSetChatbotEnabled(app);
+  const deleteChatbot = useDeleteChatbot(app);
+  const deletion = useDeleteConfirm<Chatbot>((item) => deleteChatbot.mutateAsync(item.id));
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
 
@@ -41,21 +34,14 @@ const ChatbotsPage: React.FC = () => {
   const [namespace, setNamespace] = useState('all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<Chatbot | null>(null);
-  const [deleteItem, setDeleteItem] = useState<Chatbot | null>(null);
-  const [deleting, setDeleting] = useState(false);
   // Per-row so two toggles cannot interleave and leave the UI disagreeing
   // with the server about which chatbot is live.
-  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const namespaceForQuery = namespace === 'all' || !namespace ? undefined : namespace;
 
   const { data: chatbots = [], isLoading } = useGetChatbots(app, namespaceForQuery);
   const { data: namespaces = [] } = useGetNamespaces(app);
   const { data: llmConfigs = [] } = useGetLLMConfigs(app);
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: getChatbotsKey(app || '', namespaceForQuery) });
-  };
 
   const handleCopyId = async (id: string) => {
     const copied = await copyToClipboard(id);
@@ -72,82 +58,24 @@ const ChatbotsPage: React.FC = () => {
     return config ? config.display_name : `${llmConfigId.slice(0, 8)}… (unavailable)`;
   };
 
-  const handleToggleEnabled = async (chatbot: Chatbot, enabled: boolean) => {
-    setTogglingId(chatbot.id);
-    try {
-      await floConsoleService.chatbotService.updateChatbot(chatbot.id, { enabled });
-      notifySuccess(enabled ? 'Chatbot enabled' : 'Chatbot disabled');
-      invalidate();
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to update chatbot');
-    } finally {
-      setTogglingId(null);
-    }
+  const handleToggleEnabled = (chatbot: Chatbot, enabled: boolean) => {
+    setChatbotEnabled.mutate({ chatbotId: chatbot.id, enabled });
   };
 
-  const handleDelete = async () => {
-    if (!deleteItem) return;
+  /** Disables just the row whose enabled switch is being saved. */
+  const isToggling = (chatbotId: string) =>
+    setChatbotEnabled.isPending && setChatbotEnabled.variables?.chatbotId === chatbotId;
 
-    setDeleting(true);
-    try {
-      await floConsoleService.chatbotService.deleteChatbot(deleteItem.id);
-      notifySuccess('Chatbot deleted successfully');
-      invalidate();
-      setDeleteItem(null);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to delete chatbot');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleCreateSuccess = () => {
-    invalidate();
-    setCreateDialogOpen(false);
-  };
-
-  const handleEditSuccess = () => {
-    invalidate();
-    setEditItem(null);
-  };
-
-  const filteredChatbots = chatbots.filter((chatbot) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      chatbot.name.toLowerCase().includes(query) ||
-      chatbot.namespace.toLowerCase().includes(query) ||
-      (chatbot.description && chatbot.description.toLowerCase().includes(query))
-    );
-  });
+  const filteredChatbots = chatbots.filter((chatbot) =>
+    matchesSearch(searchQuery, chatbot.name, chatbot.namespace, chatbot.description)
+  );
 
   return (
     // p-8 and the breadcrumb come from the page itself: the voice-agents pages
     // this table was modelled on get theirs from VoiceAgentsLayout, which a
     // top-level route like this one does not have.
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${app}/chatbots`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Chatbots
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Chatbots', to: `/apps/${app}/chatbots` }]} />
 
       <div className="min-w-0">
         <ListHeader
@@ -210,13 +138,13 @@ const ChatbotsPage: React.FC = () => {
                       { label: 'Created', value: new Date(chatbot.created_at).toLocaleDateString() },
                     ]}
                     onEditClick={() => setEditItem(chatbot)}
-                    onDeleteClick={() => setDeleteItem(chatbot)}
+                    onDeleteClick={() => deletion.ask(chatbot)}
                     deleteTitle="Delete chatbot"
                     extraActions={[
                       {
                         label: chatbot.enabled ? 'Disable' : 'Enable',
                         icon: Power,
-                        disabled: togglingId === chatbot.id,
+                        disabled: isToggling(chatbot.id),
                         onClick: () => handleToggleEnabled(chatbot, !chatbot.enabled),
                       },
                     ]}
@@ -271,7 +199,7 @@ const ChatbotsPage: React.FC = () => {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Switch
                           checked={chatbot.enabled}
-                          disabled={togglingId === chatbot.id}
+                          disabled={isToggling(chatbot.id)}
                           onCheckedChange={(checked) => handleToggleEnabled(chatbot, checked)}
                         />
                       </TableCell>
@@ -281,7 +209,7 @@ const ChatbotsPage: React.FC = () => {
                           <Button variant="ghost" size="sm" onClick={() => setEditItem(chatbot)} title="Edit">
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setDeleteItem(chatbot)} title="Delete">
+                          <Button variant="ghost" size="sm" onClick={() => deletion.ask(chatbot)} title="Delete">
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         </div>
@@ -295,33 +223,28 @@ const ChatbotsPage: React.FC = () => {
         )}
 
         <DeleteConfirmationDialog
-          isOpen={!!deleteItem}
+          {...deletion.dialogProps}
           title="Delete Chatbot"
-          message={`Are you sure you want to delete "${deleteItem?.name}"? Existing conversations stay readable but cannot accept new messages.`}
-          onConfirm={handleDelete}
-          onCancel={() => setDeleteItem(null)}
-          loading={deleting}
+          message={`Are you sure you want to delete "${deletion.item?.name}"? Existing conversations stay readable but cannot accept new messages.`}
         />
 
         {app && (
-          <CreateChatbotDialog
+          <ChatbotFormDialog
             isOpen={createDialogOpen}
             onOpenChange={setCreateDialogOpen}
             appId={app}
             namespaces={namespaces}
             defaultNamespace={namespaceForQuery || 'default'}
-            onSuccess={handleCreateSuccess}
           />
         )}
 
         {app && editItem && (
-          <EditChatbotDialog
+          <ChatbotFormDialog
             isOpen={!!editItem}
             onOpenChange={(open) => !open && setEditItem(null)}
             appId={app}
             chatbot={editItem}
             namespaces={namespaces}
-            onSuccess={handleEditSuccess}
           />
         )}
       </div>

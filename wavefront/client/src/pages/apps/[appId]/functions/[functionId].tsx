@@ -1,30 +1,21 @@
 import floConsoleService from '@app/api';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { useGetMessageProcessor } from '@app/hooks';
-import { getMessageProcessorKey, getMessageProcessorsKey } from '@app/hooks/data/query-keys';
+import { useGetMessageProcessor, useUpdateMessageProcessor } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { z } from 'zod';
 import { formatAppName } from '@app/lib/utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const functionFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -36,15 +27,13 @@ type FunctionForm = z.infer<typeof functionFormSchema>;
 
 const FunctionDetail: React.FC = () => {
   const { app: appId, functionId } = useParams<{ app: string; functionId: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const updateMessageProcessor = useUpdateMessageProcessor(appId);
   const { notifySuccess, notifyError } = useNotifyStore();
 
   // Fetch message processor
   const { data: processor, isLoading: processorLoading } = useGetMessageProcessor(appId, functionId);
 
   const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   // Execution state
   const [executionInput, setExecutionInput] = useState('{}');
@@ -73,32 +62,20 @@ const FunctionDetail: React.FC = () => {
     }
   }, [processor, form]);
 
-  const handleSave = async (data: FunctionForm) => {
+  const handleSave = (data: FunctionForm) => {
     if (!functionId) return;
 
-    setSaving(true);
-    try {
-      const response = await floConsoleService.messageProcessorService.updateMessageProcessor(functionId, {
-        name: data.name.trim(),
-        description: data.description?.trim() || undefined,
-        yaml_content: data.yaml_content.trim(),
-      });
-
-      if (response.data?.data) {
-        // Invalidate query to refetch updated data
-        queryClient.invalidateQueries({ queryKey: getMessageProcessorKey(appId || '', functionId || '') });
-        queryClient.invalidateQueries({ queryKey: getMessageProcessorsKey(appId || '') });
-        setEditing(false);
-        notifySuccess('Function updated successfully');
-      } else {
-        notifyError(response.data?.meta?.error || 'Failed to update message processor');
-      }
-    } catch (error: unknown) {
-      console.error('Error updating function:', error);
-      notifyError('Failed to update function');
-    } finally {
-      setSaving(false);
-    }
+    updateMessageProcessor.mutate(
+      {
+        processorId: functionId,
+        data: {
+          name: data.name.trim(),
+          description: data.description?.trim() || undefined,
+          yaml_content: data.yaml_content.trim(),
+        },
+      },
+      { onSuccess: () => setEditing(false) }
+    );
   };
 
   const handleExecute = async () => {
@@ -159,33 +136,12 @@ const FunctionDetail: React.FC = () => {
 
   return (
     <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/functions`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Functions
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={processorLoading}>{processor?.name || functionId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        items={[
+          { label: 'Functions', to: `/apps/${appId}/functions` },
+          { label: processor?.name || functionId, loading: processorLoading },
+        ]}
+      />
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between gap-3">
@@ -198,7 +154,7 @@ const FunctionDetail: React.FC = () => {
             onEdit={() => setEditing(true)}
             onSave={form.handleSubmit(handleSave)}
             onCancel={handleCancelEdit}
-            saving={saving}
+            saving={updateMessageProcessor.isPending}
           />
         </div>
 

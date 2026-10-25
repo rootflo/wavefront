@@ -3,27 +3,23 @@ import { toneClass } from '@app/lib/tones';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ResourceCard from '@app/components/ResourceCard';
 import { CalendarClock, Play, Pause } from 'lucide-react';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Badge } from '@app/components/ui/badge';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetAllDatasources, useGetAppUsers, useGetScheduledJobs } from '@app/hooks';
-import { getScheduledJobsKey } from '@app/hooks/data/query-keys';
+import {
+  useDeleteScheduledJob,
+  useGetAllDatasources,
+  useGetAppUsers,
+  useGetScheduledJobs,
+  useSetScheduledJobPaused,
+} from '@app/hooks';
 import { cn } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
 import { ScheduledJob } from '@app/types/scheduled-job';
-import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import ScheduledJobFormDialog from './ScheduledJobFormDialog';
 import {
   extractRecipientUserIdsFromPayload,
@@ -32,6 +28,9 @@ import {
   getDatasourceIdFromPayload,
   resolveUsersFromRecipientIds,
 } from './scheduled-job-utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const statusBadgeClass: Record<string, string> = {
   active: toneClass.success,
@@ -43,18 +42,15 @@ const statusBadgeClass: Record<string, string> = {
 
 const ScheduledJobsPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const setJobPaused = useSetScheduledJobPaused(appId);
+  const deleteScheduledJob = useDeleteScheduledJob(appId);
+  const deletion = useDeleteConfirm<ScheduledJob>((item) => deleteScheduledJob.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
-  const { notifySuccess, notifyError } = useNotifyStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null);
-  const [deleteJob, setDeleteJob] = useState<ScheduledJob | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [actionJobId, setActionJobId] = useState<string | null>(null);
 
   const { data: jobs = [], isLoading } = useGetScheduledJobs(appId);
   const { data: datasources = [] } = useGetAllDatasources(appId);
@@ -76,23 +72,18 @@ const ScheduledJobsPage: React.FC = () => {
       const payload = job.payload || {};
       const datasourceId = getDatasourceIdFromPayload(payload);
       const datasourceName = datasourceNameById.get(datasourceId) || datasourceId;
-      const queriesLabel = formatJobQueriesLabel(job).toLowerCase();
-      const subject = String(payload.subject || '').toLowerCase();
-      return (
-        job.cron_expr.toLowerCase().includes(term) ||
-        job.timezone.toLowerCase().includes(term) ||
-        job.status.toLowerCase().includes(term) ||
-        datasourceName.toLowerCase().includes(term) ||
-        datasourceId.toLowerCase().includes(term) ||
-        queriesLabel.includes(term) ||
-        subject.includes(term)
+      return matchesSearch(
+        term,
+        job.cron_expr,
+        job.timezone,
+        job.status,
+        datasourceName,
+        datasourceId,
+        formatJobQueriesLabel(job),
+        String(payload.subject || '')
       );
     });
   }, [jobs, searchTerm, statusFilter, datasourceNameById]);
-
-  const refreshJobs = () => {
-    queryClient.invalidateQueries({ queryKey: getScheduledJobsKey(appId || '') });
-  };
 
   const handleCreate = () => {
     setEditingJob(null);
@@ -104,42 +95,13 @@ const ScheduledJobsPage: React.FC = () => {
     setFormOpen(true);
   };
 
-  const handlePauseResume = async (job: ScheduledJob) => {
-    setActionJobId(job.id);
-    try {
-      if (job.status === 'paused' || job.status === 'failed') {
-        await floConsoleService.scheduledJobService.resumeScheduledJob(job.id);
-        notifySuccess(
-          job.status === 'failed'
-            ? 'Scheduled job resumed; it will run on the next scheduler poll'
-            : 'Scheduled job resumed'
-        );
-      } else {
-        await floConsoleService.scheduledJobService.pauseScheduledJob(job.id);
-        notifySuccess('Scheduled job paused');
-      }
-      refreshJobs();
-    } catch {
-      notifyError('Failed to update job status');
-    } finally {
-      setActionJobId(null);
-    }
+  const handlePauseResume = (job: ScheduledJob) => {
+    const resuming = job.status === 'paused' || job.status === 'failed';
+    setJobPaused.mutate({ jobId: job.id, paused: !resuming, wasFailed: job.status === 'failed' });
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteJob) return;
-    setDeleting(true);
-    try {
-      await floConsoleService.scheduledJobService.deleteScheduledJob(deleteJob.id);
-      notifySuccess('Scheduled job deleted');
-      setDeleteJob(null);
-      refreshJobs();
-    } catch {
-      notifyError('Failed to delete scheduled job');
-    } finally {
-      setDeleting(false);
-    }
-  };
+  /** Disables just the row whose pause/resume is in flight. */
+  const isActing = (jobId: string) => setJobPaused.isPending && setJobPaused.variables?.jobId === jobId;
 
   const getRecipientSummary = (job: ScheduledJob) => {
     const ids = extractRecipientUserIdsFromPayload(job.payload || {});
@@ -153,29 +115,7 @@ const ScheduledJobsPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/scheduled-jobs`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Scheduled Jobs
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Scheduled Jobs', to: `/apps/${appId}/scheduled-jobs` }]} />
 
       <ListHeader
         title="Scheduled Jobs"
@@ -239,7 +179,7 @@ const ScheduledJobsPage: React.FC = () => {
                     ...(job.last_run_at ? [{ label: 'Last run', value: formatDateTime(job.last_run_at) }] : []),
                   ]}
                   onEditClick={() => handleEdit(job)}
-                  onDeleteClick={() => setDeleteJob(job)}
+                  onDeleteClick={() => deletion.ask(job)}
                   deleteTitle="Delete schedule"
                   extraActions={
                     canPauseResume
@@ -247,7 +187,7 @@ const ScheduledJobsPage: React.FC = () => {
                           {
                             label: resume ? 'Resume' : 'Pause',
                             icon: resume ? Play : Pause,
-                            disabled: actionJobId === job.id,
+                            disabled: isActing(job.id),
                             onClick: () => void handlePauseResume(job),
                           },
                         ]
@@ -307,7 +247,7 @@ const ScheduledJobsPage: React.FC = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={actionJobId === job.id}
+                              disabled={isActing(job.id)}
                               onClick={() => void handlePauseResume(job)}
                             >
                               {job.status === 'paused' || job.status === 'failed' ? 'Resume' : 'Pause'}
@@ -316,7 +256,7 @@ const ScheduledJobsPage: React.FC = () => {
                           <Button variant="outline" size="sm" onClick={() => handleEdit(job)}>
                             Edit
                           </Button>
-                          <Button variant="destructive" size="sm" onClick={() => setDeleteJob(job)}>
+                          <Button variant="destructive" size="sm" onClick={() => deletion.ask(job)}>
                             Delete
                           </Button>
                         </div>
@@ -344,18 +284,14 @@ const ScheduledJobsPage: React.FC = () => {
             setFormOpen(open);
             if (!open) setEditingJob(null);
           }}
-          onSuccess={refreshJobs}
         />
       ) : null}
 
-      {deleteJob ? (
+      {deletion.item ? (
         <DeleteConfirmationDialog
-          isOpen={Boolean(deleteJob)}
+          {...deletion.dialogProps}
           title="Delete scheduled job"
           message="Are you sure you want to delete this schedule? This action cannot be undone."
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeleteJob(null)}
-          loading={deleting}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         />

@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { NamespaceItem } from '@app/api/namespace-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { Button } from '@app/components/ui/button';
@@ -14,8 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -31,6 +29,7 @@ import { SECTION_OF_FIELD } from './agentFormSections';
 import { EMPTY_AGENT_FORM_VALUES, isSameYamlDocument, syncAgentIdentity } from './agentYamlMapper';
 import { createAgentSchema, type CreateAgentInput } from './schemas';
 import { useAgentYamlForm } from './useAgentYamlForm';
+import { useCreateAgent } from '@app/hooks';
 
 // A skeleton without sample content: agent.name and metadata.name follow the agent name field, and the
 // model and system prompt are filled in from the builder.
@@ -50,19 +49,12 @@ interface CreateAgentDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
   namespaces: NamespaceItem[];
 }
 
-const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  appId,
-  onSuccess,
-  namespaces,
-}) => {
+const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({ isOpen, onOpenChange, appId, namespaces }) => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const createAgent = useCreateAgent(appId);
   const { selectedApp } = useDashboardStore();
   const previousAgentId = useRef('');
 
@@ -161,19 +153,16 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
         setValidationErrors(validation.errors.map((e) => (e.path ? `${e.path}: ${e.message}` : e.message)));
         return;
       }
-      const response = await floConsoleService.agentService.createAgent(data.agentId, data.yamlContent, data.namespace);
-
-      if (response.data?.meta?.status === 'success' && response.data.data?.data) {
-        const createdAgentId = response.data.data.data.id;
-        notifySuccess('Agent created successfully');
-        if (onSuccess) onSuccess();
-        onOpenChange(false);
-        if (createdAgentId) navigate(`/apps/${appId}/agents/${createdAgentId}`);
-      }
-    } catch (error) {
-      console.error('Error creating agent:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to create agent');
+      const response = await createAgent.mutateAsync({
+        agentId: data.agentId,
+        yamlContent: data.yamlContent,
+        namespace: data.namespace,
+      });
+      onOpenChange(false);
+      const createdAgentId = response.data?.data?.data?.id;
+      if (createdAgentId) navigate(`/apps/${appId}/agents/${createdAgentId}`);
+    } catch {
+      // useCreateAgent has already shown the error
     }
   };
 

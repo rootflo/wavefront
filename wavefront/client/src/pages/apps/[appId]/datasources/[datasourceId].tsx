@@ -1,14 +1,6 @@
 import floConsoleService from '@app/api';
 import { DynamicQueryRunOptions } from '@app/api/datasources-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
 import { PageActionsContext } from '@app/components/PageActionsContext';
@@ -16,7 +8,7 @@ import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
-import { getAllDynamicQueriesKey, getDatasourceKey, readDynamicQueryKey } from '@app/hooks/data/query-keys';
+import { getAllDynamicQueriesKey } from '@app/hooks/data/query-keys';
 import {
   copyToClipboard,
   createZipBlob,
@@ -43,6 +35,8 @@ import DynamicQueryCreation from './DynamicQueryCreation';
 import DynamicQueries from './DynamicQueries';
 import DynamicQueryView from './DynamicQueryView';
 import { buildDynamicQueryYaml, downloadTextFile, getDynamicQueryYamlFilename } from './dynamic-query-utils';
+import { useDeleteDatasource, useDeleteDynamicQuery, useSaveDynamicQuery } from '@app/hooks';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const DatasourceDetail: React.FC = () => {
   const { app: appId, datasourceId } = useParams<{
@@ -52,6 +46,9 @@ const DatasourceDetail: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteDatasource = useDeleteDatasource(appId);
+  const saveDynamicQuery = useSaveDynamicQuery(appId, datasourceId);
+  const deleteDynamicQuery = useDeleteDynamicQuery(appId, datasourceId);
 
   // Use hooks for GET requests
   const { data: datasource, isLoading: datasourceLoading } = useGetDatasource(appId, datasourceId);
@@ -95,7 +92,6 @@ const DatasourceDetail: React.FC = () => {
     setSelectedQuery(null);
     setExecuteResult([]);
   };
-  const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [testingConnection, setTestingConnection] = useState(false);
@@ -114,66 +110,30 @@ const DatasourceDetail: React.FC = () => {
     }
   }, [queryData]);
 
+  // Async because DynamicQueryCreation awaits it to show its own saving state
   const createDynamicQuery = async () => {
+    if (!datasourceId || !queryContent) return;
     try {
-      if (!datasourceId || !queryContent) return;
-      const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, queryContent);
-      const responseCode = response.data.meta?.code;
-      if (responseCode === 1) {
-        notifySuccess('Dynamic query created successfully');
-        setQueryCreation(false);
-        setQueryContent('');
-        queryClient.invalidateQueries({
-          queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
-        });
-      } else {
-        notifyError('Error while creating dynamic query');
-      }
+      await saveDynamicQuery.mutateAsync({ content: queryContent });
+      setQueryCreation(false);
+      setQueryContent('');
     } catch {
-      notifyError('Error while creating dynamic query');
+      // useSaveDynamicQuery has already shown the error
     }
   };
 
-  const handleDynamicQueryEdit = async (content: string) => {
-    if (!datasourceId) return;
-    if (content) {
-      const queryResponse = validateDynamicQueryYaml(content);
-      if (!queryResponse.valid) {
-        notifyError(queryResponse.error);
-        return;
-      }
-      const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, content);
-      const responseCode = response?.data.meta?.code;
-      if (responseCode === 1) {
-        notifySuccess('Dynamic query updated successfully');
-        handleClose();
-        queryClient.invalidateQueries({
-          queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
-        });
-        if (queryId) {
-          queryClient.invalidateQueries({
-            queryKey: readDynamicQueryKey(appId || '', datasourceId, queryId),
-          });
-        }
-      } else {
-        notifyError('Error while updating dynamic query');
-      }
+  const handleDynamicQueryEdit = (content: string) => {
+    if (!datasourceId || !content) return;
+    const queryResponse = validateDynamicQueryYaml(content);
+    if (!queryResponse.valid) {
+      notifyError(queryResponse.error);
+      return;
     }
+    saveDynamicQuery.mutate({ content, isUpdate: true, queryId }, { onSuccess: handleClose });
   };
-  const handleDynamicQueryDelete = async () => {
+  const handleDynamicQueryDelete = () => {
     if (!datasourceId || !selectedQuery) return;
-    const selectedQueryId = selectedQuery.split('.')[0];
-    const response = await floConsoleService.datasourcesService.deleteDynamicQuery(datasourceId, selectedQueryId);
-    const responseCode = response?.data.meta?.code;
-    if (responseCode === 1) {
-      notifySuccess('Dynamic query deleted successfully');
-      handleClose();
-      queryClient.invalidateQueries({
-        queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
-      });
-    } else {
-      notifyError('Error while deleting dynamic query');
-    }
+    deleteDynamicQuery.mutate(selectedQuery.split('.')[0], { onSuccess: handleClose });
   };
 
   const handleDynamicQueryDownload = async (query: DynamicQuery) => {
@@ -300,26 +260,12 @@ const DatasourceDetail: React.FC = () => {
     }
   };
 
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({
-      queryKey: getDatasourceKey(appId || '', datasourceId || ''),
-    });
-  };
-
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!datasourceId || !datasource) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.datasourcesService.deleteDatasource(datasourceId);
-      notifySuccess('Datasource deleted successfully');
-      navigate(`/apps/${appId}/datasources`);
-    } catch {
-      console.error('Error deleting datasource');
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(false);
-    }
+    deleteDatasource.mutate(datasourceId, {
+      onSuccess: () => navigate(`/apps/${appId}/datasources`),
+      onSettled: () => setShowDeleteConfirm(false),
+    });
   };
 
   const handleCopyId = async (id: string) => {
@@ -357,33 +303,13 @@ const DatasourceDetail: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/datasources`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Datasources
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={datasourceLoading}>{datasource?.name || datasourceId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        className="shrink-0"
+        items={[
+          { label: 'Datasources', to: `/apps/${appId}/datasources` },
+          { label: datasource?.name || datasourceId, loading: datasourceLoading },
+        ]}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
@@ -526,7 +452,6 @@ const DatasourceDetail: React.FC = () => {
           onOpenChange={setEditDialogOpen}
           appId={appId}
           datasource={datasource}
-          onSuccess={handleEditSuccess}
         />
       )}
 
@@ -538,7 +463,7 @@ const DatasourceDetail: React.FC = () => {
           message={`Are you sure you want to delete "${datasource?.name || ''}"? This action cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
-          loading={deleting}
+          loading={deleteDatasource.isPending}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         />
@@ -577,7 +502,7 @@ const DatasourceDetail: React.FC = () => {
           message={`Are you sure you want to delete "${selectedQuery}"? This action cannot be undone.`}
           onConfirm={handleDynamicQueryDelete}
           onCancel={handleClose}
-          loading={deleting}
+          loading={deleteDynamicQuery.isPending}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         />

@@ -1,111 +1,45 @@
 import ListHeader from '@app/components/ListHeader';
-import floConsoleService from '@app/api';
 import ApiServiceCard from '@app/components/ApiServiceCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
-import { useGetApiServices } from '@app/hooks';
-import { getApiServicesKey } from '@app/hooks/data/query-keys';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDeleteApiService, useGetApiServices } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
 import { ApiServiceItem } from '@app/types/api-service';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateApiServiceDialog from './CreateApiServiceDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const ApiServiceManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const deleteApiService = useDeleteApiService(appId);
+  const deletion = useDeleteConfirm<ApiServiceItem>((item) => deleteApiService.mutateAsync(item.service_id));
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<ApiServiceItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { selectedApp } = useDashboardStore();
-  const { notifySuccess, notifyError } = useNotifyStore();
 
   const { data: apiServices = [], isLoading: loading } = useGetApiServices(appId);
 
-  const filteredApiServices = apiServices.filter(
-    (service) =>
-      (service.name || service.service_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      service.service_id.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredApiServices = apiServices.filter((service) =>
+    matchesSearch(searchTerm, service.name, service.service_id)
   );
 
   const handleCreateApiService = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getApiServicesKey(appId || '') });
-    setCreateDialogOpen(false);
-  };
-
   const handleApiServiceClick = (serviceId: string) => {
     navigate(`/apps/${appId}/api-services/${serviceId}`);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, service: ApiServiceItem) => {
-    e.stopPropagation();
-    setDeleteItem(service);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.apiServiceService.deleteApiService(deleteItem.service_id);
-      notifySuccess('API Service deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getApiServicesKey(appId || ''),
-      });
-      setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting API service:', error);
-      notifyError('Failed to delete API service');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/api-services`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                API Services
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'API Services', to: `/apps/${appId}/api-services` }]} />
 
       <ListHeader
         title="API Services"
@@ -137,7 +71,7 @@ const ApiServiceManagement: React.FC = () => {
                 key={service.service_id}
                 service={service}
                 onClick={handleApiServiceClick}
-                onDeleteClick={handleDeleteClick}
+                onDeleteClick={(e, item) => deletion.ask(item, e)}
               />
             ))}
           </>
@@ -146,25 +80,15 @@ const ApiServiceManagement: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete API Service"
         message={`Are you sure you want to delete "${
-          deleteItem?.name || deleteItem?.service_id
+          deletion.item?.name || deletion.item?.service_id
         }"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
       />
 
       {/* Create API Service Dialog */}
-      {appId && (
-        <CreateApiServiceDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <CreateApiServiceDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
     </div>
   );
 };

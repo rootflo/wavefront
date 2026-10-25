@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,8 +10,6 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -22,19 +19,19 @@ import DatasourceTypeOptions from './DatasourceTypeOptions';
 import { CONFIG_FIELDS, ConfigValues, defaultConfigValues, valuesToConfig } from './datasource-config';
 import { DATASOURCE_TYPES, isFileStorageType } from './datasource-types';
 import { createDatasourceSchema, type CreateDatasourceInput, type DatasourceTypeValue } from './schemas';
+import { useCreateDatasource } from '@app/hooks';
 
 interface CreateDatasourceDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
 const DEFAULT_TYPE: DatasourceTypeValue = 'postgres';
 
-const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen, onOpenChange, appId, onSuccess }) => {
+const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen, onOpenChange, appId }) => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const createDatasource = useCreateDatasource(appId);
 
   const form = useForm<CreateDatasourceInput>({
     resolver: zodResolver(createDatasourceSchema),
@@ -70,28 +67,23 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
     });
   };
 
-  const onSubmit = async (data: CreateDatasourceInput) => {
+  const onSubmit = (data: CreateDatasourceInput) => {
     const { config, errors } = valuesToConfig(data.type, configValues);
     setConfigErrors(errors);
     if (!config) return;
 
-    try {
-      const response = await floConsoleService.datasourcesService.createDatasource(
-        data.name.trim(),
-        data.type,
-        config,
-        data.description?.trim() || undefined
-      );
-      const responseData = response.data?.data as { datasource_id?: string } | undefined;
-      notifySuccess('Datasource created successfully');
-      onSuccess?.();
-      onOpenChange(false);
-      if (responseData?.datasource_id) {
-        navigate(`/apps/${appId}/datasources/${responseData.datasource_id}`);
+    createDatasource.mutate(
+      { name: data.name.trim(), type: data.type, config, description: data.description?.trim() || undefined },
+      {
+        onSuccess: (response) => {
+          onOpenChange(false);
+          const responseData = response.data?.data as { datasource_id?: string } | undefined;
+          if (responseData?.datasource_id) {
+            navigate(`/apps/${appId}/datasources/${responseData.datasource_id}`);
+          }
+        },
       }
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to create datasource');
-    }
+    );
   };
 
   if (!appId) {
@@ -186,7 +178,7 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={form.formState.isSubmitting}>
+              <Button type="submit" loading={createDatasource.isPending}>
                 Create datasource
               </Button>
             </DialogFooter>

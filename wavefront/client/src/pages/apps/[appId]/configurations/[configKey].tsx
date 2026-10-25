@@ -1,36 +1,23 @@
-import floConsoleService from '@app/api';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import MobileBackButton from '@app/components/MobileBackButton';
 import DetailActions from '@app/components/DetailActions';
 import PageTitle from '@app/components/PageTitle';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
-import { useGetConfiguration, useGetConfigurations } from '@app/hooks';
-import { getConfigurationKey, getConfigurationsKey } from '@app/hooks/data/query-keys';
-import { useNotifyStore } from '@app/store';
-import { useQueryClient } from '@tanstack/react-query';
+import { useGetConfiguration, useGetConfigurations, useSaveConfiguration } from '@app/hooks';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { formatAppName } from '@app/lib/utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const ConfigurationDetail: React.FC = () => {
   const { app: appId, namespace, configKey } = useParams<{ app: string; namespace: string; configKey: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const saveConfiguration = useSaveConfiguration(appId);
 
   const [valueText, setValueText] = useState('');
   const [description, setDescription] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const { data: value, isLoading: loadingValue } = useGetConfiguration(appId, namespace, configKey);
 
@@ -66,65 +53,23 @@ const ConfigurationDetail: React.FC = () => {
     }
   }, [valueText]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!namespace || !configKey || parseError) return;
 
-    setSaving(true);
-    try {
-      const response = await floConsoleService.configurationService.upsertConfiguration(namespace, configKey, {
-        value: JSON.parse(valueText),
-        description: description.trim() || undefined,
-      });
-
-      if (response.data) {
-        notifySuccess('Configuration saved successfully');
-        queryClient.invalidateQueries({
-          queryKey: getConfigurationKey(appId || '', namespace, configKey),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getConfigurationsKey(appId || ''),
-        });
-      } else {
-        notifyError('Failed to save configuration');
-      }
-    } catch (error) {
-      console.error('Error saving configuration:', error);
-    } finally {
-      setSaving(false);
-    }
+    saveConfiguration.mutate({
+      namespace,
+      key: configKey,
+      data: { value: JSON.parse(valueText), description: description.trim() || undefined },
+    });
   };
 
   const loading = loadingValue || loadingMetadata;
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/configurations`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Configurations
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{configKey}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        items={[{ label: 'Configurations', to: `/apps/${appId}/configurations` }, { label: configKey }]}
+      />
 
       <div className="mb-8 flex w-full flex-col items-start gap-4 sm:flex-row sm:justify-between">
         <div>
@@ -139,7 +84,7 @@ const ConfigurationDetail: React.FC = () => {
           cancelLabel="Back"
           onCancel={() => navigate(`/apps/${appId}/configurations`)}
           onSave={handleSave}
-          saving={saving}
+          saving={saveConfiguration.isPending}
           saveDisabled={!!parseError || loading}
         />
       </div>

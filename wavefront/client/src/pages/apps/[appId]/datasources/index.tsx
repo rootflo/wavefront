@@ -1,109 +1,45 @@
 import ListHeader from '@app/components/ListHeader';
-import floConsoleService from '@app/api';
 import DatasourceCard from '@app/components/DatasourceCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
-import { getAllDatasourcesKey, useGetAllDatasources } from '@app/hooks';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDeleteDatasource, useGetAllDatasources } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
 import { Datasource } from '@app/types/datasource';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateDatasourceDialog from './CreateDatasourceDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const DatasourcesManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<Datasource | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { data: datasources = [], isLoading: datasourcesLoading } = useGetAllDatasources(appId || '');
 
   const { selectedApp } = useDashboardStore();
   const navigate = useNavigate();
-  const { notifySuccess } = useNotifyStore();
-  const queryClient = useQueryClient();
+  const deleteDatasource = useDeleteDatasource(appId);
+  const deletion = useDeleteConfirm<Datasource>((item) => deleteDatasource.mutateAsync(item.id));
 
-  const filteredDatasources = datasources.filter(
-    (datasource) =>
-      datasource.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      datasource.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      datasource.type.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredDatasources = datasources.filter((datasource) =>
+    matchesSearch(searchTerm, datasource.id, datasource.name, datasource.type)
   );
 
   const handleCreateDatasource = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    setCreateDialogOpen(false);
-  };
-
   const handleDatasourceClick = (datasourceId: string) => {
     navigate(`/apps/${appId}/datasources/${datasourceId}`);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, datasource: Datasource) => {
-    e.stopPropagation(); // Prevent triggering the click handler for the card
-    setDeleteItem(datasource);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-    setDeleting(true);
-    try {
-      await floConsoleService.datasourcesService.deleteDatasource(deleteItem.id);
-      queryClient.invalidateQueries({
-        queryKey: getAllDatasourcesKey(appId || ''),
-      });
-
-      notifySuccess('Datasource deleted successfully');
-      setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting datasource:', error);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/datasources`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Datasources
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Datasources', to: `/apps/${appId}/datasources` }]} />
 
       <ListHeader
         title="Datasources"
@@ -135,7 +71,7 @@ const DatasourcesManagement: React.FC = () => {
                 key={datasource.id}
                 datasource={datasource}
                 onClick={handleDatasourceClick}
-                onDeleteClick={handleDeleteClick}
+                onDeleteClick={(e, item) => deletion.ask(item, e)}
               />
             ))}
           </>
@@ -144,23 +80,13 @@ const DatasourcesManagement: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Datasource"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       {/* Create Datasource Dialog */}
-      {appId && (
-        <CreateDatasourceDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <CreateDatasourceDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
     </div>
   );
 };

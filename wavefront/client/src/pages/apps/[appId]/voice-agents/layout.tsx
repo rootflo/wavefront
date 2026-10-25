@@ -2,15 +2,9 @@ import { PageActionsContext } from '@app/components/PageActionsContext';
 import React, { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { Outlet } from 'react-router';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import PageTitle from '@app/components/PageTitle';
 import { Tabs, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const VoiceAgentsLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
@@ -52,35 +46,8 @@ const VoiceAgentsLayout: React.FC = () => {
     <PageActionsContext.Provider value={{ element: actionsSlot }}>
       <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* Breadcrumb */}
           <div className="px-4 pt-4 max-md:hidden sm:px-8 sm:pt-8">
-            <Breadcrumb className="mb-4 hidden md:block">
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/apps')}
-                      className="hover:text-foreground cursor-pointer"
-                    >
-                      Apps
-                    </button>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/apps/${app}/voice-agents`)}
-                      className="hover:text-foreground cursor-pointer"
-                    >
-                      Voice Agents
-                    </button>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <PageBreadcrumb items={[{ label: 'Voice Agents', to: `/apps/${app}/voice-agents` }]} />
           </div>
 
           {/* Header */}

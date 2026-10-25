@@ -1,6 +1,7 @@
 import { appEnv } from '@app/config/env';
 import { TOKEN_KEY } from '@app/lib/constants';
 import { clearSession } from '@app/lib/session';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
@@ -46,12 +47,16 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   function (err: IAxiosError) {
-    const errorData = err.response as IApiResponse;
-    useNotifyStore.setState({
-      visible: true,
-      type: 'error',
-      message: errorData.data?.meta?.error || 'Something went wrong',
-    });
+    // The one error toast for every request; a mutation hook may replace it with a more specific fallback.
+    // A cancelled request was abandoned on purpose, so it isn't reported.
+    if (!axios.isCancel(err)) {
+      useNotifyStore.setState({
+        visible: true,
+        type: 'error',
+        // A network failure or timeout has no response, so this must not assume one
+        message: extractErrorMessage(err) || 'Something went wrong',
+      });
+    }
     const errCode = err.response?.status;
     if (errCode === 401) {
       clearSession();

@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import {
@@ -19,7 +18,6 @@ import {
   initializeParameters,
   ParameterConfig,
 } from '@app/config/authenticators';
-import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import {
   getBooleanNestedParameter,
@@ -35,6 +33,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
+import { useCreateAuthenticator } from '@app/hooks';
 
 const createAuthenticatorSchema = z.object({
   authName: z.string().min(1, 'Authenticator name is required'),
@@ -48,21 +47,15 @@ interface CreateAuthenticatorDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
-const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  appId,
-  onSuccess,
-}) => {
+const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({ isOpen, onOpenChange, appId }) => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
   const [authType, setAuthType] = useState<AuthenticatorType>('google_oauth');
   const [parameters, setParameters] = useState<Record<string, unknown>>(() => initializeParameters(authType));
-  const [loading, setLoading] = useState(false);
+  const createAuthenticator = useCreateAuthenticator(appId);
 
   const form = useForm<CreateAuthenticatorInput>({
     resolver: zodResolver(createAuthenticatorSchema),
@@ -114,7 +107,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     });
   };
 
-  const onSubmit = async (data: CreateAuthenticatorInput) => {
+  const onSubmit = (data: CreateAuthenticatorInput) => {
     // Validate required fields in config
     const config = getProviderConfig(data.authType);
     if (config) {
@@ -164,36 +157,24 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
       }
     }
 
-    setLoading(true);
-    try {
-      const response = await floConsoleService.authenticatorService.createAuthenticator({
+    createAuthenticator.mutate(
+      {
         auth_name: data.authName.trim(),
         auth_type: data.authType,
         auth_desc: data.authDesc?.trim() || null,
         config: cleanParameters(parameters),
-      });
-
-      if (response.data?.meta?.status === 'success') {
-        notifySuccess('Authenticator created successfully');
-
-        if (onSuccess) {
-          onSuccess();
-        }
-
-        onOpenChange(false);
-
-        // Optionally navigate to the created authenticator if we have the ID
-        if (response.data?.data?.authenticator?.auth_id) {
-          navigate(`/apps/${appId}/authenticators/${response.data.data.authenticator.auth_id}`);
-        }
+      },
+      {
+        onSuccess: (response) => {
+          onOpenChange(false);
+          // Open the new authenticator when the response names it
+          const authId = response.data?.data?.authenticator?.auth_id;
+          if (authId) {
+            navigate(`/apps/${appId}/authenticators/${authId}`);
+          }
+        },
       }
-    } catch (error) {
-      console.error('Error creating authenticator:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to create authenticator');
-    } finally {
-      setLoading(false);
-    }
+    );
   };
 
   const renderParameterField = (key: string) => {
@@ -464,7 +445,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={loading || form.formState.isSubmitting}>
+              <Button type="submit" loading={createAuthenticator.isPending}>
                 Create Authenticator
               </Button>
             </DialogFooter>

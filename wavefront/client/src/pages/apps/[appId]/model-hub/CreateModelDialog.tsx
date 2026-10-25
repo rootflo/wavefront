@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { ModelParameters } from '@app/components/llm/ModelParameters';
 import { ModelSelect } from '@app/components/llm/ModelSelect';
 import { ProviderSelect } from '@app/components/llm/ProviderSelect';
@@ -17,7 +16,6 @@ import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
 import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
-import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { InferenceEngineType } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,6 +23,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
+import { useCreateLLMConfig } from '@app/hooks';
 
 const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   ollama: 'http://localhost:11434',
@@ -98,7 +97,6 @@ interface CreateModelDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
 const SectionTitle: React.FC<{ title: string; description?: string }> = ({ title, description }) => (
@@ -108,11 +106,11 @@ const SectionTitle: React.FC<{ title: string; description?: string }> = ({ title
   </div>
 );
 
-const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenChange, appId, onSuccess }) => {
+const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenChange, appId }) => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
-  const [creating, setCreating] = useState(false);
+  const createLLMConfig = useCreateLLMConfig(appId);
   // The display name follows the chosen model until the user types their own.
   const displayNameEdited = useRef(false);
   const { selectedApp } = useDashboardStore();
@@ -160,24 +158,23 @@ const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenCha
     }
   };
 
-  const onSubmit = async (data: CreateModelInput) => {
+  const onSubmit = (data: CreateModelInput) => {
     if (!appId) {
       notifyError('Model service not available');
       return;
     }
 
-    setCreating(true);
-    try {
-      const { kept } = filterParameters(data.type, data.llmModel, data.modelType === 'llm' ? parameters : {});
-      if (data.type === 'azure_openai' && data.apiVersion) {
-        kept.api_version = data.apiVersion.trim();
-      }
-      if (data.type === 'bedrock') {
-        kept.aws_region = data.awsRegion?.trim();
-        if (data.awsAccessKeyId?.trim()) kept.aws_access_key_id = data.awsAccessKeyId.trim();
-      }
+    const { kept } = filterParameters(data.type, data.llmModel, data.modelType === 'llm' ? parameters : {});
+    if (data.type === 'azure_openai' && data.apiVersion) {
+      kept.api_version = data.apiVersion.trim();
+    }
+    if (data.type === 'bedrock') {
+      kept.aws_region = data.awsRegion?.trim();
+      if (data.awsAccessKeyId?.trim()) kept.aws_access_key_id = data.awsAccessKeyId.trim();
+    }
 
-      const response = await floConsoleService.llmInferenceService.createLLMConfig({
+    createLLMConfig.mutate(
+      {
         display_name: data.displayName.trim(),
         llm_model: data.llmModel.trim(),
         api_key: data.apiKey?.trim() || undefined,
@@ -185,23 +182,17 @@ const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenCha
         model_type: data.modelType,
         base_url: (data.type !== 'bedrock' && data.baseUrl?.trim()) || undefined,
         parameters: Object.keys(kept).length > 0 ? kept : undefined,
-      });
-
-      notifySuccess('Model added to the Model Hub');
-      onSuccess?.();
-      onOpenChange(false);
-
-      const responseData = response.data?.data;
-      if (responseData?.id) {
-        navigate(`/apps/${appId}/model-hub/${responseData.id}`);
+      },
+      {
+        onSuccess: (response) => {
+          onOpenChange(false);
+          const responseData = response.data?.data;
+          if (responseData?.id) {
+            navigate(`/apps/${appId}/model-hub/${responseData.id}`);
+          }
+        },
       }
-    } catch (error) {
-      console.error('Error adding model:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to add model');
-    } finally {
-      setCreating(false);
-    }
+    );
   };
 
   return (
@@ -424,7 +415,7 @@ const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenCha
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={creating || form.formState.isSubmitting}>
+              <Button type="submit" loading={createLLMConfig.isPending}>
                 Add model
               </Button>
             </DialogFooter>

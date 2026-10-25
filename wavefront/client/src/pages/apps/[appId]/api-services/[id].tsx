@@ -1,13 +1,4 @@
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
@@ -17,13 +8,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { useGetApiService } from '@app/hooks';
-import { getApiServiceKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { useDeleteApiService, useGetApiService, useUpdateApiService } from '@app/hooks';
+import { formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { ApiServiceItem } from '@app/types/api-service';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';
 import clsx from 'clsx';
@@ -33,6 +22,7 @@ import React, { useEffect, useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const keyValuePairSchema = z.object({
   key: z.string(),
@@ -149,13 +139,13 @@ const ApiServiceDetail: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [view, setView] = useState<'form' | 'yaml'>('form');
   const [yamlContent, setYamlContent] = useState('');
-  const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
+  const updateApiService = useUpdateApiService(appId);
+  const deleteApiService = useDeleteApiService(appId);
 
   const { data: service, isLoading: serviceLoading } = useGetApiService(appId, id);
 
@@ -468,49 +458,29 @@ const ApiServiceDetail: React.FC = () => {
     }
   }, [view, editing, yamlContent, form]);
 
-  const handleSave = async (data?: ApiServiceForm) => {
+  const handleSave = (data?: ApiServiceForm) => {
     if (!id || !appId) return;
 
     // Ensure we have the latest content based on current view
     const formValues = data || form.getValues();
     const finalYaml = view === 'form' ? generateYaml(formValues) : yamlContent;
 
-    setSaving(true);
-    try {
-      await floConsoleService.apiServiceService.updateApiService(id, finalYaml);
-
-      // Invalidate query to refetch updated data
-      queryClient.invalidateQueries({
-        queryKey: getApiServiceKey(appId || '', id || ''),
-      });
-      queryClient.invalidateQueries({ queryKey: ['api-services', appId] });
-
-      setYamlContent(finalYaml);
-      const parsed = parseYaml(finalYaml);
-      if (parsed) form.reset(parsed);
-
-      setEditing(false);
-      notifySuccess('API Service updated successfully');
-    } catch (error) {
-      console.error('Error updating API service:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to update API service');
-    } finally {
-      setSaving(false);
-    }
+    updateApiService.mutate(
+      { serviceId: id, yamlContent: finalYaml },
+      {
+        onSuccess: () => {
+          setYamlContent(finalYaml);
+          const parsed = parseYaml(finalYaml);
+          if (parsed) form.reset(parsed);
+          setEditing(false);
+        },
+      }
+    );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!id || !appId) return;
-
-    try {
-      await floConsoleService.apiServiceService.deleteApiService(id);
-      notifySuccess('API Service deleted successfully');
-      navigate(`/apps/${appId}/api-services`);
-    } catch (error) {
-      console.error('Error deleting API service:', error);
-      notifyError('Failed to delete API service');
-    }
+    deleteApiService.mutate(id, { onSuccess: () => navigate(`/apps/${appId}/api-services`) });
   };
 
   const handleAddHeader = () => {
@@ -613,33 +583,12 @@ const ApiServiceDetail: React.FC = () => {
 
   return (
     <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/api-services`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                API Services
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={serviceLoading}>{service?.name || service?.service_id || id}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        items={[
+          { label: 'API Services', to: `/apps/${appId}/api-services` },
+          { label: service?.name || service?.service_id || id, loading: serviceLoading },
+        ]}
+      />
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between gap-3">
@@ -653,7 +602,7 @@ const ApiServiceDetail: React.FC = () => {
             onDelete={() => setShowDeleteConfirm(true)}
             onSave={form.handleSubmit(handleSave)}
             onCancel={handleCancelEdit}
-            saving={saving}
+            saving={updateApiService.isPending}
           />
         </div>
 

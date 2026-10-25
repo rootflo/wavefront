@@ -1,20 +1,13 @@
 import { PageActionsContext } from '@app/components/PageActionsContext';
 import PageTitle from '@app/components/PageTitle';
 import React, { useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import clsx from 'clsx';
 import { Outlet } from 'react-router';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const WorkflowsLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const navigate = useNavigate();
   // Where the page's search, filters and buttons render, so they sit on the title's row.
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const location = useLocation();
@@ -25,35 +18,8 @@ const WorkflowsLayout: React.FC = () => {
     <PageActionsContext.Provider value={{ element: actionsSlot }}>
       <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* Breadcrumb */}
           <div className="px-4 pt-4 max-md:hidden sm:px-8 sm:pt-8">
-            <Breadcrumb className="mb-4 hidden md:block">
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/apps')}
-                      className="hover:text-foreground cursor-pointer"
-                    >
-                      Apps
-                    </button>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/apps/${app}/workflows`)}
-                      className="hover:text-foreground cursor-pointer"
-                    >
-                      Workflows
-                    </button>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <PageBreadcrumb items={[{ label: 'Workflows', to: `/apps/${app}/workflows` }]} />
           </div>
 
           {/* Header */}

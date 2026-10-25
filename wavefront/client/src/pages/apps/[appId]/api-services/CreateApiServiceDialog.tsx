@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -9,8 +8,7 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -19,6 +17,7 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
+import { useCreateApiService } from '@app/hooks';
 
 const createApiServiceSchema = z.object({
   yamlContent: z.string().min(1, 'YAML configuration is required'),
@@ -49,12 +48,11 @@ interface CreateApiServiceDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
-const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen, onOpenChange, appId, onSuccess }) => {
+const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen, onOpenChange, appId }) => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const createApiService = useCreateApiService(appId);
   const { selectedApp } = useDashboardStore();
   const form = useForm<CreateApiServiceInput>({
     resolver: zodResolver(createApiServiceSchema),
@@ -72,29 +70,16 @@ const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen,
     }
   }, [isOpen, form]);
 
-  const onSubmit = async (data: CreateApiServiceInput) => {
-    try {
-      const response = await floConsoleService.apiServiceService.createApiService(data.yamlContent);
-
-      if (response.data?.meta?.status === 'success') {
-        notifySuccess('API Service created successfully');
-
-        if (onSuccess) {
-          onSuccess();
-        }
-
+  const onSubmit = (data: CreateApiServiceInput) => {
+    createApiService.mutate(data.yamlContent, {
+      onSuccess: (response) => {
         onOpenChange(false);
-
-        // Optionally navigate to the created service if we have the ID
+        // Open the new service when the response names it
         if (response.data?.data?.service_id) {
           navigate(`/apps/${appId}/api-services/${response.data.data.service_id}`);
         }
-      }
-    } catch (error) {
-      console.error('Error creating API service:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to create API service');
-    }
+      },
+    });
   };
 
   return (
@@ -136,7 +121,7 @@ const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen,
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={form.formState.isSubmitting}>
+              <Button type="submit" loading={createApiService.isPending}>
                 Create API Service
               </Button>
             </DialogFooter>

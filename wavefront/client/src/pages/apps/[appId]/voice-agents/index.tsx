@@ -2,34 +2,32 @@ import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetVoiceAgents } from '@app/hooks';
-import { getVoiceAgentsKey } from '@app/hooks/data/query-keys';
+import { useDeleteVoiceAgent, useGetVoiceAgents } from '@app/hooks';
 import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { getLanguageName } from '@app/constants/languages';
-import { useQueryClient } from '@tanstack/react-query';
 import { Copy, Pencil, Phone, Trash2, Mic } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
-import CreateVoiceAgentDialog from './CreateVoiceAgentDialog';
-import EditVoiceAgentDialog from './EditVoiceAgentDialog';
+import VoiceAgentFormDialog from './VoiceAgentFormDialog';
 import VoiceAgentOperationsDialog from './VoiceAgentOperationsDialog';
+import floConsoleService from '@app/api';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const VoiceAgentsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const [view, setView] = useListView('voice-agents');
-  const queryClient = useQueryClient();
+  const deleteVoiceAgent = useDeleteVoiceAgent(app);
+  const deletion = useDeleteConfirm<VoiceAgentListItem>((item) => deleteVoiceAgent.mutateAsync(item.id));
   const { notifySuccess, notifyError } = useNotifyStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<VoiceAgentListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<VoiceAgent | null>(null);
   const [opsItem, setOpsItem] = useState<VoiceAgentListItem | null>(null);
@@ -64,11 +62,6 @@ const VoiceAgentsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, agent: VoiceAgentListItem) => {
-    e.stopPropagation();
-    setDeleteItem(agent);
-  };
-
   const handleEditClick = async (e: React.MouseEvent, agent: VoiceAgentListItem) => {
     e.stopPropagation();
     const detail = await fetchAgentDetail(agent.id);
@@ -80,49 +73,13 @@ const VoiceAgentsPage: React.FC = () => {
     setOpsItem(agent);
   };
 
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getVoiceAgentsKey(app || '') });
-    setEditItem(null);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.voiceAgentService.deleteVoiceAgent(deleteItem.id);
-      notifySuccess('Voice agent deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getVoiceAgentsKey(app || '') });
-      setDeleteItem(null);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete voice agent');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   const handleCreateVoiceAgent = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getVoiceAgentsKey(app || '') });
-    setCreateDialogOpen(false);
-  };
-
-  const filteredAgents = agents.filter((agent) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      agent.name.toLowerCase().includes(query) ||
-      (agent.description && agent.description.toLowerCase().includes(query)) ||
-      agent.status.toLowerCase().includes(query)
-    );
-  });
+  const filteredAgents = agents.filter((agent) =>
+    matchesSearch(searchQuery, agent.name, agent.description, agent.status)
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
@@ -174,7 +131,7 @@ const VoiceAgentsPage: React.FC = () => {
                     { label: 'Created', value: new Date(agent.created_at).toLocaleDateString() },
                   ]}
                   onEditClick={(e) => void handleEditClick(e, agent)}
-                  onDeleteClick={(e) => handleDeleteClick(e, agent)}
+                  onDeleteClick={(e) => deletion.ask(agent, e)}
                   deleteTitle="Delete voice agent"
                   extraActions={
                     agent.status === 'active'
@@ -255,7 +212,7 @@ const VoiceAgentsPage: React.FC = () => {
                             <Phone className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, agent)} title="Delete">
+                        <Button variant="ghost" size="sm" onClick={(e) => deletion.ask(agent, e)} title="Delete">
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                       </div>
@@ -269,30 +226,19 @@ const VoiceAgentsPage: React.FC = () => {
       )}
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Voice Agent"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDelete}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
-      {app && (
-        <CreateVoiceAgentDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={app}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {app && <VoiceAgentFormDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={app} />}
 
       {app && editItem && (
-        <EditVoiceAgentDialog
+        <VoiceAgentFormDialog
           isOpen={!!editItem}
           onOpenChange={(open) => !open && setEditItem(null)}
           appId={app}
           agent={editItem}
-          onSuccess={handleEditSuccess}
         />
       )}
 

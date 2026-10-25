@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,8 +10,6 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
 import { Datasource } from '@app/types/datasource';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Lock } from 'lucide-react';
@@ -23,23 +20,17 @@ import DatasourceTypeOptions from './DatasourceTypeOptions';
 import { CONFIG_FIELDS, ConfigValues, configToValues, defaultConfigValues, valuesToConfig } from './datasource-config';
 import { DATASOURCE_TYPES, isFileStorageType } from './datasource-types';
 import { createDatasourceSchema, type CreateDatasourceInput, type DatasourceTypeValue } from './schemas';
+import { useUpdateDatasource } from '@app/hooks';
 
 interface EditDatasourceDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
   datasource: Datasource;
-  onSuccess?: () => void;
 }
 
-const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  appId,
-  datasource,
-  onSuccess,
-}) => {
-  const { notifySuccess, notifyError } = useNotifyStore();
+const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({ isOpen, onOpenChange, appId, datasource }) => {
+  const updateDatasource = useUpdateDatasource(appId);
   // File storage datasources only allow renaming; SQL ones can't become file storage.
   const isFileStorage = isFileStorageType(datasource.type);
   const savedType = datasource.type as DatasourceTypeValue;
@@ -86,7 +77,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
     });
   };
 
-  const onSubmit = async (data: CreateDatasourceInput) => {
+  const onSubmit = (data: CreateDatasourceInput) => {
     let config: Record<string, unknown>;
     if (isFileStorage) {
       // The backend refuses any change to a file storage config, so it goes back exactly as saved.
@@ -104,20 +95,16 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
       config = { ...extras, ...built.config };
     }
 
-    try {
-      await floConsoleService.datasourcesService.updateDatasource(
-        datasource.id,
-        data.name.trim(),
-        data.type,
+    updateDatasource.mutate(
+      {
+        datasourceId: datasource.id,
+        name: data.name.trim(),
+        type: data.type,
         config,
-        data.description?.trim() || undefined
-      );
-      notifySuccess('Datasource updated successfully');
-      onSuccess?.();
-      onOpenChange(false);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to update datasource');
-    }
+        description: data.description?.trim() || undefined,
+      },
+      { onSuccess: () => onOpenChange(false) }
+    );
   };
 
   if (!appId) {
@@ -225,7 +212,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={form.formState.isSubmitting}>
+              <Button type="submit" loading={updateDatasource.isPending}>
                 Save changes
               </Button>
             </DialogFooter>

@@ -3,30 +3,24 @@ import { toneClass } from '@app/lib/tones';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetConsoleUsers, useGetCurrentUser } from '@app/hooks';
-import { getConsoleUsersKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import { useDeleteUser, useGetConsoleUsers, useGetCurrentUser } from '@app/hooks';
 import { IUser } from '@app/types/user';
-import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, Shield, User } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import CreateUserDialog from './CreateUserDialog';
-import EditUserDialog from './EditUserDialog';
+import UserFormDialog from './UserFormDialog';
 import ManageAppAccessDialog from './ManageAppAccessDialog';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const UsersPage: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteUser = useDeleteUser();
+  const deletion = useDeleteConfirm<IUser>((item) => deleteUser.mutateAsync(item.id));
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<IUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<IUser | null>(null);
   const [manageAppAccessItem, setManageAppAccessItem] = useState<IUser | null>(null);
@@ -53,11 +47,6 @@ const UsersPage: React.FC = () => {
     return isOwner && user.id !== currentUser.id;
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, user: IUser) => {
-    e.stopPropagation();
-    setDeleteItem(user);
-  };
-
   const handleEditClick = (e: React.MouseEvent, user: IUser) => {
     e.stopPropagation();
     setEditItem(user);
@@ -68,49 +57,13 @@ const UsersPage: React.FC = () => {
     setManageAppAccessItem(user);
   };
 
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
-    setEditItem(null);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.userService.deleteUser(deleteItem.id);
-      notifySuccess('User deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
-      setDeleteItem(null);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete user');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   const handleCreateUser = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
-    setCreateDialogOpen(false);
-  };
-
-  const filteredUsers = consoleUsers.filter((user) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      user.email.toLowerCase().includes(query) ||
-      user.first_name.toLowerCase().includes(query) ||
-      user.last_name.toLowerCase().includes(query)
-    );
-  });
+  const filteredUsers = consoleUsers.filter((user) =>
+    matchesSearch(searchQuery, user.email, user.first_name, user.last_name)
+  );
 
   return (
     <div className="relative isolate h-full w-full overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
@@ -163,7 +116,7 @@ const UsersPage: React.FC = () => {
                   },
                 ]}
                 onEditClick={canEditUser(user) ? (e) => handleEditClick(e, user) : undefined}
-                onDeleteClick={canDeleteUser(user) ? (e) => handleDeleteClick(e, user) : undefined}
+                onDeleteClick={canDeleteUser(user) ? (e) => deletion.ask(user, e) : undefined}
                 deleteTitle="Delete user"
                 extraActions={
                   isOwner && user.role === 'app_admin'
@@ -217,7 +170,7 @@ const UsersPage: React.FC = () => {
                           </Button>
                         )}
                         {canDeleteUser(user) && (
-                          <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, user)} title="Delete">
+                          <Button variant="ghost" size="sm" onClick={(e) => deletion.ask(user, e)} title="Delete">
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         )}
@@ -233,25 +186,17 @@ const UsersPage: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete User"
-        message={`Are you sure you want to delete "${deleteItem?.email}"? This action cannot be undone.`}
-        onConfirm={handleDelete}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.email}"? This action cannot be undone.`}
       />
 
       {/* Create User Dialog */}
-      <CreateUserDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} onSuccess={handleCreateSuccess} />
+      <UserFormDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} />
 
       {/* Edit User Dialog */}
       {editItem && (
-        <EditUserDialog
-          isOpen={!!editItem}
-          onOpenChange={(open) => !open && setEditItem(null)}
-          user={editItem}
-          onSuccess={handleEditSuccess}
-        />
+        <UserFormDialog isOpen={!!editItem} onOpenChange={(open) => !open && setEditItem(null)} user={editItem} />
       )}
 
       {/* Manage App Access Dialog */}
@@ -260,7 +205,6 @@ const UsersPage: React.FC = () => {
           isOpen={!!manageAppAccessItem}
           onOpenChange={(open) => !open && setManageAppAccessItem(null)}
           user={manageAppAccessItem}
-          onSuccess={() => setManageAppAccessItem(null)}
         />
       )}
     </div>

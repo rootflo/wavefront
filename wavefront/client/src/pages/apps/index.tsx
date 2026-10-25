@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import AppsBackdrop from '@app/components/AppsBackdrop';
 import AppCompactCard from '@app/components/AppCompactCard';
 import AppShowcaseCard from '@app/components/AppShowcaseCard';
@@ -8,14 +7,15 @@ import { FilterSelect } from '@app/components/ListHeader';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Button } from '@app/components/ui/button';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import { useGetAllApps, useGetCurrentUser } from '@app/hooks';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDeleteApp, useGetAllApps, useGetCurrentUser } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
 import { App } from '@app/types/app';
 import { cn, formatAppName } from '@app/lib/utils';
 import { Box, Pin, Plus } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const COLUMNS_KEY = 'wavefront-apps-columns';
 const PINNED_KEY = 'wavefront-pinned-apps';
@@ -55,14 +55,16 @@ const writeStored = (key: string, value: unknown) => {
 };
 
 const Dashboard: React.FC = () => {
-  const [deleteItem, setDeleteItem] = useState<App | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
   const { data: apps = [], isLoading: appsLoading } = useGetAllApps(true);
   const { data: currentUser } = useGetCurrentUser(true);
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess } = useNotifyStore();
+  const deleteApp = useDeleteApp();
+  // Deletes and closes even when the delete fails
+  const deletion = useDeleteConfirm<App>((item) =>
+    deleteApp
+      .mutateAsync({ appId: item.id, appName: item.app_name, deleteDeployment: item.deployment_type === 'auto' })
+      .catch(() => undefined)
+  );
 
   const { setSelectedApp } = useDashboardStore();
 
@@ -91,7 +93,7 @@ const Dashboard: React.FC = () => {
     return sortedApps.filter((app) => {
       if (statusFilter !== 'all' && app.status !== statusFilter) return false;
       if (!query) return true;
-      return app.app_name.toLowerCase().includes(query) || (app.public_url || '').toLowerCase().includes(query);
+      return matchesSearch(query, app.app_name, app.public_url);
     });
   }, [sortedApps, searchTerm, statusFilter]);
 
@@ -116,7 +118,7 @@ const Dashboard: React.FC = () => {
         onTogglePin={togglePin}
         onOpen={handleAppClick}
         onEditClick={(target) => navigate(`/apps/edit/${target.id}`)}
-        onDeleteClick={(target) => setDeleteItem(target)}
+        onDeleteClick={(target) => deletion.ask(target)}
       />
     ) : (
       <AppShowcaseCard
@@ -128,7 +130,7 @@ const Dashboard: React.FC = () => {
         onTogglePin={isFew ? undefined : togglePin}
         onOpen={handleAppClick}
         onEditClick={(target) => navigate(`/apps/edit/${target.id}`)}
-        onDeleteClick={(target) => setDeleteItem(target)}
+        onDeleteClick={(target) => deletion.ask(target)}
       />
     );
 
@@ -167,29 +169,6 @@ const Dashboard: React.FC = () => {
 
   const handleCreateApp = () => {
     navigate('/apps/create');
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      const deleteDeployment = deleteItem.deployment_type === 'auto';
-      await floConsoleService.appService.deleteApp(deleteItem.id, deleteDeployment);
-      notifySuccess(`App "${deleteItem.app_name}" deleted successfully`);
-
-      queryClient.invalidateQueries({ queryKey: ['apps'] });
-
-      setDeleteItem(null);
-    } catch {
-      setDeleteItem(null);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const cancelDelete = () => {
-    setDeleteItem(null);
   };
 
   return (
@@ -294,12 +273,9 @@ const Dashboard: React.FC = () => {
         </div>
 
         <DeleteConfirmationDialog
-          isOpen={!!deleteItem}
+          {...deletion.dialogProps}
           title="Delete Application"
-          message={`Are you sure you want to delete "${deleteItem?.app_name}"? This action cannot be undone and will remove all associated data.`}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-          loading={deleting}
+          message={`Are you sure you want to delete "${deletion.item?.app_name}"? This action cannot be undone and will remove all associated data.`}
         />
       </div>
     </div>

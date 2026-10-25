@@ -1,77 +1,34 @@
 import ListHeader from '@app/components/ListHeader';
-import floConsoleService from '@app/api';
 import { KbData } from '@app/api/knowledge-base-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import KnowledgeBaseCard from '@app/components/KnowledgeBaseCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
-import { useGetKnowledgeBases } from '@app/hooks';
-import { getKnowledgeBasesKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
-import { useQueryClient } from '@tanstack/react-query';
+import { useDeleteKnowledgeBase, useGetKnowledgeBases } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import CreateKnowledgeBaseDialog from './CreateKnowledgeBaseDialog';
-import EditKnowledgeBaseDialog from './EditKnowledgeBaseDialog';
+import KnowledgeBaseFormDialog from './KnowledgeBaseFormDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const KnowledgeBasesListPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteKnowledgeBase = useDeleteKnowledgeBase(appId);
+  const deletion = useDeleteConfirm<KbData>((item) => deleteKnowledgeBase.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<KbData | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<KbData | null>(null);
 
   // Fetch knowledge bases
   const { data: knowledgeBases = [], isLoading: loading } = useGetKnowledgeBases(appId);
 
-  const handleDeleteClick = (e: React.MouseEvent, kb: KbData) => {
-    e.stopPropagation();
-    setDeleteItem(kb);
-  };
-
   const handleEditClick = (e: React.MouseEvent, kb: KbData) => {
     e.stopPropagation();
     setEditItem(kb);
-  };
-
-  const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
-    setEditItem(null);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!appId || !deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.knowledgeBaseService.deleteKnowledgeBase(deleteItem.id);
-      notifySuccess('Knowledge base deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId) });
-      setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting knowledge base:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete knowledge base');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
   };
 
   const handleCardClick = (kbId: string) => {
@@ -82,41 +39,11 @@ const KnowledgeBasesListPage: React.FC = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
-    setCreateDialogOpen(false);
-  };
-
-  const filteredKnowledgeBases = knowledgeBases.filter(
-    (kb) =>
-      kb.name.toLowerCase().includes(searchTerm.toLowerCase()) || kb.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredKnowledgeBases = knowledgeBases.filter((kb) => matchesSearch(searchTerm, kb.name, kb.id));
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/knowledge-bases`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Knowledge Bases
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Knowledge Bases', to: `/apps/${appId}/knowledge-bases` }]} />
 
       <ListHeader
         title="Knowledge Bases"
@@ -148,7 +75,7 @@ const KnowledgeBasesListPage: React.FC = () => {
                 key={kb.id}
                 kb={kb}
                 onClick={handleCardClick}
-                onDeleteClick={handleDeleteClick}
+                onDeleteClick={(e, item) => deletion.ask(item, e)}
                 onEditClick={handleEditClick}
               />
             ))}
@@ -158,33 +85,21 @@ const KnowledgeBasesListPage: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Knowledge Base"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       {/* Create Knowledge Base Dialog */}
-      {appId && (
-        <CreateKnowledgeBaseDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <KnowledgeBaseFormDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
 
       {/* Edit Knowledge Base Dialog */}
-      {editItem && (
-        <EditKnowledgeBaseDialog
+      {appId && editItem && (
+        <KnowledgeBaseFormDialog
           isOpen={!!editItem}
-          onOpenChange={(open) => {
-            if (!open) setEditItem(null);
-          }}
+          onOpenChange={(open) => !open && setEditItem(null)}
+          appId={appId}
           knowledgeBase={editItem}
-          onSuccess={handleEditSuccess}
         />
       )}
     </div>

@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
@@ -6,32 +5,22 @@ import PageTitle from '@app/components/PageTitle';
 import { ModelParameters } from '@app/components/llm/ModelParameters';
 import { ModelSelect, ModelTags } from '@app/components/llm/ModelSelect';
 import { ProviderSelect } from '@app/components/llm/ProviderSelect';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Spinner } from '@app/components/ui/spinner';
 import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
 import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
-import { useGetLLMConfig } from '@app/hooks';
-import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage, formatAppName } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import { useDeleteLLMConfig, useGetLLMConfig, useUpdateLLMConfig } from '@app/hooks';
+import { formatAppName } from '@app/lib/utils';
 import { InferenceEngineType, LLMInferenceConfig, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
 
@@ -101,13 +90,12 @@ const SectionTitle: React.FC<{ title: string; description?: string; children?: R
 const ModelDetail: React.FC = () => {
   const { app: appId, modelId } = useParams<{ app: string; modelId: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const updateLLMConfig = useUpdateLLMConfig(appId);
+  const deleteLLMConfig = useDeleteLLMConfig(appId);
 
   const { data: config, isLoading } = useGetLLMConfig(appId, modelId);
 
   const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
 
@@ -160,7 +148,7 @@ const ModelDetail: React.FC = () => {
     form.setValue('llm_model', modelId, { shouldValidate: true });
   };
 
-  const handleSave = async (data: ModelForm) => {
+  const handleSave = (data: ModelForm) => {
     if (!modelId || !config) return;
 
     // The access key ID and secret are one credential: save both, keep the saved pair
@@ -186,92 +174,58 @@ const ModelDetail: React.FC = () => {
       return;
     }
 
-    setSaving(true);
-    try {
-      // Only what this model accepts goes out, so a stale or unsupported setting cannot fail requests
-      const { kept } = filterParameters(data.type, data.llm_model, data.model_type === 'llm' ? parameters : {});
-      if (data.type === 'azure_openai' && data.api_version) {
-        kept.api_version = data.api_version.trim();
-      }
-      if (data.type === 'bedrock') {
-        kept.aws_region = data.aws_region?.trim();
-        if (keyId) kept.aws_access_key_id = keyId;
-      }
-
-      const updateData: UpdateLLMConfigRequest = {
-        display_name: data.display_name.trim(),
-        llm_model: data.llm_model.trim(),
-        type: data.type,
-        model_type: data.model_type,
-        parameters: Object.keys(kept).length > 0 ? kept : null,
-        base_url: (data.type !== 'bedrock' && data.base_url?.trim()) || null,
-      };
-
-      // Only include API key if it's been entered (since we don't show existing ones)
-      if (secret) {
-        updateData.api_key = secret;
-      } else if ((data.type === 'bedrock' && !keyId) || leavingBedrock) {
-        // Ambient AWS credentials, or a keyless provider after Bedrock: clear the stored secret
-        updateData.api_key = null;
-      }
-
-      await floConsoleService.llmInferenceService.updateLLMConfig(modelId, updateData);
-
-      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId || '', modelId || '') });
-      queryClient.invalidateQueries({ queryKey: getLLMConfigsKey(appId || '') });
-      setEditing(false);
-      form.setValue('api_key', '');
-      notifySuccess('Model updated successfully');
-    } catch (error) {
-      console.error('Error updating model:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to update model');
-    } finally {
-      setSaving(false);
+    // Only what this model accepts goes out, so a stale or unsupported setting cannot fail requests
+    const { kept } = filterParameters(data.type, data.llm_model, data.model_type === 'llm' ? parameters : {});
+    if (data.type === 'azure_openai' && data.api_version) {
+      kept.api_version = data.api_version.trim();
     }
+    if (data.type === 'bedrock') {
+      kept.aws_region = data.aws_region?.trim();
+      if (keyId) kept.aws_access_key_id = keyId;
+    }
+
+    const updateData: UpdateLLMConfigRequest = {
+      display_name: data.display_name.trim(),
+      llm_model: data.llm_model.trim(),
+      type: data.type,
+      model_type: data.model_type,
+      parameters: Object.keys(kept).length > 0 ? kept : null,
+      base_url: (data.type !== 'bedrock' && data.base_url?.trim()) || null,
+    };
+
+    // Only include API key if it's been entered (since we don't show existing ones)
+    if (secret) {
+      updateData.api_key = secret;
+    } else if ((data.type === 'bedrock' && !keyId) || leavingBedrock) {
+      // Ambient AWS credentials, or a keyless provider after Bedrock: clear the stored secret
+      updateData.api_key = null;
+    }
+
+    updateLLMConfig.mutate(
+      { configId: modelId, data: updateData },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          form.setValue('api_key', '');
+        },
+      }
+    );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!modelId || !config || !appId) return;
-    try {
-      await floConsoleService.llmInferenceService.deleteLLMConfig(modelId);
-      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId, modelId) });
-      notifySuccess('Model deleted successfully');
-      navigate(`/apps/${appId}/model-hub`);
-    } catch (error) {
-      console.error('Error deleting model:', error);
-    }
+    deleteLLMConfig.mutate(modelId, { onSuccess: () => navigate(`/apps/${appId}/model-hub`) });
   };
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8 lg:overflow-hidden">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/model-hub`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Model Hub
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={isLoading}>{config?.display_name || modelId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        className="shrink-0"
+        items={[
+          { label: 'Model Hub', to: `/apps/${appId}/model-hub` },
+          { label: config?.display_name || modelId, loading: isLoading },
+        ]}
+      />
 
       {isLoading ? (
         <div className="flex w-full flex-col gap-8">
@@ -309,7 +263,7 @@ const ModelDetail: React.FC = () => {
                 setEditing(false);
                 resetToSaved(config);
               }}
-              saving={saving}
+              saving={updateLLMConfig.isPending}
             />
           </div>
 

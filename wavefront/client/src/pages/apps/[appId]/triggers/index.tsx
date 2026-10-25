@@ -2,29 +2,30 @@ import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ResourceCard from '@app/components/ResourceCard';
 import { Zap, Play, Pause, RotateCcw } from 'lucide-react';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Badge } from '@app/components/ui/badge';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { TRIGGER_STATUS_BADGE_CLASS, TRIGGER_STATUS_OPTIONS } from '@app/constants/trigger';
-import { useGetAgents, useGetEmailConnections, useGetTriggers, useGetWorkflows } from '@app/hooks';
-import { getTriggersKey } from '@app/hooks/data/query-keys';
+import {
+  useDeleteTrigger,
+  useGetAgents,
+  useGetEmailConnections,
+  useGetTriggers,
+  useGetWorkflows,
+  useRetryTrigger,
+  useSetTriggerPaused,
+} from '@app/hooks';
 import { cn } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
 import { Trigger } from '@app/types/trigger';
-import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import CreateTriggerDialog from './CreateTriggerDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const formatDateTime = (value: string | null | undefined) => {
   if (!value) return '—';
@@ -49,17 +50,15 @@ const getMailboxEmail = (trigger: Trigger) => {
 
 const TriggersPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const setTriggerPaused = useSetTriggerPaused(appId);
+  const retryTrigger = useRetryTrigger(appId);
+  const deleteTriggerMutation = useDeleteTrigger(appId);
+  const deletion = useDeleteConfirm<Trigger>((item) => deleteTriggerMutation.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
-  const { notifySuccess, notifyError } = useNotifyStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
-  const [deleteTrigger, setDeleteTrigger] = useState<Trigger | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [actionTriggerId, setActionTriggerId] = useState<string | null>(null);
 
   const { data: triggers = [], isLoading } = useGetTriggers(appId);
   const { data: emailConnections = [] } = useGetEmailConnections(appId);
@@ -93,95 +92,36 @@ const TriggersPage: React.FC = () => {
       const mailbox =
         getMailboxEmail(trigger) || connectionLabelById.get(trigger.connection_id) || trigger.connection_id;
       const entityName = entityLabelById.get(trigger.entity_id) || trigger.entity_id;
-      const subjectRegex = getSubjectRegex(trigger) || '';
-      return (
-        trigger.name.toLowerCase().includes(term) ||
-        trigger.provider.toLowerCase().includes(term) ||
-        trigger.status.toLowerCase().includes(term) ||
-        trigger.entity_type.toLowerCase().includes(term) ||
-        entityName.toLowerCase().includes(term) ||
-        mailbox.toLowerCase().includes(term) ||
-        (trigger.namespace || '').toLowerCase().includes(term) ||
-        subjectRegex.toLowerCase().includes(term)
+      return matchesSearch(
+        term,
+        trigger.name,
+        trigger.provider,
+        trigger.status,
+        trigger.entity_type,
+        entityName,
+        mailbox,
+        trigger.namespace,
+        getSubjectRegex(trigger)
       );
     });
   }, [triggers, searchTerm, statusFilter, connectionLabelById, entityLabelById]);
 
-  const refreshTriggers = () => {
-    queryClient.invalidateQueries({ queryKey: getTriggersKey(appId || '') });
+  const handlePauseResume = (trigger: Trigger) => {
+    setTriggerPaused.mutate({ triggerId: trigger.id, paused: trigger.status !== 'paused' });
   };
 
-  const handlePauseResume = async (trigger: Trigger) => {
-    setActionTriggerId(trigger.id);
-    try {
-      if (trigger.status === 'paused') {
-        await floConsoleService.triggerService.resumeTrigger(trigger.id);
-        notifySuccess('Trigger resumed');
-      } else {
-        await floConsoleService.triggerService.pauseTrigger(trigger.id);
-        notifySuccess('Trigger paused');
-      }
-      refreshTriggers();
-    } catch {
-      notifyError('Failed to update trigger status');
-    } finally {
-      setActionTriggerId(null);
-    }
+  const handleRetry = (trigger: Trigger) => {
+    retryTrigger.mutate(trigger.id);
   };
 
-  const handleRetry = async (trigger: Trigger) => {
-    setActionTriggerId(trigger.id);
-    try {
-      await floConsoleService.triggerService.retryTrigger(trigger.id);
-      notifySuccess('Watch registration retried');
-      refreshTriggers();
-    } catch {
-      notifyError('Failed to retry trigger');
-    } finally {
-      setActionTriggerId(null);
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteTrigger) return;
-    setDeleting(true);
-    try {
-      await floConsoleService.triggerService.deleteTrigger(deleteTrigger.id);
-      notifySuccess('Trigger deleted');
-      setDeleteTrigger(null);
-      refreshTriggers();
-    } catch {
-      notifyError('Failed to delete trigger');
-    } finally {
-      setDeleting(false);
-    }
-  };
+  /** Disables just the row whose pause/resume or retry is in flight. */
+  const isActing = (triggerId: string) =>
+    (setTriggerPaused.isPending && setTriggerPaused.variables?.triggerId === triggerId) ||
+    (retryTrigger.isPending && retryTrigger.variables === triggerId);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/triggers`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Triggers
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Triggers', to: `/apps/${appId}/triggers` }]} />
 
       <ListHeader
         title="Triggers"
@@ -237,7 +177,7 @@ const TriggersPage: React.FC = () => {
                     { label: 'Filter', value: subjectRegex || 'All subjects', isMono: true },
                     { label: 'Updated', value: formatDateTime(trigger.updated_at) },
                   ]}
-                  onDeleteClick={() => setDeleteTrigger(trigger)}
+                  onDeleteClick={() => deletion.ask(trigger)}
                   deleteTitle="Delete trigger"
                   extraActions={[
                     ...(canPauseResume
@@ -245,7 +185,7 @@ const TriggersPage: React.FC = () => {
                           {
                             label: trigger.status === 'paused' ? 'Resume' : 'Pause',
                             icon: trigger.status === 'paused' ? Play : Pause,
-                            disabled: actionTriggerId === trigger.id,
+                            disabled: isActing(trigger.id),
                             onClick: () => void handlePauseResume(trigger),
                           },
                         ]
@@ -255,7 +195,7 @@ const TriggersPage: React.FC = () => {
                           {
                             label: 'Retry',
                             icon: RotateCcw,
-                            disabled: actionTriggerId === trigger.id,
+                            disabled: isActing(trigger.id),
                             onClick: () => void handleRetry(trigger),
                           },
                         ]
@@ -322,7 +262,7 @@ const TriggersPage: React.FC = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={actionTriggerId === trigger.id}
+                              disabled={isActing(trigger.id)}
                               onClick={() => void handlePauseResume(trigger)}
                             >
                               {trigger.status === 'paused' ? 'Resume' : 'Pause'}
@@ -332,13 +272,13 @@ const TriggersPage: React.FC = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={actionTriggerId === trigger.id}
+                              disabled={isActing(trigger.id)}
                               onClick={() => void handleRetry(trigger)}
                             >
                               Retry
                             </Button>
                           ) : null}
-                          <Button variant="destructive" size="sm" onClick={() => setDeleteTrigger(trigger)}>
+                          <Button variant="destructive" size="sm" onClick={() => deletion.ask(trigger)}>
                             Delete
                           </Button>
                         </div>
@@ -357,18 +297,13 @@ const TriggersPage: React.FC = () => {
         </div>
       )}
 
-      {appId ? (
-        <CreateTriggerDialog isOpen={formOpen} appId={appId} onOpenChange={setFormOpen} onSuccess={refreshTriggers} />
-      ) : null}
+      {appId ? <CreateTriggerDialog isOpen={formOpen} appId={appId} onOpenChange={setFormOpen} /> : null}
 
-      {deleteTrigger ? (
+      {deletion.item ? (
         <DeleteConfirmationDialog
-          isOpen={Boolean(deleteTrigger)}
+          {...deletion.dialogProps}
           title="Delete trigger"
           message="Are you sure you want to delete this trigger? The Gmail watch will be stopped. The email connection will not be removed."
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeleteTrigger(null)}
-          loading={deleting}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         />

@@ -1,13 +1,4 @@
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
@@ -24,25 +15,26 @@ import { Label } from '@app/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import {
   getKnowledgeBaseDocumentsKey,
-  getKnowledgeBaseIndexStatusKey,
+  useDeleteKnowledgeBaseDocument,
   useGetKnowledgeBase,
   useGetKnowledgeBaseDocuments,
   useGetKnowledgeBaseIndexStatus,
+  useUploadKnowledgeBaseDocument,
 } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { TrashIcon } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { formatAppName } from '@app/lib/utils';
 import IndexStatusSummary from './IndexStatusSummary';
 import IndexStatusPill from './IndexStatusPill';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const KnowledgeBaseDetailPage: React.FC = () => {
   const { kbId, app: appId } = useParams<{ kbId: string; app: string }>();
 
-  const [uploading, setUploading] = useState<boolean>(false);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
@@ -52,7 +44,6 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const { data: documents = [], isLoading: loadingDocs } = useGetKnowledgeBaseDocuments(appId, kbId);
   const { data: indexStatus, isLoading: loadingIndexStatus } = useGetKnowledgeBaseIndexStatus(appId, kbId);
 
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   // The counts poll while documents are indexing; when they change, refresh
@@ -61,75 +52,36 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
   }, [indexStatusCounts, queryClient, appId, kbId]);
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
+  const uploadDocument = useUploadKnowledgeBaseDocument(appId);
+  const deleteDocument = useDeleteKnowledgeBaseDocument(appId);
+  const uploading = uploadDocument.isPending;
 
-  const handleFileUpload = async () => {
+  const handleFileUpload = () => {
     if (!file || !kbId || !appId) {
       notifyError('File, Knowledge Base ID, or Service not available.');
       return;
     }
-    setUploading(true);
-    try {
-      await floConsoleService.knowledgeBaseService.uploadDocument(kbId, file);
-      notifySuccess(`${file.name} uploaded successfully.`);
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseIndexStatusKey(appId || '', kbId || '') });
-      setShowUploadModal(false);
-    } catch (error) {
-      console.error('File upload failed:', error);
-      notifyError(`Failed to upload ${file.name}.`);
-    } finally {
-      setUploading(false);
-    }
+    uploadDocument.mutate({ kbId, file }, { onSuccess: () => setShowUploadModal(false) });
   };
 
-  const handleDeleteDocument = async (documentId: string) => {
+  const handleDeleteDocument = (documentId: string) => {
     if (!kbId || !appId) {
       notifyError('Knowledge Base ID or Service not available.');
       return;
     }
-
-    try {
-      await floConsoleService.knowledgeBaseService.deleteDocument(kbId, documentId);
-      notifySuccess('Document deleted successfully.');
-      // Invalidate queries to refresh document list
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseIndexStatusKey(appId || '', kbId || '') });
-    } catch (error) {
-      console.error('Document deletion failed:', error);
-      notifyError('Failed to delete document.');
-    }
+    deleteDocument.mutate({ kbId, documentId });
   };
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/knowledge-bases`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Knowledge Bases
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={knowledgeBaseLoading}>{knowledgeBase?.name || kbId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        className="shrink-0"
+        items={[
+          { label: 'Knowledge Bases', to: `/apps/${appId}/knowledge-bases` },
+          { label: knowledgeBase?.name || kbId, loading: knowledgeBaseLoading },
+        ]}
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
         <div className="flex shrink-0 items-center justify-between">

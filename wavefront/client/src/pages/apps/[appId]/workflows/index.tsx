@@ -10,7 +10,7 @@ import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetNamespaces, useGetWorkflows } from '@app/hooks';
+import { useDeleteWorkflow, useGetNamespaces, useGetWorkflows } from '@app/hooks';
 import { getWorkflowsKey } from '@app/hooks/data/query-keys';
 import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
@@ -21,6 +21,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
 import { parseUploadedWorkflow } from './workflow-utils';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';
@@ -36,11 +38,11 @@ const WorkflowManagement: React.FC = () => {
   const navigate = useNavigate();
   const [view, setView] = useListView('workflows');
   const queryClient = useQueryClient();
+  const deleteWorkflow = useDeleteWorkflow(appId);
+  const deletion = useDeleteConfirm<WorkflowListItem>((item) => deleteWorkflow.mutateAsync(item.id));
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [namespace, setNamespace] = useState('');
-  const [deleteItem, setDeleteItem] = useState<WorkflowListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -50,15 +52,9 @@ const WorkflowManagement: React.FC = () => {
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
   const filteredWorkflows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = term
-      ? workflows.filter(
-          (workflow) =>
-            workflow.name.toLowerCase().includes(term) ||
-            workflow.id.toLowerCase().includes(term) ||
-            workflow.namespace.toLowerCase().includes(term)
-        )
-      : workflows;
+    const filtered = workflows.filter((workflow) =>
+      matchesSearch(searchTerm, workflow.name, workflow.id, workflow.namespace)
+    );
 
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [workflows, searchTerm]);
@@ -152,24 +148,6 @@ const WorkflowManagement: React.FC = () => {
     setBulkError(failed.length > 0 ? `Failed to create workflows: ${failed.join(', ')}` : '');
   };
 
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.workflowService.deleteWorkflow(deleteItem.id);
-      notifySuccess('Workflow deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getWorkflowsKey(appId || '', namespace || undefined),
-      });
-      setDeleteItem(null);
-    } catch {
-      notifyError('Failed to delete workflow');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // Workflows are created in a separate editor tab; refresh the list when one is created or saved there
   useWorkflowUpdatedListener(
     useCallback(() => {
@@ -243,7 +221,7 @@ const WorkflowManagement: React.FC = () => {
                     { label: 'Created', value: formatCreatedAt(workflow.created_at) },
                   ]}
                   onClick={() => navigate(`/apps/${appId}/workflows/${workflow.id}`)}
-                  onDeleteClick={() => setDeleteItem(workflow)}
+                  onDeleteClick={() => deletion.ask(workflow)}
                   deleteTitle="Delete workflow"
                   extraActions={[
                     {
@@ -310,7 +288,7 @@ const WorkflowManagement: React.FC = () => {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(workflow)}>
+                        <Button variant="ghost" size="sm" title="Delete" onClick={() => deletion.ask(workflow)}>
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                       </div>
@@ -324,12 +302,9 @@ const WorkflowManagement: React.FC = () => {
       )}
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Workflow"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       <BulkDownloadDialog

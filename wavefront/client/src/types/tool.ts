@@ -77,7 +77,7 @@ export type ToolDetailsResponse = IApiResponse<ToolDetailsData>;
 
 export type ToolType = 'api' | 'python' | 'app';
 
-export type AuthType = 'none' | 'bearer' | 'api_key';
+export type AuthType = 'none' | 'bearer' | 'api_key' | 'basic';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

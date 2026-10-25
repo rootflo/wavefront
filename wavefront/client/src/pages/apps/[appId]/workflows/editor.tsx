@@ -2,11 +2,10 @@ import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { Input } from '@app/components/ui/input';
 import { AGENT_ID_PATTERN, AGENT_ID_PATTERN_MESSAGE } from '@app/constants/workflow-builder';
-import { useGetWorkflowVersions } from '@app/hooks';
+import { useCreateWorkflow, useGetWorkflowVersions } from '@app/hooks';
 import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
 import { useValidateWorkflowYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
-import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Workflow } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,7 +26,8 @@ const WorkflowEditorPage: React.FC = () => {
   const isCreate = !id;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifySuccess } = useNotifyStore();
+  const createWorkflow = useCreateWorkflow(appId);
   const queryClient = useQueryClient();
   const versionParam = searchParams.get('version');
   const selectedVersion = versionParam ? Number(versionParam) : undefined;
@@ -171,11 +171,11 @@ const WorkflowEditorPage: React.FC = () => {
         setCreateErrors(toProblems(validation.errors));
         return;
       }
-      const response = await floConsoleService.workflowService.createWorkflow(
-        trimmedId,
-        draftYaml.trim(),
-        trimmedNamespace
-      );
+      const response = await createWorkflow.mutateAsync({
+        workflowId: trimmedId,
+        yamlContent: draftYaml.trim(),
+        namespace: trimmedNamespace,
+      });
       const createdId = response.data?.meta?.status === 'success' ? response.data.data?.data?.id : undefined;
       if (createdId) {
         broadcastWorkflowUpdated(createdId);
@@ -184,9 +184,8 @@ const WorkflowEditorPage: React.FC = () => {
         setSavedYaml(draftYaml);
         navigate(`/apps/${appId}/workflows/${createdId}/editor`, { replace: true });
       }
-    } catch (error) {
-      console.error('Error creating workflow:', error);
-      notifyError(extractErrorMessage(error) || 'Failed to create workflow');
+    } catch {
+      // useCreateWorkflow has already shown the error
     } finally {
       setCreating(false);
     }

@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popo
 import { cn } from '@app/lib/utils';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { matchesSearch } from '@app/lib/search';
 
 const identity = (id: string) => id;
 
@@ -33,8 +34,6 @@ interface MultiSelectProps<T> {
   allItemsGroupHeading?: string;
   selectedCountLabel?: (count: number) => string;
 }
-
-const matchesSearch = (value: string, search: string) => value.toLowerCase().includes(search.trim().toLowerCase());
 
 function MultiSelect<T>({
   items,
@@ -99,12 +98,12 @@ function MultiSelect<T>({
   );
 
   const visibleSelectedItems = useMemo(
-    () => selectedItems.filter((item) => matchesSearch(getSearchValue?.(item) ?? getLabel(item), search)),
+    () => selectedItems.filter((item) => matchesSearch(search, getSearchValue?.(item) ?? getLabel(item))),
     [selectedItems, search, getSearchValue, getLabel]
   );
 
   const visibleUnselectedItems = useMemo(
-    () => unselectedItems.filter((item) => matchesSearch(getSearchValue?.(item) ?? getLabel(item), search)),
+    () => unselectedItems.filter((item) => matchesSearch(search, getSearchValue?.(item) ?? getLabel(item))),
     [unselectedItems, search, getSearchValue, getLabel]
   );
 
@@ -120,7 +119,7 @@ function MultiSelect<T>({
   }, [loading, selectedIds, sortedItems, getId, normalizeId]);
 
   const visibleUnresolvedSelectedIds = useMemo(
-    () => unresolvedSelectedIds.filter((id) => matchesSearch(id, search)),
+    () => unresolvedSelectedIds.filter((id) => matchesSearch(search, id)),
     [unresolvedSelectedIds, search]
   );
 

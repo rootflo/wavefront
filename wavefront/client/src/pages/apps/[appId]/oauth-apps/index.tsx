@@ -4,41 +4,31 @@ import { KeyRound, Power } from 'lucide-react';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { EMAIL_PROVIDERS_CONFIG } from '@app/config/email-providers';
-import { useGetOAuthApps } from '@app/hooks';
-import { getOAuthAppsKey } from '@app/hooks/data/query-keys';
+import { useDeleteOAuthApp, useGetOAuthApps, useSetOAuthAppEnabled } from '@app/hooks';
 import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { OAuthApp } from '@app/types/oauth-app';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import OAuthAppFormDialog from './OAuthAppFormDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const OAuthAppsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
+  const setOAuthAppEnabled = useSetOAuthAppEnabled(app);
+  const deleteOAuthApp = useDeleteOAuthApp(app);
+  const deletion = useDeleteConfirm<OAuthApp>((item) => deleteOAuthApp.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<OAuthApp | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editItem, setEditItem] = useState<OAuthApp | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data: oauthApps = [], isLoading } = useGetOAuthApps(app);
-
-  const refresh = () => queryClient.invalidateQueries({ queryKey: getOAuthAppsKey(app || '') });
 
   const handleCreateClick = () => {
     setEditItem(null);
@@ -55,74 +45,16 @@ const OAuthAppsPage: React.FC = () => {
     }
   };
 
-  const handleToggleEnabled = async (oauthApp: OAuthApp) => {
-    setBusyId(oauthApp.id);
-    try {
-      if (oauthApp.is_enabled) {
-        await floConsoleService.oauthAppService.disableOAuthApp(oauthApp.id);
-        notifySuccess(`${oauthApp.name} disabled`);
-      } else {
-        await floConsoleService.oauthAppService.enableOAuthApp(oauthApp.id);
-        notifySuccess(`${oauthApp.name} enabled`);
-      }
-      refresh();
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to update OAuth app');
-    } finally {
-      setBusyId(null);
-    }
+  const handleToggleEnabled = (oauthApp: OAuthApp) => {
+    setOAuthAppEnabled.mutate({ oauthAppId: oauthApp.id, name: oauthApp.name, enabled: !oauthApp.is_enabled });
   };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.oauthAppService.deleteOAuthApp(deleteItem.id);
-      notifySuccess('OAuth app deleted successfully');
-      refresh();
-      setDeleteItem(null);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to delete OAuth app');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const filteredApps = oauthApps.filter((oauthApp) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      oauthApp.name.toLowerCase().includes(query) ||
-      oauthApp.provider.toLowerCase().includes(query) ||
-      (oauthApp.description || '').toLowerCase().includes(query)
-    );
-  });
+  const filteredApps = oauthApps.filter((oauthApp) =>
+    matchesSearch(searchQuery, oauthApp.name, oauthApp.provider, oauthApp.description)
+  );
 
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${app}/oauth-apps`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                OAuth Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb className="shrink-0" items={[{ label: 'OAuth Apps', to: `/apps/${app}/oauth-apps` }]} />
 
       <ListHeader
         title="OAuth Apps"
@@ -178,13 +110,14 @@ const OAuthAppsPage: React.FC = () => {
                     },
                   ]}
                   onEditClick={() => void handleEditClick(oauthApp)}
-                  onDeleteClick={() => setDeleteItem(oauthApp)}
+                  onDeleteClick={() => deletion.ask(oauthApp)}
                   deleteTitle="Delete OAuth app"
                   extraActions={[
                     {
                       label: oauthApp.is_enabled ? 'Disable' : 'Enable',
                       icon: Power,
-                      disabled: busyId === oauthApp.id,
+                      disabled:
+                        setOAuthAppEnabled.isPending && setOAuthAppEnabled.variables?.oauthAppId === oauthApp.id,
                       onClick: () => void handleToggleEnabled(oauthApp),
                     },
                   ]}
@@ -196,15 +129,12 @@ const OAuthAppsPage: React.FC = () => {
       </div>
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete OAuth App"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? Mailboxes connected through it stop working until another app is attached.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? Mailboxes connected through it stop working until another app is attached.`}
       />
 
-      <OAuthAppFormDialog isOpen={formOpen} onOpenChange={setFormOpen} oauthApp={editItem} onSuccess={refresh} />
+      <OAuthAppFormDialog isOpen={formOpen} onOpenChange={setFormOpen} oauthApp={editItem} />
     </div>
   );
 };

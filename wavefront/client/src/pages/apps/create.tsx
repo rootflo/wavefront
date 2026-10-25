@@ -14,12 +14,14 @@ import { z } from 'zod';
 import { createAppSchema } from './schemas';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { appEnv } from '@app/config/env';
+import { useCreateApp } from '@app/hooks';
 
 type TCreateAppInputSchema = z.infer<typeof createAppSchema>;
 
 const CreateApp: React.FC = () => {
   const navigate = useNavigate();
   const { notifySuccess } = useNotifyStore();
+  const createApp = useCreateApp();
 
   const [creating, setCreating] = useState(false);
   const [pollingAppId, setPollingAppId] = useState<string | null>(null);
@@ -96,7 +98,7 @@ const CreateApp: React.FC = () => {
         private_url: formData.private_url,
       };
 
-      const response = await floConsoleService.appService.createApp(appData);
+      const response = await createApp.mutateAsync(appData);
 
       if (response.data?.data?.app.status === 'in_progress') {
         // Start polling for status updates only if deployment type is auto
@@ -114,8 +116,8 @@ const CreateApp: React.FC = () => {
         notifySuccess('App created successfully');
         navigate('/apps');
       }
-    } catch (error) {
-      console.error('Error creating app:', error);
+    } catch {
+      // useCreateApp has already shown the error
       setCreating(false);
     }
   };

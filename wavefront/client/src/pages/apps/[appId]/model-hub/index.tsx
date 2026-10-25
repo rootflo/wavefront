@@ -1,38 +1,28 @@
 import { LLM_PROVIDERS_CONFIG } from '@app/config/llm-providers';
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
-import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import ModelCard from '@app/components/ModelCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
-import { useGetLLMConfigs } from '@app/hooks';
-import { getLLMConfigsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDeleteLLMConfig, useGetLLMConfigs } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateModelDialog from './CreateModelDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/lib/search';
 
 const ModelHub: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const deleteLLMConfig = useDeleteLLMConfig(appId);
+  const deletion = useDeleteConfirm<LLMInferenceConfig>((item) => deleteLLMConfig.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
-  const [deleteItem, setDeleteItem] = useState<LLMInferenceConfig | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   // Fetch the models
@@ -41,10 +31,7 @@ const ModelHub: React.FC = () => {
   const filteredConfigs = configs.filter(
     (config) =>
       (providerFilter === 'all' || config.type === providerFilter) &&
-      (config.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        config.llm_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        config.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        config.type.toLowerCase().includes(searchTerm.toLowerCase()))
+      matchesSearch(searchTerm, config.id, config.llm_model, config.display_name, config.type)
   );
 
   const providerOptions = Array.from(new Set(configs.map((config) => config.type)))
@@ -55,69 +42,13 @@ const ModelHub: React.FC = () => {
     setCreateDialogOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getLLMConfigsKey(appId || '') });
-    setCreateDialogOpen(false);
-  };
-
   const handleConfigClick = (modelId: string) => {
     navigate(`/apps/${appId}/model-hub/${modelId}`);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, config: LLMInferenceConfig) => {
-    e.stopPropagation();
-    setDeleteItem(config);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.llmInferenceService.deleteLLMConfig(deleteItem.id);
-      notifySuccess('Model deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getLLMConfigsKey(appId || ''),
-      });
-      setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting model:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to delete model');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   return (
     <div className="flex h-full w-full flex-col p-4 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/model-hub`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Model Hub
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb items={[{ label: 'Model Hub', to: `/apps/${appId}/model-hub` }]} />
 
       <ListHeader
         title="Model Hub"
@@ -160,7 +91,7 @@ const ModelHub: React.FC = () => {
                 key={config.id}
                 config={config}
                 onClick={handleConfigClick}
-                onDeleteClick={handleDeleteClick}
+                onDeleteClick={(e, item) => deletion.ask(item, e)}
               />
             ))}
           </>
@@ -169,23 +100,13 @@ const ModelHub: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete model"
-        message={`Are you sure you want to delete "${deleteItem?.display_name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.display_name}"? This action cannot be undone.`}
       />
 
       {/* Add model dialog */}
-      {appId && (
-        <CreateModelDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <CreateModelDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
     </div>
   );
 };

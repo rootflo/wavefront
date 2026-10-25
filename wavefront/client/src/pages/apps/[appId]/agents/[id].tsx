@@ -4,14 +4,6 @@ import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
 import {
@@ -28,30 +20,28 @@ import {
   validateImageUpload,
 } from '@app/constants/upload';
 import { ArrowLeft, MoreVertical } from 'lucide-react';
-import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion } from '@app/hooks';
+import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion, useUpdateAgent } from '@app/hooks';
 import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
-import { getAgentKey, getAgentVersionsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
 import { AgentStreamEvent } from '@app/types/agent';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
 import { selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
 import { formatAppName } from '@app/lib/utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
+  const updateAgent = useUpdateAgent(appId);
 
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [yamlContent, setYamlContent] = useState('');
-  const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
@@ -301,27 +291,13 @@ const AgentDetail: React.FC = () => {
   const handleSave = async (yamlContent: string, options: { createNewVersion: boolean }) => {
     if (!appId || !id || !agent) return;
 
-    setSaving(true);
-    try {
-      await floConsoleService.agentService.updateAgent(id, yamlContent, displayVersion, options.createNewVersion);
-      // Invalidate agent + versions queries to refetch updated data
-      queryClient.invalidateQueries({
-        queryKey: getAgentKey(appId || '', id || ''),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getAgentVersionsKey(appId || '', id || ''),
-      });
-      notifySuccess(
-        options.createNewVersion
-          ? 'New version created (not promoted — promote it from Versions to make it live)'
-          : 'Agent updated successfully'
-      );
-    } catch (error) {
-      console.error('Error updating agent:', error);
-      throw error;
-    } finally {
-      setSaving(false);
-    }
+    // Rethrows so the editor keeps the unsaved YAML; useUpdateAgent has already shown the error
+    await updateAgent.mutateAsync({
+      agentId: id,
+      yamlContent,
+      version: displayVersion,
+      createNewVersion: options.createNewVersion,
+    });
   };
 
   const handlePromoteVersion = (version: number) => {
@@ -348,7 +324,7 @@ const AgentDetail: React.FC = () => {
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!deleteItem) return;
     deleteAgentMutation.mutate(deleteItem.id, {
       onSuccess: () => {
@@ -600,33 +576,12 @@ const AgentDetail: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent p-3 sm:p-8">
-      <Breadcrumb className="mb-4 hidden md:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/agents`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Agents
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage loading={agentLoading}>{agent?.name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PageBreadcrumb
+        items={[
+          { label: 'Agents', to: `/apps/${appId}/agents` },
+          { label: agent?.name, loading: agentLoading },
+        ]}
+      />
 
       {agentLoading ? (
         <>
@@ -770,7 +725,7 @@ const AgentDetail: React.FC = () => {
               setYamlContent(updatedYamlContent);
               setSelectedTools(updatedSelectedTools);
             }}
-            saving={saving}
+            saving={updateAgent.isPending}
           />
 
           {/* Versions Dialog */}

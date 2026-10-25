@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import MultiSelect from '@app/components/MultiSelect';
 import { Button } from '@app/components/ui/button';
 import {
@@ -31,8 +30,14 @@ import {
   QUERY_PARAMS_PLACEHOLDER,
   isFormTab,
 } from '@app/constants/scheduled-job';
-import { useGetAllDatasources, useGetAllDynamicQueries, useGetAppUsers, useGetEmailConnections } from '@app/hooks';
-import { useNotifyStore } from '@app/store';
+import {
+  useCreateScheduledJob,
+  useGetAllDatasources,
+  useGetAllDynamicQueries,
+  useGetAppUsers,
+  useGetEmailConnections,
+  useUpdateScheduledJob,
+} from '@app/hooks';
 import {
   ColumnStyleConfig,
   DateRangeOption,
@@ -139,17 +144,9 @@ interface ScheduledJobFormDialogProps {
   appId: string;
   job?: ScheduledJob | null;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
 }
 
-const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
-  isOpen,
-  appId,
-  job,
-  onOpenChange,
-  onSuccess,
-}) => {
-  const { notifySuccess } = useNotifyStore();
+const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen, appId, job, onOpenChange }) => {
   const isEditing = Boolean(job?.id);
   const { data: datasources = [] } = useGetAllDatasources(appId);
   const { data: appUsers = [], isLoading: appUsersLoading } = useGetAppUsers(appId);
@@ -180,7 +177,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const [endDateParamKey, setEndDateParamKey] = useState(DEFAULT_END_DATE_PARAM);
   const [maxRetries, setMaxRetries] = useState(DEFAULT_MAX_RETRIES);
   const [activeTab, setActiveTab] = useState<FormTab>(FORM_TAB.SCHEDULE);
-  const [saving, setSaving] = useState(false);
+  const createScheduledJob = useCreateScheduledJob(appId);
+  const updateScheduledJob = useUpdateScheduledJob(appId);
+  const saving = createScheduledJob.isPending || updateScheduledJob.isPending;
   const [error, setError] = useState('');
 
   const availableQueryIds = useMemo(
@@ -331,7 +330,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     onOpenChange(open);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const retries = Number(maxRetries);
     if (!cronExpr.trim()) {
       setError('Cron expression is required');
@@ -466,33 +465,21 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
       limit: limitResult.value,
     });
 
-    setSaving(true);
     setError('');
-    try {
-      if (isEditing && job) {
-        await floConsoleService.scheduledJobService.updateScheduledJob(job.id, {
-          cron_expr: cronExpr.trim(),
-          timezone: timezone.trim(),
-          max_retries: retries,
-          payload: emailPayload,
-        });
-        notifySuccess('Scheduled job updated successfully');
-      } else {
-        await floConsoleService.scheduledJobService.createScheduledJob({
-          job_type: JOB_TYPE_EMAIL_DYNAMIC_QUERY,
-          cron_expr: cronExpr.trim(),
-          timezone: timezone.trim(),
-          max_retries: retries,
-          payload: emailPayload,
-        });
-        notifySuccess('Scheduled job created successfully');
-      }
-      onSuccess();
-      handleOpenChange(false);
-    } catch {
-      setError('Unable to save scheduled job. Please verify the details and try again.');
-    } finally {
-      setSaving(false);
+    const callbacks = {
+      onSuccess: () => handleOpenChange(false),
+      onError: () => setError('Unable to save scheduled job. Please verify the details and try again.'),
+    };
+    const fields = {
+      cron_expr: cronExpr.trim(),
+      timezone: timezone.trim(),
+      max_retries: retries,
+      payload: emailPayload,
+    };
+    if (isEditing && job) {
+      updateScheduledJob.mutate({ jobId: job.id, request: fields }, callbacks);
+    } else {
+      createScheduledJob.mutate({ job_type: JOB_TYPE_EMAIL_DYNAMIC_QUERY, ...fields }, callbacks);
     }
   };
 

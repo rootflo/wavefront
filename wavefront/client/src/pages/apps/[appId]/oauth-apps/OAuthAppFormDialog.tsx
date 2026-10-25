@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -17,29 +16,25 @@ import {
   initializeEmailProviderParameters,
   missingEmailProviderFields,
 } from '@app/config/email-providers';
-import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { EmailProviderType } from '@app/types/email';
 import { OAuthApp } from '@app/types/oauth-app';
 import React, { useEffect, useState } from 'react';
+import { useCreateOAuthApp, useUpdateOAuthApp } from '@app/hooks';
+import { useParams } from 'react-router';
 
 interface OAuthAppFormDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   /** The app being edited, or null to create a new one. */
   oauthApp?: OAuthApp | null;
-  onSuccess?: () => void;
 }
 
 const humanize = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  oauthApp = null,
-  onSuccess,
-}) => {
-  const { notifySuccess, notifyError } = useNotifyStore();
+const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({ isOpen, onOpenChange, oauthApp = null }) => {
+  const { app } = useParams<{ app: string }>();
+  const { notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
   const isEdit = !!oauthApp;
 
@@ -49,7 +44,8 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
   const [parameters, setParameters] = useState<Record<string, unknown>>(() =>
     initializeEmailProviderParameters('gmail')
   );
-  const [loading, setLoading] = useState(false);
+  const createOAuthApp = useCreateOAuthApp(app);
+  const updateOAuthApp = useUpdateOAuthApp(app);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -83,7 +79,7 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!name.trim()) {
       notifyError('Name is required');
       return;
@@ -105,30 +101,17 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
       return;
     }
 
-    setLoading(true);
-    try {
-      if (isEdit && oauthApp) {
-        await floConsoleService.oauthAppService.updateOAuthApp(oauthApp.id, {
-          name: name.trim(),
-          description: description.trim() || null,
-          config,
-        });
-        notifySuccess('OAuth app updated successfully');
-      } else {
-        await floConsoleService.oauthAppService.createOAuthApp({
-          name: name.trim(),
-          provider,
-          description: description.trim() || null,
-          config,
-        });
-        notifySuccess('OAuth app created successfully');
-      }
-      onSuccess?.();
-      onOpenChange(false);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || `Failed to ${isEdit ? 'update' : 'create'} OAuth app`);
-    } finally {
-      setLoading(false);
+    const close = () => onOpenChange(false);
+    if (isEdit && oauthApp) {
+      updateOAuthApp.mutate(
+        { oauthAppId: oauthApp.id, data: { name: name.trim(), description: description.trim() || null, config } },
+        { onSuccess: close }
+      );
+    } else {
+      createOAuthApp.mutate(
+        { name: name.trim(), provider, description: description.trim() || null, config },
+        { onSuccess: close }
+      );
     }
   };
 
@@ -218,7 +201,7 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" loading={loading} onClick={handleSubmit}>
+          <Button type="button" loading={createOAuthApp.isPending || updateOAuthApp.isPending} onClick={handleSubmit}>
             {isEdit ? 'Save Changes' : 'Register App'}
           </Button>
         </DialogFooter>
