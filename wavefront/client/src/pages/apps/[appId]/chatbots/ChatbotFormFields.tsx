@@ -1,4 +1,4 @@
-import { NamespaceItem } from '@app/api/namespace-service';
+import { NamespaceItem } from '@app/types/namespace';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
@@ -37,7 +37,7 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
     <div className="space-y-6">
       <div className="space-y-4">
         <h3 className="text-sm font-semibold">Basic Information</h3>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="name"
@@ -153,19 +153,19 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
 
       <div className="space-y-4">
         <h3 className="text-sm font-semibold">Model</h3>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="llm_config_id"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  LLM Configuration<span className="text-red-500">*</span>
+                  Model<span className="text-red-500">*</span>
                 </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select LLM configuration" />
+                      <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -183,7 +183,7 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
                 </Select>
                 {llmConfigs.length === 0 && (
                   <FormDescription className="text-amber-600">
-                    No LLM configurations found. Create one first.
+                    No models in the Model Hub yet. Add one first.
                   </FormDescription>
                 )}
                 {selectedConfigMissing && llmConfigs.length > 0 && (

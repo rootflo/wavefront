@@ -25,14 +25,15 @@ import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import CodeEditor from '@app/components/CodeEditor';
+import { Check, ChevronsUpDown, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs } from '@app/hooks';
 import { useValidateAgentYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
-import AgentFormFields from './AgentFormFields';
+import AgentFormFields, { type AgentFormSection } from './AgentFormFields';
+import { SECTION_OF_FIELD } from './agentFormSections';
 import {
   EMPTY_AGENT_FORM_VALUES,
   getAgentToolNames,
@@ -99,6 +100,26 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   });
 
   const { activeTab, handleTabChange, resetFromYaml, handleSubmit } = useAgentYamlForm(form);
+  // Each form section is its own tab, followed by the YAML. All three sections count as the hook's "visual" tab.
+  const [section, setSection] = useState<AgentFormSection | 'tools'>('identity');
+  const currentTab = activeTab === 'yaml' ? 'yaml' : section;
+
+  const handleSectionChange = (value: string) => {
+    if (value === 'yaml') {
+      handleTabChange('yaml');
+      return;
+    }
+    setSection(value as AgentFormSection | 'tools');
+    // Coming back from the YAML re-derives the fields from it first, and stays there if it cannot be read.
+    if (activeTab === 'yaml') handleTabChange('visual');
+  };
+
+  // A failed save reports the first invalid field; open the tab that has it so its message is visible.
+  const firstErrorField = Object.keys(form.formState.errors)[0];
+  useEffect(() => {
+    if (!firstErrorField || firstErrorField === 'yamlContent') return;
+    setSection(firstErrorField === 'selectedTools' ? 'tools' : (SECTION_OF_FIELD[firstErrorField] ?? 'identity'));
+  }, [firstErrorField, form.formState.submitCount]);
 
   // The dialog loads the agent once per open. A refetch of the agent while it is open must not discard edits.
   const initialRef = useRef({ yamlContent: initialYamlContent, selectedTools: initialSelectedTools });
@@ -115,6 +136,8 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   // The YAML is the source of truth for which tools are attached, so edits made on either tab show up here.
   const yamlContent = useWatch({ control: form.control, name: 'yamlContent' });
   const yamlToolNames = useMemo(() => getAgentToolNames(yamlContent), [yamlContent]);
+
+  const selectedToolDetails = toolsDetails.filter((tool) => yamlToolNames?.has(tool.name));
 
   const toggleTool = (tool: ToolsDetailsData, enabled: boolean) => {
     const result = setAgentTool(form.getValues('yamlContent'), toToolOption(tool), enabled);
@@ -257,56 +280,112 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
           onInteractOutside={(event) => {
             if (isDirty) event.preventDefault();
           }}
-          className="frost-dialog border-frost-border ring-frost-border flex max-h-[90vh] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-4xl"
+          className="flex h-[760px] max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-3xl lg:max-w-4xl"
         >
-          <DialogHeader className="border-frost-border border-b p-6 pb-4">
-            <DialogTitle className="frost-text">
-              Edit Agent{editingVersion !== undefined ? ` (v${editingVersion})` : ''}
-            </DialogTitle>
-            <DialogDescription className="frost-text-muted">
+          <DialogHeader>
+            <DialogTitle>Edit Agent{editingVersion !== undefined ? ` (v${editingVersion})` : ''}</DialogTitle>
+            <DialogDescription>
               Update the agent configuration and tools. Use "Save" to overwrite this version, or "Save as new version"
               to branch a new, unpromoted version.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={handleSubmit((data) => onSubmit(data, false))} className="flex min-h-0 flex-1 flex-col">
-              <Tabs value={activeTab} onValueChange={handleTabChange} className="flex min-h-0 flex-1 flex-col">
-                <div className="px-6">
-                  <TabsList className="border-frost-border flex h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
+            <form
+              onSubmit={handleSubmit((data) => onSubmit(data, false))}
+              className="flex min-h-0 flex-1 flex-col gap-4"
+            >
+              <Tabs value={currentTab} onValueChange={handleSectionChange} className="flex min-h-0 flex-1 flex-col">
+                <div>
+                  <TabsList className="border-frost-border flex h-auto w-full max-w-none justify-start gap-6 overflow-visible rounded-none border-0 border-b bg-transparent! p-0 shadow-none! ring-0 sm:justify-start">
                     <TabsTrigger
-                      value="visual"
-                      className="data-[state=active]:border-primary frost-text -mb-px rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:bg-transparent data-[state=active]:shadow-none [&_[data-tab-underline]]:!hidden"
+                      value="identity"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
                     >
-                      Agent Builder
+                      Identity
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="model"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
+                    >
+                      Model
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="advanced"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
+                    >
+                      Advanced
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="tools"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
+                    >
+                      Tools
                     </TabsTrigger>
                     <TabsTrigger
                       value="yaml"
-                      className="data-[state=active]:border-primary frost-text -mb-px rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:bg-transparent data-[state=active]:shadow-none [&_[data-tab-underline]]:!hidden"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
                     >
                       YAML Code
                     </TabsTrigger>
                   </TabsList>
                 </div>
 
-                <div className="min-h-[400px] flex-1 overflow-y-auto p-6">
-                  <TabsContent value="visual" className="m-0 space-y-8 outline-none">
-                    <AgentFormFields appId={appId} llmConfigs={llmConfigs} showAgentName toolsField={toolsField} />
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-5 pb-2">
+                  {(['identity', 'model', 'advanced'] as const).map((id) => (
+                    <TabsContent key={id} value={id} className="m-0 space-y-8 outline-none">
+                      <AgentFormFields appId={appId} llmConfigs={llmConfigs} showAgentName section={id} />
+                    </TabsContent>
+                  ))}
+
+                  <TabsContent value="tools" className="m-0 space-y-4 outline-none">
+                    {toolsField}
+                    {selectedToolDetails.length > 0 ? (
+                      <ul className="space-y-2">
+                        {selectedToolDetails.map((tool) => (
+                          <li
+                            key={tool.name}
+                            className="border-frost-border flex items-start justify-between gap-3 rounded-xl border p-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="frost-text text-sm font-semibold">{tool.display_name}</p>
+                              <p className="frost-text-muted mt-0.5 text-[13px] leading-snug">
+                                {tool.description || 'No description'}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove ${tool.display_name}`}
+                              className="frost-text-muted -mt-1 -mr-1 size-8 shrink-0"
+                              onClick={() => toggleTool(tool, false)}
+                            >
+                              <X className="size-4" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="frost-text-muted text-sm">No tools selected yet. Use the list above to add some.</p>
+                    )}
                   </TabsContent>
 
-                  <TabsContent value="yaml" className="m-0 h-full outline-none">
+                  <TabsContent
+                    value="yaml"
+                    className="m-0 min-h-0 flex-1 outline-none data-[state=active]:flex data-[state=active]:flex-col"
+                  >
                     <FormField
                       control={form.control}
                       name="yamlContent"
                       render={({ field }) => (
-                        <FormItem className="flex h-full flex-col">
+                        <FormItem className="flex min-h-0 flex-1 flex-col">
                           <FormControl>
-                            <div className="frost-control border-frost-border w-full min-w-0 flex-1 overflow-hidden rounded-md border">
-                              <CodeMirror
+                            <div className="frost-control border-frost-border flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden rounded-md border">
+                              <CodeEditor
                                 value={field.value}
                                 onChange={field.onChange}
-                                theme="dark"
                                 height="100%"
-                                className="h-full min-h-[400px] w-full"
+                                className="min-h-0 w-full flex-1 [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
                                 extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
                                 placeholder="Enter your agent YAML configuration..."
                               />
@@ -316,32 +395,23 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                         </FormItem>
                       )}
                     />
-
-                    <div className="mt-4">{toolsField}</div>
                   </TabsContent>
                 </div>
 
                 {validationErrors.length > 0 && (
-                  <ul className="border-frost-border text-destructive max-h-32 list-disc space-y-0.5 overflow-y-auto border-t px-6 py-3 pl-11 text-xs">
+                  <ul className="text-destructive max-h-32 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
                     {validationErrors.map((message, index) => (
                       <li key={index}>{message}</li>
                     ))}
                   </ul>
                 )}
-                <DialogFooter className="border-frost-border bg-frost-dialog/50 border-t p-4 backdrop-blur-md">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="frost-control border-frost-border"
-                    onClick={requestClose}
-                    disabled={saving || validating}
-                  >
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={requestClose} disabled={saving || validating}>
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     variant="outline"
-                    className="frost-control border-frost-border"
                     disabled={saving || validating}
                     loading={(saving || validating) && submitAction === 'save'}
                     onClick={() => setSubmitAction('save')}

@@ -16,3 +16,14 @@ export const removeUnderscoreAndSentenceCase = (val: string): string => {
     })
     .join(' ');
 };
+
+/** Display helper: `my-cool_app` → `My Cool App` */
+export function formatAppName(name: string | null | undefined): string {
+  if (!name) return '';
+  const spaced = name.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!spaced) return '';
+  return spaced
+    .split(' ')
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : word))
+    .join(' ');
+}

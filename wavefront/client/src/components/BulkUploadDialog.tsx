@@ -155,7 +155,7 @@ const BulkUploadDialog = <T extends object = object>({
         </DialogHeader>
 
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">
+          <p className="frost-text-muted text-sm">
             {files.length} of {maxFiles} files
           </p>
           <Button

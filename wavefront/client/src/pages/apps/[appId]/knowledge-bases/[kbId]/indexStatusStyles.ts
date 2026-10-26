@@ -1,4 +1,4 @@
-import { IndexStatus } from '@app/api/knowledge-base-service';
+import { IndexStatus } from '@app/types/knowledge-base';
 
 const PENDING = {
   className: 'text-yellow-600 dark:text-yellow-400',

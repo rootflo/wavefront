@@ -1,9 +1,27 @@
 """System-message text of the browser (WebRTC) app flow (step context)."""
 
+from typing import Optional
+
 from call_processing.constants.language_config import LANGUAGE_DISPLAY_NAMES
 
 # Added to the conversation so the agent opens the step it was just moved to
 STEP_OPENER = '[The app moved to a new step. Follow the current step instructions and begin it now.]'
+
+
+def build_step_opener(instruction: Optional[str]) -> str:
+    """The user turn that opens a step, carrying the step's instruction when it has one.
+
+    The instruction is also in the system prompt, but a long prompt plus a history of
+    identical openers lets the LLM repeat its last answer; putting the instruction in the
+    turn it answers keeps each step distinct.
+    """
+    if not instruction:
+        return STEP_OPENER
+    return f'{STEP_OPENER}\n{instruction}'
+
+
+def is_step_opener(text: str) -> bool:
+    return text.startswith(STEP_OPENER)
 
 
 def step_heading(where: str) -> str:

@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popo
 import { cn } from '@app/lib/utils';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { matchesSearch } from '@app/utils/search';
 
 const identity = (id: string) => id;
 
@@ -33,8 +34,6 @@ interface MultiSelectProps<T> {
   allItemsGroupHeading?: string;
   selectedCountLabel?: (count: number) => string;
 }
-
-const matchesSearch = (value: string, search: string) => value.toLowerCase().includes(search.trim().toLowerCase());
 
 function MultiSelect<T>({
   items,
@@ -99,12 +98,12 @@ function MultiSelect<T>({
   );
 
   const visibleSelectedItems = useMemo(
-    () => selectedItems.filter((item) => matchesSearch(getSearchValue?.(item) ?? getLabel(item), search)),
+    () => selectedItems.filter((item) => matchesSearch(search, getSearchValue?.(item) ?? getLabel(item))),
     [selectedItems, search, getSearchValue, getLabel]
   );
 
   const visibleUnselectedItems = useMemo(
-    () => unselectedItems.filter((item) => matchesSearch(getSearchValue?.(item) ?? getLabel(item), search)),
+    () => unselectedItems.filter((item) => matchesSearch(search, getSearchValue?.(item) ?? getLabel(item))),
     [unselectedItems, search, getSearchValue, getLabel]
   );
 
@@ -120,7 +119,7 @@ function MultiSelect<T>({
   }, [loading, selectedIds, sortedItems, getId, normalizeId]);
 
   const visibleUnresolvedSelectedIds = useMemo(
-    () => unresolvedSelectedIds.filter((id) => matchesSearch(id, search)),
+    () => unresolvedSelectedIds.filter((id) => matchesSearch(search, id)),
     [unresolvedSelectedIds, search]
   );
 
@@ -171,7 +170,7 @@ function MultiSelect<T>({
               <div className="flex items-center justify-end gap-3 border-b px-3 py-1.5">
                 <button
                   type="button"
-                  className="cursor-pointer text-xs font-medium text-[#282828] no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                  className="frost-text cursor-pointer text-xs font-medium no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={visibleUnselectedItems.length === 0}
                   onClick={selectVisible}
                 >
@@ -179,7 +178,7 @@ function MultiSelect<T>({
                 </button>
                 <button
                   type="button"
-                  className="cursor-pointer text-xs font-medium text-[#282828] no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                  className="frost-text cursor-pointer text-xs font-medium no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={selectedIds.length === 0}
                   onClick={clearAll}
                 >

@@ -1,23 +1,6 @@
-import http, { IApiResponse } from '@app/lib/axios';
+import http from '@app/lib/axios';
 import { AxiosInstance } from 'axios';
-
-/** One problem found in a YAML document, located by its path (empty for the whole document). */
-export interface YamlValidationError {
-  path: string;
-  message: string;
-}
-
-export interface YamlValidationResult {
-  valid: boolean;
-  errors: YamlValidationError[];
-}
-
-export interface YamlValidationData {
-  message: string;
-  data: YamlValidationResult;
-}
-
-export type YamlValidationResponse = IApiResponse<YamlValidationData>;
+import { YamlValidationResponse } from '@app/types/yaml-validation';
 
 /**
  * Validates agent and workflow YAML on the server without saving it. A document with

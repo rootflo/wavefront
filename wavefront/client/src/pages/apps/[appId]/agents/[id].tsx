@@ -1,49 +1,54 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
+import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import {
-  documentMimeTypeFor,
-  documentTypeFor,
-  validateDocumentUpload,
-  validateImageUpload,
-} from '@app/constants/upload';
-import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion } from '@app/hooks';
-import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
-import { getAgentKey, getAgentVersionsKey } from '@app/hooks/data/query-keys';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@app/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { ArrowLeft, MoreVertical } from 'lucide-react';
+import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion, useUpdateAgent } from '@app/hooks';
+import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { AgentStreamEvent } from '@app/types/agent';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
-import { useQueryClient } from '@tanstack/react-query';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
 import { selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useChatAttachments } from '@app/hooks/use-chat-attachments';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifyError } = useNotifyStore();
+  const updateAgent = useUpdateAgent(appId);
 
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  // Images and documents attached to the next message
+  const {
+    images: uploadedImages,
+    documents: uploadedDocuments,
+    uploadingImage,
+    uploadingDocument,
+    addImages: handleImageUpload,
+    addDocuments: handleDocumentUpload,
+    removeImage: handleRemoveImage,
+    removeDocument: handleRemoveDocument,
+    clear: clearAttachments,
+  } = useChatAttachments({ onAdded: () => setShowUploadMenu(false) });
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [yamlContent, setYamlContent] = useState('');
-  const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
@@ -61,28 +66,6 @@ const AgentDetail: React.FC = () => {
   // LLM Config selection state
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
 
-  // Image upload state
-  const [uploadedImages, setUploadedImages] = useState<
-    Array<{
-      file: File;
-      base64: string; // Full data URL for display
-      base64Content: string; // Just base64 content for API
-      mimeType: string;
-    }>
-  >([]);
-  const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Document upload state
-  const [uploadedDocuments, setUploadedDocuments] = useState<
-    Array<{
-      file: File;
-      base64: string; // Full data URL for display
-      base64Content: string; // Just base64 content for API
-      mimeType: string;
-      documentType: string;
-    }>
-  >([]);
-  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   // Streaming state
@@ -163,157 +146,16 @@ const AgentDetail: React.FC = () => {
     }
   };
 
-  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // Validate all files before processing
-    for (let i = 0; i < files.length; i++) {
-      const imageError = validateImageUpload(files[i]);
-      if (imageError) {
-        notifyError(imageError);
-        return;
-      }
-    }
-
-    setUploadingImage(true);
-
-    // Process all files
-    const filePromises = Array.from(files).map(
-      (file) =>
-        new Promise<{
-          file: File;
-          base64: string;
-          base64Content: string;
-          mimeType: string;
-        }>((resolve, reject) => {
-          const reader = new FileReader();
-
-          reader.onload = (e) => {
-            const base64 = e.target?.result as string;
-            // Extract just the base64 content without the data URL prefix
-            const base64Content = base64.split(',')[1] || base64;
-            resolve({
-              file,
-              base64,
-              base64Content,
-              mimeType: file.type,
-            });
-          };
-
-          reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-          reader.readAsDataURL(file);
-        })
-    );
-
-    Promise.all(filePromises)
-      .then((newImages) => {
-        setUploadedImages((prev) => [...prev, ...newImages]);
-        setUploadingImage(false);
-        notifySuccess(`${newImages.length} image(s) uploaded successfully`);
-        // Reset file input
-        event.target.value = '';
-        // Close the upload menu after successful upload
-        setShowUploadMenu(false);
-      })
-      .catch((error) => {
-        notifyError(error.message || 'Error reading image files');
-        setUploadingImage(false);
-      });
-  }, []);
-
-  const handleRemoveImage = useCallback((index: number) => {
-    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const handleDocumentUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // Validate all files before processing
-    for (let i = 0; i < files.length; i++) {
-      const documentError = validateDocumentUpload(files[i]);
-      if (documentError) {
-        notifyError(documentError);
-        return;
-      }
-    }
-
-    setUploadingDocument(true);
-
-    // Process all files
-    const filePromises = Array.from(files).map((file) => {
-      return new Promise<{
-        file: File;
-        base64: string;
-        base64Content: string;
-        mimeType: string;
-        documentType: string;
-      }>((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-          const dataUrl = e.target?.result as string;
-          const base64 = dataUrl.split(',')[1];
-
-          resolve({
-            file,
-            base64: dataUrl,
-            base64Content: base64,
-            mimeType: documentMimeTypeFor(file),
-            documentType: documentTypeFor(file),
-          });
-        };
-
-        reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-        reader.readAsDataURL(file);
-      });
-    });
-
-    Promise.all(filePromises)
-      .then((newDocuments) => {
-        setUploadedDocuments((prev) => [...prev, ...newDocuments]);
-        setUploadingDocument(false);
-        notifySuccess(`${newDocuments.length} document(s) uploaded successfully`);
-        // Reset file input
-        event.target.value = '';
-        // Close the upload menu after successful upload
-        setShowUploadMenu(false);
-      })
-      .catch((error) => {
-        notifyError(error.message || 'Error reading document files');
-        setUploadingDocument(false);
-      });
-  }, []);
-
-  const handleRemoveDocument = useCallback((index: number) => {
-    setUploadedDocuments((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
   const handleSave = async (yamlContent: string, options: { createNewVersion: boolean }) => {
     if (!appId || !id || !agent) return;
 
-    setSaving(true);
-    try {
-      await floConsoleService.agentService.updateAgent(id, yamlContent, displayVersion, options.createNewVersion);
-      // Invalidate agent + versions queries to refetch updated data
-      queryClient.invalidateQueries({
-        queryKey: getAgentKey(appId || '', id || ''),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getAgentVersionsKey(appId || '', id || ''),
-      });
-      notifySuccess(
-        options.createNewVersion
-          ? 'New version created (not promoted — promote it from Versions to make it live)'
-          : 'Agent updated successfully'
-      );
-    } catch (error) {
-      console.error('Error updating agent:', error);
-      throw error;
-    } finally {
-      setSaving(false);
-    }
+    // Rethrows so the editor keeps the unsaved YAML; useUpdateAgent has already shown the error
+    await updateAgent.mutateAsync({
+      agentId: id,
+      yamlContent,
+      version: displayVersion,
+      createNewVersion: options.createNewVersion,
+    });
   };
 
   const handlePromoteVersion = (version: number) => {
@@ -340,7 +182,7 @@ const AgentDetail: React.FC = () => {
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     if (!deleteItem) return;
     deleteAgentMutation.mutate(deleteItem.id, {
       onSuccess: () => {
@@ -378,8 +220,7 @@ const AgentDetail: React.FC = () => {
       }
 
       // Prepare inputs based on what's provided
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let inputs: string | any[];
+      let inputs: string | Array<{ role: string; content: ChatMessageContent }>;
       const finalTextInput = inferenceInput.trim();
       // Handle different input combinations
       const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
@@ -472,9 +313,7 @@ const AgentDetail: React.FC = () => {
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
-      //clearing the documents and images
-      setUploadedDocuments([]);
-      setUploadedImages([]);
+      clearAttachments();
     } catch (error) {
       console.error('Error running inference:', error);
     } finally {
@@ -591,110 +430,140 @@ const AgentDetail: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-transparent p-8">
-      <Breadcrumb className="mb-6">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/agents`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Agents
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{agent?.name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="flex h-full min-h-0 flex-col bg-transparent p-3 sm:p-8">
+      <PageBreadcrumb
+        items={[
+          { label: 'Agents', to: `/apps/${appId}/agents` },
+          { label: agent?.name, loading: agentLoading },
+        ]}
+      />
 
       {agentLoading ? (
-        <div className="frost-text-muted flex items-center justify-center p-8">Loading agent...</div>
+        <>
+          <div className="flex min-w-0 items-center gap-2 pb-3 md:pb-6">
+            <button
+              type="button"
+              aria-label="Back to agents"
+              onClick={() => navigate(`/apps/${appId}/agents`)}
+              className="frost-text hover:bg-frost-glass -ml-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <PageTitle loading />
+          </div>
+          <div className="frost-text-muted flex items-center justify-center p-8">Loading agent...</div>
+        </>
       ) : !agent ? (
         <div className="flex items-center justify-center p-8 text-red-600 dark:text-red-400">Agent not found</div>
       ) : (
         <>
-          <div className="flex w-full flex-1 flex-col gap-10">
-            <div className="flex items-start justify-between">
-              <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(agent.name)}</p>
-              <div className="flex items-center gap-4">
-                <StreamToggle enabled={listenEventsEnabled} onChange={setListenEventsEnabled} subject="reply" />
-                {agentVersions.length > 0 && (
-                  <Select
-                    value={displayVersion !== undefined ? String(displayVersion) : ''}
-                    onValueChange={(val) => setSelectedVersion(Number(val))}
-                  >
-                    <SelectTrigger className="w-[150px]">
-                      <SelectValue placeholder="Version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[...agentVersions]
-                        .sort((a, b) => a.version - b.version)
-                        .map((v) => (
-                          <SelectItem key={v.id} value={String(v.version)}>
-                            v{v.version}
-                            {v.is_current ? ' (current)' : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                )}
+          <div className="flex w-full shrink-0 flex-col gap-3 pb-3 md:flex-row md:items-center md:justify-between md:pb-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label="Back to agents"
+                onClick={() => navigate(`/apps/${appId}/agents`)}
+                className="frost-text hover:bg-frost-glass -ml-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <PageTitle>{formatAppName(agent.name)}</PageTitle>
                 {agent.current_version !== undefined && (
-                  <Badge variant="secondary">Current: v{agent.current_version}</Badge>
+                  <p className="frost-text-muted text-xs md:hidden">Current: v{agent.current_version}</p>
                 )}
-                <Button variant="outline" onClick={() => setVersionsDialogOpen(true)}>
-                  Versions
-                </Button>
-                <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-                  Edit
-                </Button>
-                <Button variant="destructive" onClick={handleDeleteClick}>
-                  Delete
-                </Button>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Agent actions"
+                    className="frost-text hover:bg-frost-glass flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+                  >
+                    <MoreVertical className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setVersionsDialogOpen(true)}>Versions</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>Edit</DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600 dark:text-red-400"
+                    onClick={handleDeleteClick}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 md:gap-4">
+              <StreamToggle enabled={listenEventsEnabled} onChange={setListenEventsEnabled} subject="reply" />
+              {agentVersions.length > 0 && (
+                <Select
+                  value={displayVersion !== undefined ? String(displayVersion) : ''}
+                  onValueChange={(val) => setSelectedVersion(Number(val))}
+                >
+                  <SelectTrigger className="min-w-0 flex-1 md:w-[150px] md:flex-none">
+                    <SelectValue placeholder="Version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...agentVersions]
+                      .sort((a, b) => a.version - b.version)
+                      .map((v) => (
+                        <SelectItem key={v.id} value={String(v.version)}>
+                          v{v.version}
+                          {v.is_current ? ' (current)' : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {agent.current_version !== undefined && (
+                <Badge variant="secondary" className="hidden md:inline-flex">
+                  Current: v{agent.current_version}
+                </Badge>
+              )}
+              <Button variant="outline" className="hidden md:inline-flex" onClick={() => setVersionsDialogOpen(true)}>
+                Versions
+              </Button>
+              <Button variant="outline" className="hidden md:inline-flex" onClick={() => setEditDialogOpen(true)}>
+                Edit
+              </Button>
+              <Button variant="destructive" className="hidden md:inline-flex" onClick={handleDeleteClick}>
+                Delete
+              </Button>
             </div>
           </div>
 
-          <ChatBot
-            chatHistory={chatHistory}
-            runningInference={runningInference}
-            selectedLLMConfigId={selectedLLMConfigId}
-            setSelectedLLMConfigId={setSelectedLLMConfigId}
-            loadingConfigs={loadingConfigs}
-            llmConfigs={llmConfigs}
-            uploadedImages={uploadedImages}
-            uploadedDocuments={uploadedDocuments}
-            handleRemoveImage={handleRemoveImage}
-            handleRemoveDocument={handleRemoveDocument}
-            showUploadMenu={showUploadMenu}
-            setShowUploadMenu={setShowUploadMenu}
-            inferenceInput={inferenceInput}
-            setInferenceInput={setInferenceInput}
-            inferenceVariables={inferenceVariables}
-            setInferenceVariables={setInferenceVariables}
-            showVariablesInput={showVariablesInput}
-            setShowVariablesInput={setShowVariablesInput}
-            handleQuestionEntered={handleQuestionEntered}
-            handleImageUpload={handleImageUpload}
-            handleDocumentUpload={handleDocumentUpload}
-            uploadingImage={uploadingImage}
-            uploadingDocument={uploadingDocument}
-            streamingEvents={streamingEvents}
-            isStreaming={isStreaming}
-            eventsContainerRef={eventsContainerRef}
-          />
+          <div className="min-h-0 flex-1">
+            <ChatBot
+              chatHistory={chatHistory}
+              runningInference={runningInference}
+              selectedLLMConfigId={selectedLLMConfigId}
+              setSelectedLLMConfigId={setSelectedLLMConfigId}
+              loadingConfigs={loadingConfigs}
+              llmConfigs={llmConfigs}
+              uploadedImages={uploadedImages}
+              uploadedDocuments={uploadedDocuments}
+              handleRemoveImage={handleRemoveImage}
+              handleRemoveDocument={handleRemoveDocument}
+              showUploadMenu={showUploadMenu}
+              setShowUploadMenu={setShowUploadMenu}
+              inferenceInput={inferenceInput}
+              setInferenceInput={setInferenceInput}
+              inferenceVariables={inferenceVariables}
+              setInferenceVariables={setInferenceVariables}
+              showVariablesInput={showVariablesInput}
+              setShowVariablesInput={setShowVariablesInput}
+              handleQuestionEntered={handleQuestionEntered}
+              handleImageUpload={handleImageUpload}
+              handleDocumentUpload={handleDocumentUpload}
+              uploadingImage={uploadingImage}
+              uploadingDocument={uploadingDocument}
+              streamingEvents={streamingEvents}
+              isStreaming={isStreaming}
+              eventsContainerRef={eventsContainerRef}
+            />
+          </div>
 
           {/* Edit Agent Dialog */}
           <EditAgentDialog
@@ -711,7 +580,7 @@ const AgentDetail: React.FC = () => {
               setYamlContent(updatedYamlContent);
               setSelectedTools(updatedSelectedTools);
             }}
-            saving={saving}
+            saving={updateAgent.isPending}
           />
 
           {/* Versions Dialog */}

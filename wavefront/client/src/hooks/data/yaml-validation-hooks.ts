@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
-import { yamlValidationService, YamlValidationResponse, YamlValidationResult } from '@app/api/yaml-validation-service';
+import { yamlValidationService } from '@app/api/yaml-validation-service';
+import { YamlValidationResponse, YamlValidationResult } from '@app/types/yaml-validation';
 
 export interface ValidateYamlVariables {
   yamlContent: string;

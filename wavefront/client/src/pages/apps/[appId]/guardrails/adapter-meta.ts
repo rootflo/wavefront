@@ -1,4 +1,4 @@
-import { FailureMode, PiiEntityGroup, WorkflowStage } from '@app/api/guardrails-service';
+import { FailureMode, PiiEntityGroup, WorkflowStage } from '@app/types/guardrails';
 
 export interface AdapterMeta {
   title: string;

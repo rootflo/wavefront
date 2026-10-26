@@ -1,5 +1,7 @@
 import floConsoleService from '@app/api';
+import MobileBackButton from '@app/components/MobileBackButton';
 import ChatBot from '@app/components/ChatBot';
+import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import VersionsDialog from '@app/components/VersionsDialog';
 import { Badge } from '@app/components/ui/badge';
@@ -8,36 +10,33 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
 import { appEnv } from '@app/config/env';
-import {
-  documentMimeTypeFor,
-  documentTypeFor,
-  validateDocumentUpload,
-  validateImageUpload,
-} from '@app/constants/upload';
 import { useGetWorkflowVersions, usePromoteWorkflowVersion, useDeleteWorkflowVersion } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
-import { Workflow, WorkflowEvent } from '@app/types/workflow';
+import { WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
-import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
+import { useChatAttachments } from '@app/hooks/use-chat-attachments';
+import { useGetWorkflow } from '@app/hooks';
 
 type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 
 const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
-  const { notifySuccess, notifyError } = useNotifyStore();
-  const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const { notifyError } = useNotifyStore();
   // Saved YAML shown on the page; editing happens in the standalone editor tab
-  const [yamlContent, setYamlContent] = useState('');
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
   const [selectedVersion, setSelectedVersion] = useState<number | undefined>(undefined);
+  const {
+    data: workflow = null,
+    isLoading: workflowLoading,
+    refetch: refetchWorkflow,
+  } = useGetWorkflow(appId, id, selectedVersion);
 
   const { data: workflowVersions = [], isLoading: versionsLoading } = useGetWorkflowVersions(appId, id);
   const promoteVersionMutation = usePromoteWorkflowVersion(appId, id);
@@ -51,39 +50,27 @@ const WorkflowDetail: React.FC = () => {
   const [inferenceVariables, setInferenceVariables] = useState('{}');
   const [runningInference, setRunningInference] = useState(false);
 
-  // Image upload state (keeping single for backward compatibility, but also adding array for ChatBot)
-  const [uploadedImage, setUploadedImage] = useState<{
-    file: File;
-    base64: string;
-    mimeType: string;
-  } | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadedImages, setUploadedImages] = useState<
-    Array<{
-      file: File;
-      base64: string;
-      base64Content: string;
-      mimeType: string;
-    }>
-  >([]);
-
   // Chat history and menu states
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  // Images and documents attached to the next message
+  const {
+    images: uploadedImages,
+    documents: uploadedDocuments,
+    uploadingImage,
+    uploadingDocument,
+    addImages: handleImageUpload,
+    addDocuments: handleDocumentUpload,
+    removeImage: handleRemoveImage,
+    removeDocument: handleRemoveDocument,
+    clear: clearAttachments,
+  } = useChatAttachments({ onAdded: () => setShowUploadMenu(false) });
+  // The single-image request field takes the first attached image
+  const uploadedImage = uploadedImages[0] ?? null;
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
 
   // Document upload state
-  const [uploadedDocuments, setUploadedDocuments] = useState<
-    Array<{
-      file: File;
-      base64: string; // Full data URL for display
-      base64Content: string; // Just base64 content for API
-      mimeType: string;
-      documentType: string;
-    }>
-  >([]);
-  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [outputJsonEnabled, setOutputJsonEnabled] = useState(false);
 
   // SSE state
@@ -96,117 +83,6 @@ const WorkflowDetail: React.FC = () => {
   // Ref for current abort controller - used so unmount cleanup doesn't depend on state
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadWorkflow = useCallback(
-    async (version?: number) => {
-      if (!id) return;
-
-      try {
-        const response = await floConsoleService.workflowService.getWorkflow(id, version);
-        if (response.data?.meta?.status === 'success' && response.data.data?.data) {
-          const workflowData: Workflow = {
-            id: response.data.data.data.id,
-            name: response.data.data.data.name,
-            namespace: response.data.data.data.namespace,
-            created_at: response.data.data.data.created_at,
-            updated_at: response.data.data.data.updated_at,
-            yaml_content: response.data.data.data.yaml_content || '',
-            version: response.data.data.data.version,
-            current_version: response.data.data.data.current_version,
-          };
-          setWorkflow(workflowData);
-          setYamlContent(response.data.data.data.yaml_content || '');
-        }
-      } catch (error) {
-        console.error('Error loading workflow:', error);
-      }
-    },
-    [id]
-  );
-
-  const handleImageUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-
-      // Validate all files before processing
-      for (let i = 0; i < files.length; i++) {
-        const imageError = validateImageUpload(files[i]);
-        if (imageError) {
-          notifyError(imageError);
-          return;
-        }
-      }
-
-      setUploadingImage(true);
-
-      // Process all files
-      const filePromises = Array.from(files).map(
-        (file) =>
-          new Promise<{
-            file: File;
-            base64: string;
-            base64Content: string;
-            mimeType: string;
-          }>((resolve, reject) => {
-            const reader = new FileReader();
-
-            reader.onload = (e) => {
-              const base64 = e.target?.result as string;
-              const base64Content = base64.split(',')[1] || base64;
-              resolve({
-                file,
-                base64,
-                base64Content,
-                mimeType: file.type,
-              });
-            };
-
-            reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-            reader.readAsDataURL(file);
-          })
-      );
-
-      Promise.all(filePromises)
-        .then((newImages) => {
-          setUploadedImages((prev) => [...prev, ...newImages]);
-          // Keep single image for backward compatibility (use first image)
-          if (newImages.length > 0) {
-            setUploadedImage({
-              file: newImages[0].file,
-              base64: newImages[0].base64,
-              mimeType: newImages[0].mimeType,
-            });
-          }
-          setUploadingImage(false);
-          notifySuccess(`${newImages.length} image(s) uploaded successfully`);
-          event.target.value = '';
-          setShowUploadMenu(false);
-        })
-        .catch((error) => {
-          notifyError(error.message || 'Error reading image files');
-          setUploadingImage(false);
-        });
-    },
-    [notifyError, notifySuccess]
-  );
-
-  const handleRemoveImage = useCallback((index: number) => {
-    setUploadedImages((prev) => {
-      const remaining = prev.filter((_, i) => i !== index);
-      // Update single image for backward compatibility
-      if (remaining.length > 0) {
-        setUploadedImage({
-          file: remaining[0].file,
-          base64: remaining[0].base64,
-          mimeType: remaining[0].mimeType,
-        });
-      } else {
-        setUploadedImage(null);
-      }
-      return remaining;
-    });
-  }, []);
-
   // Cleanup SSE request only on unmount (avoid aborting when abortController state changes)
   useEffect(() => {
     return () => {
@@ -214,83 +90,14 @@ const WorkflowDetail: React.FC = () => {
       abortControllerRef.current = null;
     };
   }, []);
-  const handleDocumentUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-
-      // Validate all files before processing
-      for (let i = 0; i < files.length; i++) {
-        const documentError = validateDocumentUpload(files[i]);
-        if (documentError) {
-          notifyError(documentError);
-          return;
-        }
-      }
-
-      setUploadingDocument(true);
-
-      // Process all files
-      const filePromises = Array.from(files).map((file) => {
-        return new Promise<{
-          file: File;
-          base64: string;
-          base64Content: string;
-          mimeType: string;
-          documentType: string;
-        }>((resolve, reject) => {
-          const reader = new FileReader();
-
-          reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            const base64 = dataUrl.split(',')[1];
-
-            resolve({
-              file,
-              base64: dataUrl,
-              base64Content: base64,
-              mimeType: documentMimeTypeFor(file),
-              documentType: documentTypeFor(file),
-            });
-          };
-
-          reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
-          reader.readAsDataURL(file);
-        });
-      });
-
-      Promise.all(filePromises)
-        .then((newDocuments) => {
-          setUploadedDocuments((prev) => [...prev, ...newDocuments]);
-          setUploadingDocument(false);
-          // Reset file input
-          setShowUploadMenu(false);
-          event.target.value = '';
-        })
-        .catch((error) => {
-          notifyError(error.message || 'Error reading document files');
-          setUploadingDocument(false);
-        });
-    },
-    [notifyError]
-  );
-
-  const handleRemoveDocument = useCallback((index: number) => {
-    setUploadedDocuments((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  useEffect(() => {
-    loadWorkflow(selectedVersion);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, selectedVersion]);
 
   // Reload when this workflow is created or saved from an editor tab
   useWorkflowUpdatedListener(
     useCallback(
       (updatedId: string) => {
-        if (updatedId === id) loadWorkflow(selectedVersion);
+        if (updatedId === id) void refetchWorkflow();
       },
-      [id, loadWorkflow, selectedVersion]
+      [id, refetchWorkflow]
     )
   );
 
@@ -300,12 +107,7 @@ const WorkflowDetail: React.FC = () => {
   };
 
   const handlePromoteVersion = (version: number) => {
-    promoteVersionMutation.mutate(
-      { workflowId: id!, version },
-      {
-        onSuccess: () => loadWorkflow(selectedVersion),
-      }
-    );
+    promoteVersionMutation.mutate({ workflowId: id!, version });
   };
 
   const handleDeleteVersion = (version: number) => {
@@ -315,12 +117,7 @@ const WorkflowDetail: React.FC = () => {
     if (wasViewingDeleted) {
       setSelectedVersion(undefined);
     }
-    deleteVersionMutation.mutate(
-      { workflowId: id!, version },
-      {
-        onSuccess: () => loadWorkflow(wasViewingDeleted ? undefined : selectedVersion),
-      }
-    );
+    deleteVersionMutation.mutate({ workflowId: id!, version });
   };
 
   const handleViewVersion = (version: number) => {
@@ -329,18 +126,10 @@ const WorkflowDetail: React.FC = () => {
   };
 
   const handleQuertionEntered = () => {
-    if (
-      inferenceInput.trim().length > 0 ||
-      uploadedImages.length > 0 ||
-      uploadedDocuments.length > 0 ||
-      uploadedImage
-    ) {
+    if (inferenceInput.trim().length > 0 || uploadedImages.length > 0 || uploadedDocuments.length > 0) {
       handleRunInference();
       setInferenceInput('');
-      setUploadedImages([]);
-      setUploadedImage(null);
-      // Clear documents after inference
-      setUploadedDocuments([]);
+      clearAttachments();
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
@@ -376,8 +165,7 @@ const WorkflowDetail: React.FC = () => {
         }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let inputs: string | any[];
+      let inputs: string | MessageInput[];
 
       // Handle different input combinations
       const messageInputs: MessageInput[] = [];
@@ -689,11 +477,21 @@ const WorkflowDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-transparent py-5">
-      <div className="flex h-full w-full flex-col gap-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
-          <div className="flex flex-wrap items-center justify-end gap-4">
+    <div className="h-full bg-transparent py-2">
+      <div className="flex h-full w-full flex-col gap-4 md:gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/workflows`} label="Back to workflows" />
+            <PageTitle loading={!workflow && workflowLoading}>{formatAppName(workflow?.name)}</PageTitle>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-4">
+            <Label
+              htmlFor="output-json-toggle"
+              className="frost-control ring-frost-border flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 ring-1"
+            >
+              <span className="frost-text text-[13px] font-medium">JSON output</span>
+              <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
+            </Label>
             <StreamToggle
               enabled={listenEventsEnabled}
               onChange={setListenEventsEnabled}
@@ -705,7 +503,7 @@ const WorkflowDetail: React.FC = () => {
                 value={displayVersion !== undefined ? String(displayVersion) : ''}
                 onValueChange={(val) => setSelectedVersion(Number(val))}
               >
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="min-w-0 flex-1 md:w-[150px] md:flex-none">
                   <SelectValue placeholder="Version" />
                 </SelectTrigger>
                 <SelectContent>
@@ -732,57 +530,42 @@ const WorkflowDetail: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex w-full flex-1 gap-10 pb-5">
-          <div className="flex h-full w-full flex-col gap-10">
-            <div className="flex h-full flex-col gap-3">
-              <p className="frost-text text-lg leading-4 font-medium">Configuration</p>
-              <CodeMirror
-                value={yamlContent}
-                editable={false}
-                theme="dark"
-                className="h-full max-h-[600px] w-full max-w-[800px]"
-                height="100%"
-                extensions={[langs.yaml()]}
+        <div className="min-h-0 w-full flex-1 pb-2">
+          <div className="flex h-full min-h-[28rem] w-full flex-col">
+            <div className="min-h-0 flex-1">
+              <ChatBot
+                chatHistory={chatHistory}
+                runningInference={runningInference}
+                selectedLLMConfigId={selectedLLMConfigId}
+                setSelectedLLMConfigId={setSelectedLLMConfigId}
+                loadingConfigs={false}
+                llmConfigs={[]}
+                uploadedImages={uploadedImages}
+                uploadedDocuments={uploadedDocuments}
+                handleRemoveImage={handleRemoveImage}
+                handleRemoveDocument={handleRemoveDocument}
+                showUploadMenu={showUploadMenu}
+                setShowUploadMenu={setShowUploadMenu}
+                inferenceInput={inferenceInput}
+                setInferenceInput={setInferenceInput}
+                inferenceVariables={inferenceVariables}
+                setInferenceVariables={setInferenceVariables}
+                showVariablesInput={showVariablesInput}
+                setShowVariablesInput={setShowVariablesInput}
+                handleQuestionEntered={handleQuertionEntered}
+                handleImageUpload={handleImageUpload}
+                handleDocumentUpload={handleDocumentUpload}
+                uploadingImage={uploadingImage}
+                uploadingDocument={uploadingDocument}
+                isModelSwitchEnabled={false}
+                emptyTitle="Run this workflow"
+                emptyDescription="Enter an input below to run it and see the result of each step."
+                inputPlaceholder="Enter input for the workflow"
+                streamingEvents={streamingEvents}
+                isStreaming={isStreaming}
+                eventsContainerRef={eventsContainerRef}
               />
             </div>
-          </div>
-
-          <div className="flex w-full flex-col gap-2">
-            <div className="flex items-center justify-between pb-2">
-              <Label htmlFor="output-json-toggle" className="frost-text text-sm">
-                JSON output
-              </Label>
-              <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
-            </div>
-            <ChatBot
-              chatHistory={chatHistory}
-              runningInference={runningInference}
-              selectedLLMConfigId={selectedLLMConfigId}
-              setSelectedLLMConfigId={setSelectedLLMConfigId}
-              loadingConfigs={false}
-              llmConfigs={[]}
-              uploadedImages={uploadedImages}
-              uploadedDocuments={uploadedDocuments}
-              handleRemoveImage={handleRemoveImage}
-              handleRemoveDocument={handleRemoveDocument}
-              showUploadMenu={showUploadMenu}
-              setShowUploadMenu={setShowUploadMenu}
-              inferenceInput={inferenceInput}
-              setInferenceInput={setInferenceInput}
-              inferenceVariables={inferenceVariables}
-              setInferenceVariables={setInferenceVariables}
-              showVariablesInput={showVariablesInput}
-              setShowVariablesInput={setShowVariablesInput}
-              handleQuestionEntered={handleQuertionEntered}
-              handleImageUpload={handleImageUpload}
-              handleDocumentUpload={handleDocumentUpload}
-              uploadingImage={uploadingImage}
-              uploadingDocument={uploadingDocument}
-              isModelSwitchEnabled={false}
-              streamingEvents={streamingEvents}
-              isStreaming={isStreaming}
-              eventsContainerRef={eventsContainerRef}
-            />
           </div>
         </div>
       </div>

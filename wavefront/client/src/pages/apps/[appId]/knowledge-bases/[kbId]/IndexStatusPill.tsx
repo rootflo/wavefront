@@ -1,4 +1,4 @@
-import { IndexStatus } from '@app/api/knowledge-base-service';
+import { IndexStatus } from '@app/types/knowledge-base';
 import { cn } from '@app/lib/utils';
 import React from 'react';
 import { INDEX_STATUS_STYLES } from './indexStatusStyles';

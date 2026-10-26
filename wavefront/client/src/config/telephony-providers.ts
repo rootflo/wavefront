@@ -49,8 +49,8 @@ export const TELEPHONY_PROVIDERS_CONFIG: Record<TelephonyProvider, TelephonyProv
   twilio: {
     name: 'Twilio',
     badge: {
-      bg: 'bg-red-100',
-      text: 'text-red-800',
+      bg: 'bg-red-500/12',
+      text: 'text-red-700 dark:text-red-300',
     },
     allowedConnectionTypes: ['websocket'], // Currently only websocket is allowed, add 'sip' when ready
     connectionTypes: {
@@ -98,8 +98,8 @@ export const TELEPHONY_PROVIDERS_CONFIG: Record<TelephonyProvider, TelephonyProv
   exotel: {
     name: 'Exotel',
     badge: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
+      bg: 'bg-green-500/12',
+      text: 'text-green-700 dark:text-green-300',
     },
     allowedConnectionTypes: ['websocket'], // WebSocket only for Exotel
     connectionTypes: {
@@ -147,8 +147,8 @@ export const TELEPHONY_PROVIDERS_CONFIG: Record<TelephonyProvider, TelephonyProv
   smartflo: {
     name: 'Smartflo',
     badge: {
-      bg: 'bg-orange-100',
-      text: 'text-orange-800',
+      bg: 'bg-orange-500/12',
+      text: 'text-orange-700 dark:text-orange-300',
     },
     allowedConnectionTypes: ['websocket'],
     connectionTypes: {
@@ -198,12 +198,12 @@ export const TELEPHONY_PROVIDERS_CONFIG: Record<TelephonyProvider, TelephonyProv
 // Connection type badge colors
 export const CONNECTION_TYPE_BADGES: Record<ConnectionType, { bg: string; text: string }> = {
   websocket: {
-    bg: 'bg-blue-100',
-    text: 'text-blue-800',
+    bg: 'bg-blue-500/12',
+    text: 'text-blue-700 dark:text-blue-300',
   },
   sip: {
-    bg: 'bg-purple-100',
-    text: 'text-purple-800',
+    bg: 'bg-purple-500/12',
+    text: 'text-purple-700 dark:text-purple-300',
   },
 };
 
