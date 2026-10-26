@@ -96,10 +96,6 @@ const WorkflowEditorPage: React.FC = () => {
   }, [id, loadWorkflow]);
 
   useEffect(() => {
-    document.title = isCreate ? 'New workflow' : workflow ? `Edit ${workflow.name}` : 'Workflow editor';
-  }, [isCreate, workflow]);
-
-  useEffect(() => {
     setCreateErrors([]);
   }, [draftYaml]);
 
