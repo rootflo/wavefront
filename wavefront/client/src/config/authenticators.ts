@@ -29,8 +29,8 @@ export const AUTHENTICATOR_PROVIDERS_CONFIG: Record<AuthenticatorType, ProviderC
   google_oauth: {
     name: 'Google OAuth 2.0',
     badge: {
-      bg: 'bg-red-100',
-      text: 'text-red-800',
+      bg: 'bg-red-500/12',
+      text: 'text-red-700 dark:text-red-300',
     },
     parameters: {
       client_id: {
@@ -111,8 +111,8 @@ export const AUTHENTICATOR_PROVIDERS_CONFIG: Record<AuthenticatorType, ProviderC
   microsoft_oauth: {
     name: 'Microsoft OAuth 2.0',
     badge: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-800',
+      bg: 'bg-blue-500/12',
+      text: 'text-blue-700 dark:text-blue-300',
     },
     parameters: {
       client_id: {
@@ -191,8 +191,8 @@ export const AUTHENTICATOR_PROVIDERS_CONFIG: Record<AuthenticatorType, ProviderC
   microsoft_adfs: {
     name: 'Microsoft ADFS (OIDC)',
     badge: {
-      bg: 'bg-purple-100',
-      text: 'text-purple-800',
+      bg: 'bg-purple-500/12',
+      text: 'text-purple-700 dark:text-purple-300',
     },
     parameters: {
       client_id: {
@@ -307,8 +307,8 @@ export const AUTHENTICATOR_PROVIDERS_CONFIG: Record<AuthenticatorType, ProviderC
   email_password: {
     name: 'Email & Password',
     badge: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
+      bg: 'bg-green-500/12',
+      text: 'text-green-700 dark:text-green-300',
     },
     parameters: {
       password_policy: {
@@ -415,7 +415,7 @@ export function getProviderConfig(authType: AuthenticatorType): ProviderConfig |
 // Helper function to get provider badge colors
 export function getProviderBadge(authType: AuthenticatorType): { bg: string; text: string } {
   const config = AUTHENTICATOR_PROVIDERS_CONFIG[authType];
-  return config ? config.badge : { bg: 'bg-gray-100', text: 'text-gray-800' };
+  return config ? config.badge : { bg: 'bg-gray-500/12', text: 'text-gray-700 dark:text-gray-300' };
 }
 
 // Helper function to initialize parameters with defaults

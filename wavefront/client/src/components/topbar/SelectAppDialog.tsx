@@ -2,7 +2,8 @@ import { Button } from '@app/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { cn, formatAppName } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 import { App } from '@app/types/app';
 import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -43,7 +44,7 @@ const SelectAppDialog: React.FC<SelectAppDialogProps> = ({ open, onOpenChange, a
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false} className="flex h-[520px] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <div className="border-frost-border flex shrink-0 items-center justify-between gap-4 border-b px-6 py-4">
+        <div className="border-frost-border flex shrink-0 flex-col items-stretch justify-between gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-6">
           <DialogHeader className="space-y-0 text-left">
             <DialogTitle>Select App</DialogTitle>
           </DialogHeader>
@@ -52,11 +53,11 @@ const SelectAppDialog: React.FC<SelectAppDialogProps> = ({ open, onOpenChange, a
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search apps"
-            className="h-8 w-[200px] shrink-0"
+            className="h-8 w-full shrink-0 sm:w-[200px]"
           />
         </div>
 
-        <div className="frost-table-panel ring-frost-border m-4 mb-0 min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
+        <div className="frost-table-panel ring-frost-border m-3 mb-0 min-h-0 flex-1 overflow-auto rounded-xl border ring-1 sm:m-4 sm:mb-0">
           {filteredApps.length === 0 ? (
             <p className="frost-text-muted px-3 py-8 text-center text-[13px]">No apps found</p>
           ) : (
@@ -94,7 +95,7 @@ const SelectAppDialog: React.FC<SelectAppDialogProps> = ({ open, onOpenChange, a
           )}
         </div>
 
-        <DialogFooter className="border-frost-border shrink-0 border-t px-6 py-4 sm:justify-end">
+        <DialogFooter className="border-frost-border shrink-0 border-t px-4 py-4 sm:justify-end sm:px-6">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

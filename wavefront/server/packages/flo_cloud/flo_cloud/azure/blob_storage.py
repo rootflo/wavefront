@@ -8,12 +8,13 @@ from urllib.parse import quote
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.storage.blob import (
+    BlobPrefix,
     BlobSasPermissions,
     BlobServiceClient,
     generate_blob_sas,
 )
 
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
 from ..exceptions import CloudStorageFileNotFoundError
 
 
@@ -321,6 +322,55 @@ class AzureBlobStorage(CloudStorageHandler):
             raise Exception(f'Container {bucket_name} not found')
         except Exception as e:
             raise Exception(f'Error listing files from Azure Blob Storage: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using ``walk_blobs`` and Azure's continuation token."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            container_client = self.client.get_container_client(bucket_name)
+            pages = container_client.walk_blobs(
+                name_starts_with=prefix or None,
+                delimiter=delimiter,
+                results_per_page=page_size,
+            ).by_page(continuation_token=page_token or None)
+            page = next(pages, None)
+            if page is None:
+                return FolderListing()
+
+            folders: List[str] = []
+            files: List[StorageObject] = []
+            for item in page:
+                # walk_blobs yields a BlobPrefix for each sub-folder and BlobProperties for each blob.
+                if isinstance(item, BlobPrefix):
+                    folders.append(item.name)
+                else:
+                    settings = getattr(item, 'content_settings', None)
+                    files.append(
+                        StorageObject(
+                            key=item.name,
+                            size=getattr(item, 'size', None),
+                            content_type=getattr(settings, 'content_type', None),
+                            updated_at=getattr(item, 'last_modified', None),
+                        )
+                    )
+            return FolderListing(
+                folders=sorted(folders),
+                files=files,
+                next_page_token=pages.continuation_token or None,
+            )
+        except ResourceNotFoundError:
+            raise Exception(f'Container {bucket_name} not found')
+        except Exception as e:
+            raise Exception(f'Error listing folder from Azure Blob Storage: {str(e)}')
 
     def open_text_writer(
         self, bucket_name: str, key: str, content_type: Optional[str] = None

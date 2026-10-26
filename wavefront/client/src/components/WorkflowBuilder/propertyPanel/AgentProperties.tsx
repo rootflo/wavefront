@@ -5,7 +5,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
 import { AgentConfigMethod } from '@app/types/workflow-builder';
-import { ParserBuilder } from '../ParserBuilder';
+import { ParserBuilder, ParserSchema } from '../ParserBuilder';
 import { isExecutableNode } from '../graphUtils';
 import { NumberInput } from './NumberInput';
 import { LlmModelOption, NodePropertiesProps, ParserMode, ToolOption } from './types';
@@ -234,7 +234,10 @@ export const AgentProperties = ({
             </div>
           </div>
           {parserMode === 'builder' ? (
-            <ParserBuilder value={selectedNode.data.parser} onChange={(val) => handleChange('parser', val)} />
+            <ParserBuilder
+              value={selectedNode.data.parser as ParserSchema | undefined}
+              onChange={(val) => handleChange('parser', val)}
+            />
           ) : (
             <>
               <textarea

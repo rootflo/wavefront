@@ -4,7 +4,7 @@ from itertools import islice
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from typing import Optional, List, Tuple, IO, ContextManager
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
@@ -245,6 +245,48 @@ class GCSStorage(CloudStorageHandler):
             raise Exception(f'Bucket {bucket_name} not found')
         except Exception as e:
             raise Exception(f'Error listing files from GCS: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using GCS's own delimiter listing and page token."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            iterator = self.client.bucket(bucket_name).list_blobs(
+                prefix=prefix or None,
+                delimiter=delimiter,
+                max_results=page_size,
+                page_token=page_token or None,
+            )
+            # One API page; its sub-folders arrive as `prefixes` alongside the blobs.
+            page = next(iterator.pages, None)
+            if page is None:
+                return FolderListing()
+            files = [
+                StorageObject(
+                    key=blob.name,
+                    size=blob.size,
+                    content_type=blob.content_type,
+                    updated_at=blob.updated,
+                )
+                for blob in page
+            ]
+            return FolderListing(
+                folders=sorted(getattr(page, 'prefixes', ()) or ()),
+                files=files,
+                next_page_token=iterator.next_page_token,
+            )
+        except NotFound:
+            raise Exception(f'Bucket {bucket_name} not found')
+        except Exception as e:
+            raise Exception(f'Error listing folder from GCS: {str(e)}')
 
     def delete_file(self, bucket_name: str, file_path: str) -> None:
         """

@@ -1,4 +1,4 @@
-import { FailureMode, GuardrailAdapterConfig, PiiEntityGroup, WorkflowStage } from '@app/api/guardrails-service';
+import { FailureMode, GuardrailAdapterConfig, PiiEntityGroup, WorkflowStage } from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Label } from '@app/components/ui/label';
@@ -42,11 +42,11 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
   const severity = Number(config?.options?.severity_threshold ?? 4);
 
   return (
-    <section className={`rounded-lg border border-gray-200 p-6 ${disabled ? 'opacity-60' : ''}`}>
+    <section className={`frost-card ring-frost-border rounded-2xl border p-6 ring-1 ${disabled ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between">
         <div className="pr-8">
           <Label className="text-base font-semibold">{meta?.title ?? name}</Label>
-          <p className="mt-1 text-sm text-gray-600">{meta?.description ?? name}</p>
+          <p className="frost-text-muted mt-1 text-sm">{meta?.description ?? name}</p>
         </div>
         <Switch checked={enabled} disabled={disabled} onCheckedChange={onToggle} />
       </div>
@@ -60,7 +60,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
               <Label className="text-sm font-medium">Where it runs</Label>
               <div className="mt-2 flex flex-col gap-2">
                 {(Object.keys(STAGE_LABELS) as WorkflowStage[]).map((stage) => (
-                  <label key={stage} className="flex items-center gap-2 text-sm text-gray-700">
+                  <label key={stage} className="frost-text-muted flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={config.stages.includes(stage)}
                       disabled={disabled}
@@ -73,7 +73,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
             </div>
 
             {name === 'presidio_pii' && (piiGroups?.length ?? 0) === 0 && (
-              <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-600">
+              <p className="border-frost-border bg-frost-glass frost-text-muted rounded-md border border-dashed p-3 text-xs">
                 The list of detectable identifiers could not be loaded, so there is nothing to choose from here. This
                 check keeps running with its default set of high-precision identifiers — emails, phone numbers, card
                 numbers and similar.
@@ -89,7 +89,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                   onChange={(entities) => setOption('entities', entities)}
                 />
                 <div className="flex items-center justify-between">
-                  <p className="pr-8 text-xs text-gray-500">
+                  <p className="frost-text-subtle pr-8 text-xs">
                     Check the selection against sample text before switching this namespace to Enforce.
                   </p>
                   <Button
@@ -116,7 +116,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                 <div>
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">Block at severity</Label>
-                    <span className="text-sm text-gray-600">{SEVERITY_LABELS[severity] ?? severity}</span>
+                    <span className="frost-text-muted text-sm">{SEVERITY_LABELS[severity] ?? severity}</span>
                   </div>
                   <Slider
                     className="mt-3"
@@ -127,13 +127,13 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                     disabled={disabled}
                     onValueChange={([value]) => setOption('severity_threshold', value)}
                   />
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="frost-text-subtle mt-2 text-xs">
                     Content is scored 0, 2, 4 or 6. Blocking at low rejects a large share of ordinary traffic; medium is
                     the usual starting point.
                   </p>
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-gray-700">
+                <label className="frost-text-muted flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={config.options?.enable_prompt_shields !== false}
                     disabled={disabled}
@@ -148,7 +148,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
               <div className="flex items-center justify-between">
                 <div className="pr-8">
                   <Label className="text-sm font-medium">If this check cannot run</Label>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="frost-text-subtle mt-1 text-xs">
                     Applies to outages, timeouts and rate limiting. Content this check refuses to process — oversized or
                     non-text — is always blocked regardless of this setting.
                   </p>

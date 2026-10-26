@@ -1,3 +1,4 @@
+import AppsBackdrop from '@app/components/AppsBackdrop';
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
@@ -13,12 +14,14 @@ import { z } from 'zod';
 import { createAppSchema } from './schemas';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { appEnv } from '@app/config/env';
+import { useCreateApp } from '@app/hooks';
 
 type TCreateAppInputSchema = z.infer<typeof createAppSchema>;
 
 const CreateApp: React.FC = () => {
   const navigate = useNavigate();
   const { notifySuccess } = useNotifyStore();
+  const createApp = useCreateApp();
 
   const [creating, setCreating] = useState(false);
   const [pollingAppId, setPollingAppId] = useState<string | null>(null);
@@ -60,7 +63,7 @@ const CreateApp: React.FC = () => {
         setCreating(false);
       }
     },
-    [navigate]
+    [navigate, notifySuccess]
   );
 
   // Effect to handle polling
@@ -95,7 +98,7 @@ const CreateApp: React.FC = () => {
         private_url: formData.private_url,
       };
 
-      const response = await floConsoleService.appService.createApp(appData);
+      const response = await createApp.mutateAsync(appData);
 
       if (response.data?.data?.app.status === 'in_progress') {
         // Start polling for status updates only if deployment type is auto
@@ -113,8 +116,8 @@ const CreateApp: React.FC = () => {
         notifySuccess('App created successfully');
         navigate('/apps');
       }
-    } catch (error) {
-      console.error('Error creating app:', error);
+    } catch {
+      // useCreateApp has already shown the error
       setCreating(false);
     }
   };
@@ -136,12 +139,13 @@ const CreateApp: React.FC = () => {
   };
 
   return (
-    <div className="frost-canvas relative flex h-full items-center justify-center p-6 px-[210px] pt-[139px] pb-[138px]">
+    <div className="frost-canvas relative isolate flex h-full items-start justify-center overflow-y-auto p-4 sm:p-6 md:items-center md:px-[210px] md:pt-[139px] md:pb-[138px]">
+      <AppsBackdrop />
       <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(appCreationSubmit)}
-          className="frost-card ring-frost-border relative flex w-full max-w-[940px] flex-col gap-16 rounded-2xl border p-8 ring-1"
+          className="frost-card ring-frost-border relative flex w-full max-w-[940px] flex-col gap-8 rounded-2xl border p-4 ring-1 sm:gap-16 sm:p-8"
         >
           <div className="flex justify-between">
             <div className="mb-2">
@@ -162,7 +166,7 @@ const CreateApp: React.FC = () => {
             )}
           </div>
           <div className="flex flex-col gap-10">
-            <div className="flex justify-between gap-10">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:gap-10">
               <FormField
                 control={form.control}
                 name="app_name"
@@ -204,7 +208,7 @@ const CreateApp: React.FC = () => {
             </div>
 
             <div className="overflow-hidden transition-all duration-300 ease-in-out">
-              <div className="grid w-full grid-cols-2 gap-10">
+              <div className="grid w-full grid-cols-1 gap-10 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="public_url"
