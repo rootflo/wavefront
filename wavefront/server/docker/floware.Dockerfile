@@ -65,13 +65,7 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.12.24,source=/uv,target=/bin/uv uv sync 
 # runtime.
 RUN rm uv.lock
 
-# Directory for cached spaCy / NLP models downloaded lazily at runtime
-ARG GUARDRAILS_MODEL_CACHE_DIR=/app/models/spacy
-ENV GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR}
-RUN mkdir -p ${GUARDRAILS_MODEL_CACHE_DIR}
-
-# Create a non-root user and change ownership of the /app directory, including
-# the model cache above, so mounted model volumes stay writable by floware
+# Create a non-root user and change ownership of the /app directory
 RUN adduser -D -u 1000 floware && \
     chown -R floware:floware /app
 

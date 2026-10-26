@@ -9,8 +9,6 @@ import flo_lib.http as http
 import pytest
 
 from guardrails_module.services.model_loader import (
-    _is_safe_extraction_path,
-    cli_main,
     download_file,
     ensure_spacy_model,
     extract_tar_archive,
@@ -31,18 +29,6 @@ def _create_dummy_tar_gz(dest: Path, model_subdir: str = 'en_core_web_sm') -> Pa
     return dest
 
 
-class TestSafeExtraction:
-    def test_safe_path(self, tmp_path):
-        base = tmp_path / 'base'
-        target = base / 'sub' / 'file.txt'
-        assert _is_safe_extraction_path(base, target) is True
-
-    def test_traversal_path(self, tmp_path):
-        base = tmp_path / 'base'
-        target = tmp_path / 'outside' / 'file.txt'
-        assert _is_safe_extraction_path(base, target) is False
-
-
 class TestResolveSpacyModelDir:
     def test_direct_config(self, tmp_path):
         (tmp_path / 'config.cfg').write_text('lang = en', encoding='utf-8')
@@ -59,6 +45,10 @@ class TestResolveSpacyModelDir:
             resolve_spacy_model_dir(tmp_path)
 
 
+def _write_archive(bucket, key, dest):
+    dest.write_bytes(b'archive')
+
+
 class TestExtractArchive:
     def test_extract_tar_gz(self, tmp_path):
         archive = _create_dummy_tar_gz(tmp_path / 'model.tar.gz', 'test_model')
@@ -67,7 +57,7 @@ class TestExtractArchive:
         assert (resolved / 'config.cfg').is_file()
         assert resolved.name == 'test_model'
 
-    def test_fallback_rejects_symlink(self, tmp_path, monkeypatch):
+    def test_rejects_absolute_symlink(self, tmp_path):
         archive_path = tmp_path / 'symlink.tar.gz'
         with tarfile.open(archive_path, 'w:gz') as tar:
             link_info = tarfile.TarInfo('test_model/link')
@@ -75,25 +65,10 @@ class TestExtractArchive:
             link_info.linkname = '/etc/passwd'
             tar.addfile(link_info)
 
-        target = tmp_path / 'extracted'
-        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
-        with pytest.raises(ValueError, match='Archive link detected in member'):
-            extract_tar_archive(archive_path, target)
+        with pytest.raises(tarfile.FilterError):
+            extract_tar_archive(archive_path, tmp_path / 'extracted')
 
-    def test_fallback_rejects_hardlink(self, tmp_path, monkeypatch):
-        archive_path = tmp_path / 'hardlink.tar.gz'
-        with tarfile.open(archive_path, 'w:gz') as tar:
-            link_info = tarfile.TarInfo('test_model/hardlink')
-            link_info.type = tarfile.LNKTYPE
-            link_info.linkname = 'some_target'
-            tar.addfile(link_info)
-
-        target = tmp_path / 'extracted'
-        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
-        with pytest.raises(ValueError, match='Archive link detected in member'):
-            extract_tar_archive(archive_path, target)
-
-    def test_fallback_rejects_path_traversal(self, tmp_path, monkeypatch):
+    def test_rejects_path_traversal(self, tmp_path):
         archive_path = tmp_path / 'traversal.tar.gz'
         with tarfile.open(archive_path, 'w:gz') as tar:
             content = b'escape'
@@ -101,12 +76,9 @@ class TestExtractArchive:
             tarinfo.size = len(content)
             tar.addfile(tarinfo, io.BytesIO(content))
 
-        target = tmp_path / 'extracted'
-        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
-        with pytest.raises(
-            ValueError, match='Path traversal detected in archive member'
-        ):
-            extract_tar_archive(archive_path, target)
+        with pytest.raises(tarfile.FilterError):
+            extract_tar_archive(archive_path, tmp_path / 'extracted')
+        assert not (tmp_path / 'outside.txt').exists()
 
 
 class TestGetModelCacheDirName:
@@ -131,12 +103,13 @@ class TestDownloadFile:
     def test_download_http(self, tmp_path):
         dest = tmp_path / 'dest.tar.gz'
         with patch(
-            'guardrails_module.services.model_loader._download_stream_http'
+            'guardrails_module.services.model_loader._download_stream_http',
+            side_effect=lambda url, dest: dest.write_bytes(b'archive'),
         ) as mock_http:
             download_file('https://example.com/model.tar.gz', dest)
             mock_http.assert_called_once_with('https://example.com/model.tar.gz', dest)
 
-    def test_download_stream_http_with_progress(self, tmp_path):
+    def test_download_stream_http(self, tmp_path):
         from guardrails_module.services.model_loader import _download_stream_http
 
         dest = tmp_path / 'downloaded.tar.gz'
@@ -173,24 +146,26 @@ class TestDownloadFile:
         dest = tmp_path / 'dest.tar.gz'
         mock_storage = MagicMock()
         mock_storage.get_bucket_key.return_value = ('my-bucket', 'model.tar.gz')
+        mock_storage.download_to_file.side_effect = _write_archive
         with patch(
             'flo_cloud.cloud_storage.CloudStorageManager', return_value=mock_storage
         ):
             download_file('s3://my-bucket/model.tar.gz', dest)
-            mock_storage.handler.s3_client.download_file.assert_called_once_with(
-                'my-bucket', 'model.tar.gz', str(dest)
+            mock_storage.download_to_file.assert_called_once_with(
+                'my-bucket', 'model.tar.gz', dest
             )
 
     def test_download_gcs_via_flo_cloud(self, tmp_path):
         dest = tmp_path / 'dest.tar.gz'
         mock_storage = MagicMock()
         mock_storage.get_bucket_key.return_value = ('my-gcs-bucket', 'model.tar.gz')
+        mock_storage.download_to_file.side_effect = _write_archive
         with patch(
             'flo_cloud.cloud_storage.CloudStorageManager', return_value=mock_storage
         ):
             download_file('gs://my-gcs-bucket/model.tar.gz', dest)
-            mock_storage.handler.client.bucket().blob().download_to_filename.assert_called_once_with(
-                str(dest)
+            mock_storage.download_to_file.assert_called_once_with(
+                'my-gcs-bucket', 'model.tar.gz', dest
             )
 
     def test_download_unsupported_scheme(self, tmp_path):
@@ -199,6 +174,19 @@ class TestDownloadFile:
 
 
 class TestEnsureSpacyModel:
+    def test_incomplete_cache_is_downloaded_again(self, tmp_path):
+        cache_dir = tmp_path / 'cache'
+        archive_src = _create_dummy_tar_gz(tmp_path / 'src_model.tar.gz')
+        model_url = archive_src.as_uri()
+        # A previous run died after extraction, before writing the marker
+        partial = cache_dir / get_model_cache_dir_name(model_url)
+        partial.mkdir(parents=True)
+        (partial / 'config.cfg').write_text('lang=en', encoding='utf-8')
+
+        resolved = Path(ensure_spacy_model(model_url=model_url, cache_dir=cache_dir))
+        assert resolved == partial / 'en_core_web_sm'
+        assert (partial / '.sync_complete').is_file()
+
     def test_cached_model_fast_path(self, tmp_path):
         cache_dir = tmp_path / 'cache'
         model_url = 'https://example.com/model.tar.gz'
@@ -315,146 +303,3 @@ class TestIsSpacyModelAvailable:
                 is_spacy_model_available(model_url=None, cache_dir=tmp_path / 'empty')
                 is False
             )
-
-
-class TestCliMain:
-    """Tests for the CLI entrypoint."""
-
-    def test_cli_main_success_with_args(self, tmp_path):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        ret = cli_main(['--url', archive.as_uri(), '--cache-dir', str(cache_dir)])
-        assert ret == 0
-
-        # Assert model is extracted and marked complete
-        assert any(
-            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
-        )
-
-    def test_cli_main_fallback_to_env(self, tmp_path, monkeypatch):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
-        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
-
-        ret = cli_main([])
-        assert ret == 0
-
-    def test_cli_main_no_url_error(self, monkeypatch):
-        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
-        ret = cli_main([])
-        assert ret == 1
-
-    def test_cli_main_check_only_available(self, tmp_path):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-        cli_main(['--url', archive.as_uri(), '--cache-dir', str(cache_dir)])
-
-        ret = cli_main(
-            ['--url', archive.as_uri(), '--cache-dir', str(cache_dir), '--check-only']
-        )
-        assert ret == 0
-
-    def test_cli_main_check_only_unavailable(self, tmp_path, monkeypatch):
-        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
-        with patch('spacy.util.is_package', return_value=False):
-            ret = cli_main(['--cache-dir', str(tmp_path), '--check-only'])
-            assert ret == 1
-
-    def test_cli_main_download_failure(self):
-        with patch(
-            'guardrails_module.services.model_loader.ensure_spacy_model',
-            side_effect=RuntimeError('Network failure'),
-        ):
-            ret = cli_main(['--url', 'https://example.com/fail.tar.gz'])
-            assert ret == 1
-
-    def test_cli_main_skipped_when_disabled(self, tmp_path):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        ret = cli_main(
-            [
-                '--enabled',
-                'false',
-                '--url',
-                archive.as_uri(),
-                '--cache-dir',
-                str(cache_dir),
-            ]
-        )
-        assert ret == 0
-        # Assert no model was extracted
-        assert not cache_dir.exists() or not any(cache_dir.iterdir())
-
-    def test_cli_main_skipped_when_disabled_via_env(self, tmp_path, monkeypatch):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        monkeypatch.setenv('GUARDRAILS_ENABLED', 'false')
-        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
-        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
-
-        ret = cli_main([])
-        assert ret == 0
-        assert not cache_dir.exists() or not any(cache_dir.iterdir())
-
-    def test_cli_main_force_overrides_disabled(self, tmp_path, monkeypatch):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        monkeypatch.setenv('GUARDRAILS_ENABLED', 'false')
-        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
-        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
-
-        ret = cli_main(['--force'])
-        assert ret == 0
-        assert any(
-            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
-        )
-
-    def test_cli_main_enabled_true_no_url_warns_and_succeeds(self, monkeypatch):
-        monkeypatch.setenv('GUARDRAILS_ENABLED', 'true')
-        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
-        ret = cli_main([])
-        assert ret == 0
-
-    def test_load_guardrails_model_config_from_ini(self, tmp_path):
-        from guardrails_module.services.model_loader import load_guardrails_model_config
-
-        ini_file = tmp_path / 'test_config.ini'
-        ini_file.write_text(
-            '[guardrails]\n'
-            'enabled = true\n'
-            'spacy_model_url = https://example.com/spacy.tar.gz\n'
-            'model_cache_dir = /tmp/spacy_cache\n'
-            '\n'
-            '[env_config]\n'
-            'log_level = DEBUG\n'
-        )
-
-        cfg = load_guardrails_model_config(ini_file)
-        assert cfg.enabled is True
-        assert cfg.model_url == 'https://example.com/spacy.tar.gz'
-        assert cfg.model_cache_dir == '/tmp/spacy_cache'
-        assert cfg.log_level == 'DEBUG'
-
-    def test_cli_main_with_config_flag(self, tmp_path):
-        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
-        cache_dir = tmp_path / 'cache'
-
-        ini_file = tmp_path / 'custom_config.ini'
-        ini_file.write_text(
-            '[guardrails]\n'
-            'enabled = true\n'
-            f'spacy_model_url = {archive.as_uri()}\n'
-            f'model_cache_dir = {cache_dir}\n'
-        )
-
-        ret = cli_main(['--config', str(ini_file)])
-        assert ret == 0
-        assert any(
-            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
-        )

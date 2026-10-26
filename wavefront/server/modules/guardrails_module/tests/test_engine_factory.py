@@ -158,3 +158,19 @@ async def test_list_supported_adapters_enabled_without_adapters():
             'presidio_pii',
             'azure_content_safety',
         }
+
+
+def test_build_guardrails_engine_raises_when_model_download_fails():
+    mock_resolver = MagicMock()
+    with patch(
+        'guardrails_module.services.model_loader.is_spacy_model_available',
+        return_value=True,
+    ), patch(
+        'guardrails_module.services.model_loader.ensure_spacy_model',
+        side_effect=RuntimeError('download failed'),
+    ), pytest.raises(RuntimeError, match='download failed'):
+        build_guardrails_engine(
+            mock_resolver,
+            guardrails_enabled=True,
+            spacy_model_url='https://models.example.com/model.tar.gz',
+        )

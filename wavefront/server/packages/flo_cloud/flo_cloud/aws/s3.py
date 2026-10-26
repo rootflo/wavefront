@@ -40,6 +40,9 @@ class S3Storage(CloudStorageHandler):
         content, _ = self.get_file_with_content_type(bucket_name, file_path)
         return content
 
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        self.s3_client.download_file(bucket_name, file_path, dest)
+
     def get_file_with_content_type(
         self, bucket_name: str, file_path: str
     ) -> Tuple[bytes, Optional[str]]:

@@ -96,7 +96,15 @@ def build_guardrails_engine(
                 import presidio_anonymizer  # noqa: F401
 
                 from flo_ai.guardrails.adapters import PresidioAdapter
-
+            except ImportError as exc:
+                logger.warning(
+                    f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
+                    'Install with: '
+                    "uv pip install 'presidio-analyzer' 'presidio-anonymizer'"
+                )
+            else:
+                # A configured model that cannot be downloaded or loaded fails
+                # startup instead of silently running without PII checks
                 resolved_model = ensure_spacy_model(
                     model_url=effective_url,
                     cache_dir=effective_cache_dir,
@@ -109,12 +117,6 @@ def build_guardrails_engine(
                 logger.info(
                     'Guardrails: Presidio PII adapter registered '
                     f'(model={resolved_model})'
-                )
-            except Exception as exc:
-                logger.warning(
-                    f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
-                    'Configure spacy_model_url or install with: '
-                    "uv pip install 'presidio-analyzer' 'presidio-anonymizer'"
                 )
         else:
             logger.info(

@@ -44,6 +44,11 @@ class CloudStorageHandler(ABC):
         pass
 
     @abstractmethod
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        """Stream an object to the local file ``dest`` without loading it in memory."""
+        pass
+
+    @abstractmethod
     def save_large_file(
         self,
         data: bytes,

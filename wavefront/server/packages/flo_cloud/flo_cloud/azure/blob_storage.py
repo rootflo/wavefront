@@ -96,6 +96,11 @@ class AzureBlobStorage(CloudStorageHandler):
         content, _ = self.get_file_with_content_type(bucket_name, file_path)
         return content
 
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        blob_client = self.client.get_blob_client(container=bucket_name, blob=file_path)
+        with open(dest, 'wb') as f:
+            blob_client.download_blob().readinto(f)
+
     def get_file_with_content_type(
         self, bucket_name: str, file_path: str
     ) -> Tuple[bytes, Optional[str]]:
