@@ -170,6 +170,19 @@ def test_sanitize_tool_name(name, expected):
     assert sanitize_tool_name(name) == expected
 
 
+@pytest.mark.parametrize(
+    'name, expected',
+    [
+        ('x' * 80, 'x' * 80),
+        ('x' * 140, 'x' * 128),
+        ('crm.lookup:v2', 'crm.lookup:v2'),
+        ('submit_identity游戏副本', 'submit_identity'),
+    ],
+)
+def test_sanitize_tool_name_gemini(name, expected):
+    assert sanitize_tool_name(name, 'gemini') == expected
+
+
 async def test_malformed_tool_names_are_repaired_before_dispatch(monkeypatch):
     dispatched = []
 

@@ -49,6 +49,10 @@ BEDROCK_SETTINGS_KEYS = ('temperature', 'max_tokens', 'top_p', 'latency')
 _INVALID_TOOL_NAME_CHARS = re.compile(r'[^a-zA-Z0-9_-]')
 _MAX_TOOL_NAME_LEN = 64
 
+# Gemini also allows dots and colons, up to 128 characters
+_GEMINI_INVALID_TOOL_NAME_CHARS = re.compile(r'[^a-zA-Z0-9_.:-]')
+_GEMINI_MAX_TOOL_NAME_LEN = 128
+
 
 def _openai_settings(parameters: Dict[str, Any]) -> Dict[str, Any]:
     settings = pick(parameters, OPENAI_SETTINGS_KEYS)
@@ -69,7 +73,7 @@ class LLMServiceFactory:
         optional ``base_url`` (required for Azure) and provider ``parameters``.
         """
         llm = _create_llm_service(llm_config)
-        _guard_tool_call_names(llm)
+        _guard_tool_call_names(llm, llm_config['type'])
         return llm
 
 
@@ -101,14 +105,18 @@ def _create_llm_service(llm_config: Dict[str, Any]):
     raise ValueError(f'Unsupported LLM type: {llm_type}')
 
 
-def sanitize_tool_name(name: str) -> str:
+def sanitize_tool_name(name: str, llm_type: Optional[str] = None) -> str:
     """A tool name the provider accepts, e.g. ``submit_identity游戏副本`` ->
     ``submit_identity``. Valid names are returned unchanged."""
-    cleaned = _INVALID_TOOL_NAME_CHARS.sub('', name or '')[:_MAX_TOOL_NAME_LEN]
+    if llm_type == LLMProvider.GEMINI:
+        invalid, max_len = _GEMINI_INVALID_TOOL_NAME_CHARS, _GEMINI_MAX_TOOL_NAME_LEN
+    else:
+        invalid, max_len = _INVALID_TOOL_NAME_CHARS, _MAX_TOOL_NAME_LEN
+    cleaned = invalid.sub('', name or '')[:max_len]
     return cleaned or 'unknown_function'
 
 
-def _guard_tool_call_names(llm: Any) -> None:
+def _guard_tool_call_names(llm: Any, llm_type: str) -> None:
     """Repair malformed tool names the model emits before they are dispatched.
 
     Models occasionally glue stray tokens onto a tool name. Pipecat answers an
@@ -123,7 +131,7 @@ def _guard_tool_call_names(llm: Any) -> None:
     async def run_guarded(function_calls: Sequence[FunctionCallFromLLM]):
         repaired = []
         for call in function_calls:
-            name = sanitize_tool_name(call.function_name)
+            name = sanitize_tool_name(call.function_name, llm_type)
             if name != call.function_name:
                 logger.warning(
                     f'LLM emitted malformed tool name {call.function_name!r}, '

@@ -575,6 +575,9 @@ class AgentSwapController:
         language can be kept instead of reconnecting twice (new default, then
         the switch back).
         """
+        if not self._stack.supported_languages:
+            # Single-language agent: current_language is only its default
+            return configs
         language = self._stack.language_state.get('current_language')
         agent = configs.get('agent') or {}
         supported = agent.get('supported_languages') or []
@@ -597,6 +600,9 @@ class AgentSwapController:
         A runtime switch (``queue_language_update``) moves the language and,
         for TTS, the voice to that language's voice, if one is configured.
         """
+        if not stack.supported_languages:
+            # Single-language agent: no runtime switch can have happened
+            return config
         language = stack.language_state.get('current_language')
         parameters = config.get('parameters') or {}
         if not language or parameters.get('language') in (None, language):

@@ -837,6 +837,7 @@ async def test_swap_keeps_the_default_when_the_new_agent_lacks_the_language():
 
 def test_live_service_config_follows_a_runtime_language_switch():
     stack = make_stack(A_ID, 'alpha', [])
+    stack.supported_languages = ['hi', 'en']
     stack.language_state['current_language'] = 'en'
     stack.tts_voice_ids = {'hi': 'v-hi', 'en': 'v-en'}
     tts = {'provider': 'sarvam', 'voice_id': 'v-hi', 'parameters': {'language': 'hi'}}
@@ -857,6 +858,9 @@ def test_live_service_config_follows_a_runtime_language_switch():
     assert AgentSwapController._live_service_config(stack, SAME_STT, tts=False) is (
         SAME_STT
     )
+    # Single-language agent: current_language is only its default, never applied
+    stack.supported_languages = []
+    assert AgentSwapController._live_service_config(stack, tts, tts=True) is tts
 
 
 def test_step_opener_carries_the_instruction():
