@@ -1233,11 +1233,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-<<<<<<< HEAD
-version = "1.1.18"
-=======
-version = "1.1.16"
->>>>>>> 5c7905e6 (update flo ai version)
+version = "1.1.20"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1309,7 +1305,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=46.0.5" },
     { name = "defusedxml", specifier = ">=0.7.1,<0.8" },
     { name = "google-cloud-aiplatform", specifier = ">=1.131.0,<2" },
-    { name = "google-genai", specifier = ">=1.25.0,<2" },
+    { name = "google-genai", specifier = ">=1.25.0,<3" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "matplotlib", marker = "extra == 'vizualize'", specifier = ">=3.7.0,<4" },
     { name = "networkx", marker = "extra == 'vizualize'", specifier = "~=3.0" },
@@ -1734,7 +1730,7 @@ wheels = [
 
 [[package]]
 name = "google-genai"
-version = "1.75.0"
+version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio", version = "4.14.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
@@ -1750,9 +1746,9 @@ dependencies = [
     { name = "typing-extensions", version = "4.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/59/3ed61240ef20b3ae6ed54e82c6f8b6d1f194947bc6679679dd6cdb037594/google_genai-1.75.0.tar.gz", hash = "sha256:56bac3991b311c93f980c0a2abcd287b672146905df1fbd71c92ed633d5a07cf", size = 539039, upload-time = "2026-05-04T22:48:54.857Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/69/6a3d3839ab56ec17d7923c8679b38955e286e0a9793df10ce6d13bc5f122/google_genai-2.31.0.tar.gz", hash = "sha256:71518537de2ba967a61960cba844691dca3dd4ff07726c01a6917d132213541e", size = 745679, upload-time = "2026-10-14T23:52:24.836Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/b6/552d40e96da22921eb1fead7c14b00b5b5473a20e45959488660fab35ee2/google_genai-1.75.0-py3-none-any.whl", hash = "sha256:8dc4c096e7d6288c3087f6893f582fe52468932464781edb8193bd92b9fefb2c", size = 793726, upload-time = "2026-05-04T22:48:53.033Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/64/1e9ab799830101ccbdcb67376a3f12b59e51f57643862999fd31af6938a1/google_genai-2.31.0-py3-none-any.whl", hash = "sha256:c87b9d495a24b09dedb29b852a201bea69ecd0b3f6c2561dc68f4055451b1b90", size = 1208245, upload-time = "2026-10-14T23:52:22.766Z" },
 ]
 
 [[package]]

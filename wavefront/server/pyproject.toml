@@ -65,13 +65,6 @@ override-dependencies = [
     # 48.x has CVE-2026-69247/69248/69249. presidio only uses it for the AES
     # encrypt/decrypt operators (Cipher/AES/CBC, padding), unchanged in 50.x.
     "cryptography>=50.0.0",
-    # pipecat-ai 0.0.106 (call-processing) pins protobuf ~=5.29.6, which has
-    # CVE-2026-0994. Its frames_pb2 gencode (5.x) loads on the 6.x runtime,
-    # which supports gencode one major version back.
-    "protobuf>=6.31.1,<7",
-    # Temporary: pipecat-ai[google]>=1.11 needs google-genai>=2.19, but flo-ai
-    # 1.1.18 still caps google-genai<2. Remove once flo-ai widens that cap.
-    "google-genai>=2.19.0,<3",
     # Pipecat 1.12 wants onnxruntime~=1.24.3, which dropped Intel macOS wheels.
     "onnxruntime==1.23.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "onnxruntime~=1.24.3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
@@ -99,6 +92,9 @@ constraint-dependencies = [
     "microsoft-kiota-http>=1.9.9",
     "nltk>=3.10.3",
     "orjson>=3.11.6",
+    # protobuf 5.x has CVE-2026-0994. Moves grpcio-status off 1.71.x, which
+    # caps protobuf<6.
+    "protobuf>=6.31.1",
     "pyasn1>=0.6.4",
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",

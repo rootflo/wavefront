@@ -12,7 +12,7 @@ dependencies = [
     "db-repo-module",
     "flo-cloud",
     "flo-lib",
-    "flo-ai[guardrails]==1.1.19",
+    "flo-ai[guardrails]==1.1.20",
     "fastapi>=0.100.0",
     "pydantic>=2.0.0",
     "dependency-injector>=4.40.0",
