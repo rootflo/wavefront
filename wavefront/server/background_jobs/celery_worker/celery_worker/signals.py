@@ -3,6 +3,7 @@
 from celery.signals import (
     worker_process_init,
     worker_process_shutdown,
+    worker_ready,
     worker_shutdown,
 )
 
@@ -24,6 +25,22 @@ def setup_telemetry(**kwargs):
             CONFIG, default_service_name='wavefront-celery-worker'
         )
     )
+
+
+def load_api_services(**kwargs):
+    """Load the API services that workflows' trigger_api_service nodes call.
+
+    worker_ready fires in the process that runs the tasks under the solo pool
+    (the one deployed); worker_process_init covers prefork children. Loading is
+    once per process, so both firing is harmless.
+    """
+    from celery_worker.services import load_api_services as load
+
+    load()
+
+
+worker_ready.connect(load_api_services, weak=False)
+worker_process_init.connect(load_api_services, weak=False)
 
 
 def teardown_event_loop(**kwargs):

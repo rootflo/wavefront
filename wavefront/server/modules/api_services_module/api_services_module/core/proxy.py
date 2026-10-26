@@ -49,6 +49,26 @@ class ApiProxy:
                 detail='API services manager is not configured for this proxy',
             )
 
+    async def _load_missing_service(self, service_id: str):
+        """Load one service the in-memory registry does not have, from the database.
+
+        Only floware's startup loads the registry, so a process that never ran it
+        (the Celery worker running a workflow's trigger_api_service nodes) or a
+        replica that missed the create starts out without the service. Returns
+        None when it does not exist there either.
+        """
+        if not getattr(self.service_registry, 'api_service_manager', None):
+            return None
+        try:
+            await self.service_registry.load_service_from_db(service_id)
+        except ValueError:
+            return None
+        service_definition = self.service_registry.get_service(service_id)
+        if service_definition:
+            self.auth_manager.register_service_auth(service_definition)
+            logger.info(f'Loaded API service {service_id} on first use')
+        return service_definition
+
     def _initialize_auth_manager(self):
         """Initialize auth manager with all registered services."""
         for service in self.service_registry.get_all_services().values():
@@ -107,6 +127,8 @@ class ApiProxy:
         try:
             # Get service definition
             service_definition = self.service_registry.get_service(service_id)
+            if not service_definition:
+                service_definition = await self._load_missing_service(service_id)
             if not service_definition:
                 raise HTTPException(
                     status_code=404, detail=f'Service not found: {service_id}'
