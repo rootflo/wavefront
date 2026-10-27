@@ -25,8 +25,8 @@ class PostgresPlugin(DataSourceABC):
         return await asyncio.to_thread(self.client.test_connection)
 
     def validate_table_name(self, table_name: str) -> None:
-        # Writes use the name as given rather than prefixing the schema, so a
-        # qualified name is accepted only when it stays in the configured one.
+        # The client uses a qualified name as given, so one is accepted only
+        # when it names the configured schema.
         schema, dot, name = table_name.rpartition('.')
         if dot and schema != self.config.schema:
             raise InvalidResourceError(f'Invalid resource name: {table_name}')

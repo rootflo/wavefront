@@ -13,6 +13,7 @@ from datasource.mssql import MSSQLPlugin
 from datasource.odata_parser import ODataQueryParser
 from datasource.postgres import PostgresPlugin
 from datasource.redshift import RedshiftPlugin
+from flo_cloud.postgres import PostgresClient
 
 
 def _plugin(cls, schema=None):
@@ -235,3 +236,17 @@ def test_write_operations_reject_invalid_table_before_writing(call):
         'delete_rows_json',
     ):
         getattr(plugin, method).assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'name, parts',
+    [
+        # Unqualified, 'pg_class' would resolve to pg_catalog ahead of search_path.
+        ('pg_class', ('tenant', 'pg_class')),
+        ('orders', ('tenant', 'orders')),
+        ('tenant.orders', ('tenant', 'orders')),
+    ],
+)
+def test_postgres_client_pins_write_targets_to_configured_schema(name, parts):
+    client = PostgresClient(host='h', schema='tenant')
+    assert client._table_identifier(name).strings == parts
