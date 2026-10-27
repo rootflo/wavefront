@@ -40,6 +40,7 @@ from db_repo_module.cache.application_cache import (
 from datasource import (
     DatasourcePlugin,
     FileStoragePlugin,
+    InvalidQueryError,
     InvalidResourceError,
     build_datasource_uri,
     build_file_storage_config,
@@ -584,7 +585,7 @@ async def query_datasource(
             order_by=order_by,
             group_by=group_by,
         )
-    except InvalidResourceError as e:
+    except (InvalidResourceError, InvalidQueryError) as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),

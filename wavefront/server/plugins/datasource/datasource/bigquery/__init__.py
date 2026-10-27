@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from ..types import DataSourceABC, InvalidResourceError
+from ..types import DataSourceABC
+from ..validation import InvalidResourceError
 from .config import BigQueryConfig
 from flo_cloud.gcp.bigquery import BigQueryClient
 import asyncio
@@ -8,9 +9,8 @@ import re
 
 # BigQuery table IDs may contain hyphens, which plain SQL identifiers may not.
 # Names are backtick-quoted in queries, so a backtick must never get through.
-_BQ_TABLE_NAME_RE = re.compile(
-    r'[A-Za-z0-9_][A-Za-z0-9_-]*(\.[A-Za-z0-9_][A-Za-z0-9_-]*)?'
-)
+# No dots: the name is appended to `project.dataset.`, so it is pinned there.
+_BQ_TABLE_NAME_RE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_-]*')
 _BQ_TABLE_NAME_MAX_LEN = 1024
 
 

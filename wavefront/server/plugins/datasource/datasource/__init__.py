@@ -4,7 +4,6 @@ from .types import (
     DataSourceType,
     FILE_STORAGE_TYPES,
     FileStorageABC,
-    InvalidResourceError,
     TableListResult,
     QueryResult,
     is_file_storage_type,
@@ -34,6 +33,7 @@ from .file_storage import (
 )
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
+from .validation import InvalidQueryError, InvalidResourceError
 
 
 __all__ = [
@@ -48,6 +48,7 @@ __all__ = [
     'build_datasource_uri',
     'split_datasource_uri',
     'GCSFileStorageConfig',
+    'InvalidQueryError',
     'InvalidResourceError',
     'MSSQLConfig',
     'PostgresConfig',
@@ -140,6 +141,7 @@ class DatasourcePlugin:
         group_by: Optional[str] = None,
     ) -> QueryResult:
         self.datasource.validate_table_name(table_name)
+        self.datasource.validate_query_clauses(projection, order_by, group_by)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
             self.odata_parser.prepare_odata_joins(join or '', table_name)
