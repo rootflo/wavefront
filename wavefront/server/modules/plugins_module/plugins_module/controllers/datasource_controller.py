@@ -40,6 +40,7 @@ from db_repo_module.cache.application_cache import (
 from datasource import (
     DatasourcePlugin,
     FileStoragePlugin,
+    InvalidResourceError,
     build_datasource_uri,
     build_file_storage_config,
     split_datasource_uri,
@@ -48,7 +49,6 @@ from datasource import (
 from datasource.file_storage.config import normalize_storage_path
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
-    check_is_valid_resource,
     fetch_data_filters,
     get_datasource_config,
     validate_datasource_payload,
@@ -535,18 +535,6 @@ async def query_datasource(
     user_id = request.state.session.user_id
     role_id = request.state.session.role_id
 
-    resource_is_valid = check_is_valid_resource(resource_id)
-    if not resource_is_valid:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'Invalid resource name: {resource_id}'
-            ),
-        )
-
-    if resource_id == 'parsed_data_object':
-        resource_id = 'rf_parsed_data_object'
-
     rls_filters = []
     filter = query_filter
     is_admin = await check_is_admin(role_id)
@@ -585,16 +573,22 @@ async def query_datasource(
     if join and expand:
         join_query = f'$expand={expand}&$join={join}'
 
-    result: QueryResult = datasource_plugin.fetch_data(
-        table_name=resource_id,
-        projection=projection,
-        filter=filter,
-        join=join_query,
-        offset=offset,
-        limit=limit,
-        order_by=order_by,
-        group_by=group_by,
-    )
+    try:
+        result: QueryResult = datasource_plugin.fetch_data(
+            table_name=resource_id,
+            projection=projection,
+            filter=filter,
+            join=join_query,
+            offset=offset,
+            limit=limit,
+            order_by=order_by,
+            group_by=group_by,
+        )
+    except InvalidResourceError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -707,6 +701,11 @@ async def insert_rows_json_multi(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             content=response_formatter.buildErrorResponse(str(e)),
         )
+    except InvalidResourceError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     datasource_audit_service.record_from_request(
         request,
@@ -760,9 +759,15 @@ async def insert_rows_json(
         {**row, 'created_at': datetime.now().isoformat()}
         for row in insert_rows_json_payload.data
     ]
-    await asyncio.to_thread(
-        datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
-    )
+    try:
+        await asyncio.to_thread(
+            datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
+        )
+    except InvalidResourceError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     # The only mutation path that runs for every datasource type, not just
     # Postgres — it needs no RETURNING, because the rows submitted are already

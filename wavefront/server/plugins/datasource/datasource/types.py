@@ -1,9 +1,19 @@
+import re
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar, List, Dict, Optional
 from dataclasses import dataclass
 
 from flo_cloud.postgres import RowMutationResult
+
+# Safe SQL identifiers only (optionally schema-qualified). Table names are
+# interpolated into read queries, so reject anything outside this shape.
+_TABLE_NAME_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?')
+_TABLE_NAME_MAX_LEN = 512
+
+
+class InvalidResourceError(ValueError):
+    """A caller-supplied table name this datasource refuses to query."""
 
 
 @dataclass
@@ -91,6 +101,19 @@ class DataSourceABC(ABC):
     @abstractmethod
     async def test_connection(self) -> bool:
         pass
+
+    def validate_table_name(self, table_name: str) -> None:
+        """Raise InvalidResourceError unless ``table_name`` is safe to query.
+
+        The default accepts plain or schema-qualified identifiers. Datasources
+        whose naming rules differ override this.
+        """
+        if (
+            not table_name
+            or len(table_name) > _TABLE_NAME_MAX_LEN
+            or not _TABLE_NAME_RE.fullmatch(table_name)
+        ):
+            raise InvalidResourceError(f'Invalid resource name: {table_name}')
 
     @abstractmethod
     def get_schema(self) -> dict:

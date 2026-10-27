@@ -4,6 +4,7 @@ from .types import (
     DataSourceType,
     FILE_STORAGE_TYPES,
     FileStorageABC,
+    InvalidResourceError,
     TableListResult,
     QueryResult,
     is_file_storage_type,
@@ -47,6 +48,7 @@ __all__ = [
     'build_datasource_uri',
     'split_datasource_uri',
     'GCSFileStorageConfig',
+    'InvalidResourceError',
     'MSSQLConfig',
     'PostgresConfig',
     'RedshiftConfig',
@@ -137,10 +139,14 @@ class DatasourcePlugin:
         order_by: Optional[str] = None,
         group_by: Optional[str] = None,
     ) -> QueryResult:
+        self.datasource.validate_table_name(table_name)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
             self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
+        # Joined tables are interpolated into the query just like the base table.
+        for alias in table_aliases:
+            self.datasource.validate_table_name(alias)
 
         # '1=1' is a no-op predicate valid across all supported SQL dialects
         # (Postgres/Redshift/BigQuery and MSSQL, which has no `true` literal).
@@ -163,9 +169,14 @@ class DatasourcePlugin:
         return QueryResult(result=result, meta=construct_meta(status='success', code=1))
 
     def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]):
+        self.datasource.validate_table_name(table_name)
         return self.datasource.insert_rows_json(table_name, data)
 
     def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]):
+        # Every name is checked before any write, so one bad entry cannot leave
+        # the earlier tables half-written on datasources without transactions.
+        for insert in inserts:
+            self.datasource.validate_table_name(insert['table_name'])
         return self.datasource.insert_rows_json_multi(inserts)
 
     def update_rows_json(
@@ -183,6 +194,7 @@ class DatasourcePlugin:
         UPDATE with no WHERE rewrites the whole table, so it must never be
         reachable by omission.
         """
+        self.datasource.validate_table_name(table_name)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to update rows')
@@ -209,6 +221,7 @@ class DatasourcePlugin:
         """
         prepared = []
         for update in updates:
+            self.datasource.validate_table_name(update['table_name'])
             where_clause, params = self.odata_parser.prepare_odata_filter(
                 update.get('filter')
             )
@@ -264,6 +277,7 @@ class DatasourcePlugin:
 
         Both raise ValueError, which the controller reports as a 400.
         """
+        self.datasource.validate_table_name(table_name)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to delete rows')

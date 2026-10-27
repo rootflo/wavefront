@@ -1,9 +1,17 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from ..types import DataSourceABC
+from ..types import DataSourceABC, InvalidResourceError
 from .config import BigQueryConfig
 from flo_cloud.gcp.bigquery import BigQueryClient
 import asyncio
+import re
+
+# BigQuery table IDs may contain hyphens, which plain SQL identifiers may not.
+# Names are backtick-quoted in queries, so a backtick must never get through.
+_BQ_TABLE_NAME_RE = re.compile(
+    r'[A-Za-z0-9_][A-Za-z0-9_-]*(\.[A-Za-z0-9_][A-Za-z0-9_-]*)?'
+)
+_BQ_TABLE_NAME_MAX_LEN = 1024
 
 
 class BigQueryPlugin(DataSourceABC):
@@ -19,6 +27,14 @@ class BigQueryPlugin(DataSourceABC):
 
     async def test_connection(self) -> bool:
         return await self.client.test_connection()
+
+    def validate_table_name(self, table_name: str) -> None:
+        if (
+            not table_name
+            or len(table_name) > _BQ_TABLE_NAME_MAX_LEN
+            or not _BQ_TABLE_NAME_RE.fullmatch(table_name)
+        ):
+            raise InvalidResourceError(f'Invalid resource name: {table_name}')
 
     def get_schema(self) -> dict:
         tables = self.client.list_tables(self.config.dataset_id)
