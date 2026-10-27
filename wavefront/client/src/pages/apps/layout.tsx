@@ -23,7 +23,7 @@ import { useDashboardStore } from '@app/store/dashboard-store';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { saveLastApp } from '@app/lib/last-app';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
-import { useGetGuardrailAdapters } from '@app/hooks/data/fetch-hooks';
+import { useGetGuardrailAdapters } from '@app/hooks';
 
 interface NavItem {
   id: string;

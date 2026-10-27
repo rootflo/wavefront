@@ -69,7 +69,8 @@ const Dashboard: React.FC = () => {
 
   const { setSelectedApp } = useDashboardStore();
 
-  const [columns, setColumns] = useState<number>(() => readStored(COLUMNS_KEY, 3));
+  // Null until the user picks a size, so the default can follow how many apps there are.
+  const [storedColumns, setColumns] = useState<number | null>(() => readStored<number | null>(COLUMNS_KEY, null));
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readStored<string[]>(PINNED_KEY, []));
   const [glow, setGlow] = useState<{ tint: string; x: number } | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -98,9 +99,10 @@ const Dashboard: React.FC = () => {
     });
   }, [sortedApps, searchTerm, statusFilter]);
 
-  // Up to three apps keep a fixed showcase layout. Pinning and cards per row only matter once the list grows.
+  // Pinning only matters once the list grows past three apps.
   const isFew = apps.length <= 3;
-  const activeColumns = isFew ? (apps.length === 1 ? 1 : 3) : columns;
+  // Fewer than three apps default to one per row, otherwise three.
+  const activeColumns = storedColumns ?? (apps.length < 3 ? 1 : 3);
   const pinnedApps = isFew ? [] : filteredApps.filter((app) => pinnedIds.includes(app.id));
   const otherApps = isFew ? filteredApps : filteredApps.filter((app) => !pinnedIds.includes(app.id));
   const wide = activeColumns === 1;
@@ -186,7 +188,7 @@ const Dashboard: React.FC = () => {
           firstName={currentUser?.first_name}
           apps={sortedApps}
           onCreate={handleCreateApp}
-          search={apps.length > 3 ? { value: searchTerm, onChange: setSearchTerm } : undefined}
+          search={{ value: searchTerm, onChange: setSearchTerm }}
           filters={
             apps.length > 3 && statusOptions.length > 1 ? (
               <FilterSelect
@@ -199,9 +201,7 @@ const Dashboard: React.FC = () => {
             ) : undefined
           }
           extras={
-            !isFew ? (
-              <ColumnsToggle value={columns} choices={COLUMN_CHOICES} onChange={chooseColumns} className="w-full" />
-            ) : undefined
+            <ColumnsToggle value={activeColumns} choices={COLUMN_CHOICES} onChange={chooseColumns} className="w-full" />
           }
         />
 
