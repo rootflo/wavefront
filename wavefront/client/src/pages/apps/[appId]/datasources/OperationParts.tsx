@@ -1,3 +1,4 @@
+import FieldHelp from '@app/components/FieldHelp';
 import { Textarea } from '@app/components/ui/textarea';
 import { cn } from '@app/lib/utils';
 import React from 'react';
@@ -33,6 +34,40 @@ export const Step = ({
     </div>
   </section>
 );
+
+/**
+ * A labelled input with its help behind an info icon. The icon sits outside the
+ * <label> (a button inside one would take its clicks), so the label points at
+ * the input by id instead.
+ */
+export const Field = ({
+  label,
+  help,
+  className,
+  children,
+}: {
+  label: string;
+  help?: React.ReactNode;
+  className?: string;
+  children: React.ReactElement<{ id?: string }>;
+}) => {
+  const id = React.useId();
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={id} className="frost-text-muted text-xs">
+          {label}
+        </label>
+        {help ? (
+          <FieldHelp ariaLabel={`About ${label}`} contentClassName="max-w-sm">
+            <div className="flex flex-col gap-1.5 leading-snug">{help}</div>
+          </FieldHelp>
+        ) : null}
+      </div>
+      {React.cloneElement(children, { id })}
+    </div>
+  );
+};
 
 /** Switches a step between the guided form and raw JSON. */
 export const ModeSwitch = ({ json, onChange }: { json: boolean; onChange: (json: boolean) => void }) => (

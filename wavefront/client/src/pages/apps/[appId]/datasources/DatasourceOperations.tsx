@@ -17,7 +17,7 @@ const DatasourceOperations: React.FC<DatasourceOperationsProps> = ({ datasourceI
   const op = useDatasourceOperation(datasourceId);
   const { selectedOperation, running, confirmOpen, setConfirmOpen, table, filter, operation, execute } = op;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-6 [scrollbar-gutter:stable]">
       {/* What to do */}
       <OperationPicker op={op} />
 

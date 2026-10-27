@@ -7,7 +7,7 @@ import { CircleAlert, Eye, Play } from 'lucide-react';
 import FilterBuilder from './FilterBuilder';
 import ValuesEditor from './ValuesEditor';
 import { INSERT_MULTI_TEMPLATE, UPDATE_MULTI_TEMPLATE } from './operations';
-import { Step, ModeSwitch, JsonBox } from './OperationParts';
+import { Step, Field, ModeSwitch, JsonBox } from './OperationParts';
 import { DatasourceOperationState } from './useDatasourceOperation';
 
 /** The chosen operation's inputs, as numbered steps, with the run button. */
@@ -60,6 +60,10 @@ const OperationForm = ({ op }: { op: DatasourceOperationState }) => {
   } = op;
   let step = 0;
   const nextStep = () => (step += 1);
+  // Examples in the query hints, drawn from this datasource where possible
+  const firstColumn = columns[0] ?? 'id';
+  const otherTable = tables.find((name) => name !== table) ?? 'other_table';
+  const joinColumn = columns.find((column) => column.endsWith('_id')) ?? 'id';
 
   return (
     <div className="frost-panel ring-frost-border flex min-w-0 flex-col rounded-xl border ring-1">
@@ -133,12 +137,18 @@ const OperationForm = ({ op }: { op: DatasourceOperationState }) => {
         {selectedOperation === 'get-table-data' && (
           <Step number={nextStep()} title="Options">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5">
-                <span className="frost-text-muted text-xs">Rows to fetch</span>
+              <Field label="Rows to fetch" help={<p>The most rows one run returns.</p>}>
                 <Input type="number" min={1} value={limit} onChange={(e) => setLimit(e.target.value)} className="h-9" />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="frost-text-muted text-xs">Skip the first</span>
+              </Field>
+              <Field
+                label="Skip the first"
+                help={
+                  <p>
+                    For paging. With {limit || 25} rows to fetch, skip {limit || 25} to see the second page,{' '}
+                    {(Number(limit) || 25) * 2} for the third.
+                  </p>
+                }
+              >
                 <Input
                   type="number"
                   min={0}
@@ -146,47 +156,117 @@ const OperationForm = ({ op }: { op: DatasourceOperationState }) => {
                   onChange={(e) => setOffset(e.target.value)}
                   className="h-9"
                 />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="frost-text-muted text-xs">Columns</span>
+              </Field>
+              <Field
+                label="Columns"
+                help={
+                  <>
+                    <p>Comma-separated column names. Leave empty for all of them.</p>
+                    <p>
+                      Totals work too, optionally named with <code>as</code>: <code>count(*) as n</code>,{' '}
+                      <code>sum(amount)</code>, <code>avg</code>, <code>min</code>, <code>max</code>.
+                    </p>
+                    <p>
+                      When joining, prefix <code>a.</code> for this table and <code>b.</code> for the joined one, e.g.{' '}
+                      <code>a.{firstColumn}, b.some_column</code>.
+                    </p>
+                  </>
+                }
+              >
                 <Input
                   value={select}
                   onChange={(e) => setSelect(e.target.value)}
                   placeholder={columns.length ? columns.slice(0, 3).join(', ') : 'All columns'}
                   className="h-9 font-mono text-xs"
                 />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="frost-text-muted text-xs">Sort by</span>
+              </Field>
+              <Field
+                label="Sort by"
+                help={
+                  <>
+                    <p>
+                      A column, then <code>asc</code> or <code>desc</code>, e.g. <code>{firstColumn} desc</code>.
+                    </p>
+                    <p>Comma-separate to sort by more than one.</p>
+                  </>
+                }
+              >
                 <Input
                   value={orderBy}
                   onChange={(e) => setOrderBy(e.target.value)}
-                  placeholder={`${columns[0] ?? 'created_at'} desc`}
+                  placeholder={`${firstColumn} desc`}
                   className="h-9 font-mono text-xs"
                 />
-              </label>
+              </Field>
               {showMoreOptions ? (
                 <>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="frost-text-muted text-xs">Group by</span>
+                  <Field
+                    label="Group by"
+                    className="sm:col-span-2"
+                    help={
+                      <>
+                        <p>Rolls rows up into one per value. Pair it with a total in Columns.</p>
+                        <p>
+                          e.g. group by <code>status</code> with columns <code>status, count(*) as n</code> counts the
+                          rows per status.
+                        </p>
+                      </>
+                    }
+                  >
                     <Input
                       value={groupBy}
                       onChange={(e) => setGroupBy(e.target.value)}
                       className="h-9 font-mono text-xs"
                     />
-                  </label>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="frost-text-muted text-xs">Expand</span>
+                  </Field>
+                  <Field
+                    label="Join another table"
+                    help={
+                      <>
+                        <p>Brings in matching rows from another table in this datasource.</p>
+                        <p>
+                          e.g. join <code>{otherTable}</code> on <code>{joinColumn}</code>, with columns{' '}
+                          <code>a.{firstColumn}, b.some_column</code>. Each row then lists its matches under{' '}
+                          <code>{otherTable}</code>.
+                        </p>
+                        <p>
+                          Name the columns you need: with all columns, ones both tables share (like <code>id</code>)
+                          show only the joined table’s value.
+                        </p>
+                      </>
+                    }
+                  >
                     <Input
                       value={expand}
                       onChange={(e) => setExpand(e.target.value)}
+                      placeholder={otherTable}
                       className="h-9 font-mono text-xs"
                     />
-                  </label>
-                  <label className="flex flex-col gap-1.5 sm:col-span-2">
-                    <span className="frost-text-muted text-xs">Join</span>
-                    <Input value={join} onChange={(e) => setJoin(e.target.value)} className="h-9 font-mono text-xs" />
-                  </label>
+                  </Field>
+                  <Field
+                    label="Join on"
+                    help={
+                      <>
+                        <p>
+                          Column names only, without <code>a.</code> or <code>b.</code>.
+                        </p>
+                        <p>
+                          If both tables share the column, give it once: <code>{joinColumn}</code>.
+                        </p>
+                        <p>
+                          If the names differ, give this table’s column then the other’s:{' '}
+                          <code>id,{table || 'order'}_id</code>.
+                        </p>
+                      </>
+                    }
+                  >
+                    <Input
+                      value={join}
+                      onChange={(e) => setJoin(e.target.value)}
+                      placeholder={joinColumn}
+                      className="h-9 font-mono text-xs"
+                    />
+                  </Field>
                 </>
               ) : (
                 <button

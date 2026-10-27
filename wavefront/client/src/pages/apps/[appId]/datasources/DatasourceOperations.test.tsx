@@ -69,6 +69,25 @@ describe('DatasourceOperations', () => {
     expect(params).toMatchObject({ limit: 25, offset: 0 });
   });
 
+  it('sends a join from the labelled fields, with help behind their info icons', async () => {
+    renderPanel();
+    await pickTable('orders');
+    await userEvent.click(screen.getByRole('button', { name: /More options/ }));
+    await userEvent.type(screen.getByLabelText('Join another table'), 'customers');
+    await userEvent.type(screen.getByLabelText('Join on'), 'customer_id');
+
+    await userEvent.hover(screen.getByRole('button', { name: 'About Join on' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Column names only');
+
+    service.getDatasourceResourceData.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Run query' }));
+    await waitFor(() => expect(service.getDatasourceResourceData).toHaveBeenCalled());
+    expect(service.getDatasourceResourceData.mock.calls[0][2]).toMatchObject({
+      $expand: 'customers',
+      $join: 'customer_id',
+    });
+  });
+
   it('asks before deleting, then deletes only the matching rows', async () => {
     service.deleteDatasourceResourceRows.mockResolvedValue({ data: { data: { deleted_rows: 2 } } });
     renderPanel();
