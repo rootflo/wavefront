@@ -54,8 +54,8 @@ const VoiceAgentsLayout: React.FC = () => {
           <div className="border-frost-border px-4 max-md:pt-4 sm:px-8">
             <div className="mb-5 flex flex-col gap-3 md:mb-8 xl:flex-row xl:items-end xl:justify-between xl:gap-5">
               <div className="min-w-0">
-                <PageTitle className="animate-fade-in">Voice Agents</PageTitle>
-                <p className="animate-fade-in frost-text-muted mt-1 text-[13.5px] md:mt-2 md:text-sm">
+                <PageTitle>Voice Agents</PageTitle>
+                <p className="frost-text-muted mt-1 text-[13.5px] md:mt-2 md:text-sm">
                   Manage AI voice agents with LLM, TTS, STT, and telephony configurations
                 </p>
               </div>

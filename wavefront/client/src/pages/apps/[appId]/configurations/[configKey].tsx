@@ -75,9 +75,9 @@ const ConfigurationDetail: React.FC = () => {
         <div>
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/configurations`} label="Back to configurations" />
-            <PageTitle className="animate-fade-in">{formatAppName(configKey)}</PageTitle>
+            <PageTitle>{formatAppName(configKey)}</PageTitle>
           </div>
-          <p className="animate-fade-in frost-text-muted mt-2 font-mono text-sm">{namespace}</p>
+          <p className="frost-text-muted mt-2 font-mono text-sm">{namespace}</p>
         </div>
         <DetailActions
           editing

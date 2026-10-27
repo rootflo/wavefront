@@ -16,7 +16,7 @@ import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { useThemeStore } from '@app/store/theme-store';
 import { App } from '@app/types/app';
-import { Check, ChevronRight, ChevronsUpDown, LogOut, Menu, Monitor, Settings } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, Monitor, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { getRouteAppId } from '@app/lib/current-app';
@@ -34,14 +34,6 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   // The workspace menu only exists inside an app's pages (/apps/:appId/<section>).
   const pathParts = location.pathname.split('/');
   const hasWorkspaceMenu = pathParts[1] === 'apps' && Boolean(pathParts[3]) && pathParts[2] !== 'edit';
-
-  // The section of the app being viewed, e.g. "Agents", shown after the app switcher.
-  const sectionName = pathParts[3]
-    ? pathParts[3]
-        .split('-')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
-    : '';
 
   const handleLogout = () => {
     navigate('/logout');
@@ -104,7 +96,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                   type="button"
                   aria-label="Select app"
                   onClick={() => setAppPickerOpen(true)}
-                  className="frost-glass-strong frost-text border-frost-border flex h-[38px] max-w-[160px] cursor-pointer items-center gap-2 rounded-xl border pr-1.5 pl-1.5 transition-colors outline-none hover:opacity-90 sm:max-w-[240px] sm:pr-2.5"
+                  className="bg-frost-glass-strong frost-text dark:border-frost-border flex h-[38px] max-w-[160px] cursor-pointer items-center gap-2 rounded-xl border border-slate-900/10 pr-1.5 pl-1.5 shadow-[var(--frost-inset-shadow),0_1px_2px_rgb(15_23_42/0.06)] backdrop-blur-[16px] transition-colors outline-none hover:opacity-90 sm:max-w-[240px] sm:pr-2.5"
                 >
                   <span className="flex size-[26px] shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#2f6df6,#8b5cf6)] text-xs font-extrabold text-white uppercase">
                     {selectedApp ? formatAppName(selectedApp.app_name).charAt(0) : '?'}
@@ -126,12 +118,6 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                   onSelect={handleSelectApp}
                 />
               </>
-            ) : null}
-            {hasWorkspaceMenu && sectionName ? (
-              <span className="frost-text-muted hidden items-center gap-1.5 text-[13px] md:flex">
-                <ChevronRight className="size-3.5" />
-                <b className="frost-text font-semibold">{sectionName}</b>
-              </span>
             ) : null}
           </div>
 

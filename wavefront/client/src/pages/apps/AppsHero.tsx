@@ -54,7 +54,7 @@ const AppsHero: React.FC<AppsHeroProps> = ({ firstName, apps, onCreate, search, 
             {firstName ? (
               <>
                 {greetingFor(now.getHours())},{' '}
-                <span className="hero-shimmer bg-[linear-gradient(100deg,#2f6df6,#8b5cf6_45%,#14b8a6_90%)] bg-clip-text text-transparent dark:bg-[linear-gradient(100deg,#6b94ff,#a78bfa_45%,#2dd4bf_90%)]">
+                <span className="hero-shimmer bg-[linear-gradient(100deg,#2f6df6,#8b5cf6_45%,#14b8a6_90%)] bg-clip-text text-transparent lowercase dark:bg-[linear-gradient(100deg,#6b94ff,#a78bfa_45%,#2dd4bf_90%)]">
                   {firstName}
                 </span>
               </>

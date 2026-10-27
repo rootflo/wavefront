@@ -35,11 +35,6 @@ export const Step = ({
   </section>
 );
 
-/**
- * A labelled input with its help behind an info icon. The icon sits outside the
- * <label> (a button inside one would take its clicks), so the label points at
- * the input by id instead.
- */
 export const Field = ({
   label,
   help,

@@ -60,7 +60,6 @@ const OperationForm = ({ op }: { op: DatasourceOperationState }) => {
   } = op;
   let step = 0;
   const nextStep = () => (step += 1);
-  // Examples in the query hints, drawn from this datasource where possible
   const firstColumn = columns[0] ?? 'id';
   const otherTable = tables.find((name) => name !== table) ?? 'other_table';
   const joinColumn = columns.find((column) => column.endsWith('_id')) ?? 'id';
