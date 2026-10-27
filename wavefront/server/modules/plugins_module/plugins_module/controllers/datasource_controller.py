@@ -826,6 +826,15 @@ async def update_rows_json_multi(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can update rows'
+            ),
+        )
+
     if not update_rows_json_multi_payload.updates:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -945,6 +954,15 @@ async def update_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can update rows'
+            ),
+        )
+
     if not update_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1056,6 +1074,15 @@ async def delete_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can delete rows'
+            ),
+        )
+
     if not delete_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
