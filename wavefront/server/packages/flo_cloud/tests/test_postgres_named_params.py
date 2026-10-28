@@ -39,6 +39,14 @@ def test_placeholders_become_pyformat():
             "SELECT E'it\\'s :id' WHERE id = %(id)s",
         ),
         ('SELECT $q1$a:id$q1$ WHERE id = :id', 'SELECT $q1$a:id$q1$ WHERE id = %(id)s'),
+        # PostgreSQL also ends a line comment at \r, nests block comments and
+        # takes non-ASCII letters in a dollar-quote tag.
+        ('SELECT 1 -- note\rWHERE id = :id', 'SELECT 1 -- note\rWHERE id = %(id)s'),
+        (
+            'SELECT /* a /* b */ :id */ 1 WHERE id = :id',
+            'SELECT /* a /* b */ :id */ 1 WHERE id = %(id)s',
+        ),
+        ('SELECT $é$:id$é$ WHERE id = :id', 'SELECT $é$:id$é$ WHERE id = %(id)s'),
     ],
 )
 def test_colons_in_literals_comments_and_casts_are_kept(query, expected):
