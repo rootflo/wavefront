@@ -453,24 +453,12 @@ async def test_a_final_landing_just_after_a_turn_ended_does_not_interrupt():
 
     _just_after_a_turn(strategies)
     await _feed(strategies, _transcript('and the rest of it'))
-    # Dropped, and its text cleared so it does not join the next turn
-    assert events == ['reset']
+    # No turn, and no reset: the text joins the next turn rather than being lost
+    assert events == []
 
     _long_after_a_turn(strategies)
     await _feed(strategies, _transcript())
-    assert events == ['reset', 'turn_started']
-
-
-async def test_a_late_final_during_an_active_turn_keeps_that_turns_text():
-    strategies = TurnTakingConfig.from_agent_config({}).start_strategies()
-    events = _turn_events(strategies)
-
-    for strategy in strategies:
-        await strategy.handle_user_turn_stopped()
-        await strategy.handle_user_turn_started()
-    await _feed(strategies, _transcript('Hindi'))
-
-    assert events == []
+    assert events == ['turn_started']
 
 
 async def test_the_turn_end_is_recorded_from_the_controller_callback():
@@ -491,9 +479,9 @@ async def test_barge_in_off_ignores_a_final_landing_just_after_a_turn_ended():
     await _feed(strategies, BotStoppedSpeakingFrame())
     _just_after_a_turn(strategies)
     await _feed(strategies, _transcript('and the rest of it'))
-    # Dropped, and its text cleared so it does not join the next turn
-    assert events == ['reset']
+    # No turn, and no reset: the text joins the next turn rather than being lost
+    assert events == []
 
     _long_after_a_turn(strategies)
     await _feed(strategies, _transcript())
-    assert events == ['reset', 'turn_started']
+    assert events == ['turn_started']

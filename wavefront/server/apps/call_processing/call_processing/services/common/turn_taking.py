@@ -45,8 +45,9 @@ such as "Hindi", or a quiet caller) while the STT still transcribes it. Off, tha
 transcript waits unanswered until VAD hears the next utterance, and the bot sits
 silent. Only a final transcript counts (an interim could be the noise the VAD
 thresholds rejected), and not one landing within ``LATE_TRANSCRIPT_SECS`` of a
-turn ending: that is the tail of the utterance just answered, not new speech.
-With ``barge_in`` off it only starts a turn while the bot is silent.
+turn ending: that is the tail of the utterance just answered, not new speech. Its
+text stays in the aggregation and joins the user's next turn rather than being
+dropped. With ``barge_in`` off it only starts a turn while the bot is silent.
 ``barge_in_min_words`` of 1 or more already starts turns from transcripts, so
 there it changes nothing.
 
@@ -108,19 +109,18 @@ _MIN_IDLE_TIMEOUT_MS = 2000
 
 
 class _LateTranscriptGuard:
-    """Remembers when the last user turn ended, for transcript turn starts."""
+    """Remembers when the last user turn ended, for transcript turn starts.
+
+    A late final never starts a turn, but its text is not reset: Pipecat has
+    already added it to the aggregation, and a final landing just after an
+    early turn end can be the user's own new words, which must not be lost.
+    """
 
     _late_transcript_secs: float = LATE_TRANSCRIPT_SECS
     _turn_stopped_at: Optional[float] = None
-    _user_turn_active: bool = False
-
-    async def handle_user_turn_started(self):
-        await super().handle_user_turn_started()
-        self._user_turn_active = True
 
     async def handle_user_turn_stopped(self):
         await super().handle_user_turn_stopped()
-        self._user_turn_active = False
         self._turn_stopped_at = time.monotonic()
 
     def _transcript_is_late(self) -> bool:
@@ -128,16 +128,6 @@ class _LateTranscriptGuard:
             self._turn_stopped_at is not None
             and time.monotonic() - self._turn_stopped_at < self._late_transcript_secs
         )
-
-    async def _drop_if_late(self) -> bool:
-        """Drop a late final: Pipecat already added its text to the aggregation,
-        which would otherwise join the user's next turn. Not while a turn is
-        active, whose own words are in that aggregation too."""
-        if not self._transcript_is_late():
-            return False
-        if not self._user_turn_active:
-            await self.trigger_reset_aggregation()
-        return True
 
 
 class TranscriptFallbackStartStrategy(
@@ -154,7 +144,7 @@ class TranscriptFallbackStartStrategy(
         super().__init__(use_interim=False, **kwargs)
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
-        if isinstance(frame, TranscriptionFrame) and await self._drop_if_late():
+        if isinstance(frame, TranscriptionFrame) and self._transcript_is_late():
             return ProcessFrameResult.CONTINUE
         return await super().process_frame(frame)
 
@@ -228,7 +218,7 @@ class VADWhenBotSilentStartStrategy(_LateTranscriptGuard, VADUserTurnStartStrate
         if isinstance(frame, VADUserStartedSpeakingFrame):
             self._talk_over_ended_at = None
         if self._start_on_transcript and isinstance(frame, TranscriptionFrame):
-            if await self._drop_if_late():
+            if self._transcript_is_late():
                 return ProcessFrameResult.CONTINUE
             if self._talk_over_transcript_due():
                 self._talk_over_ended_at = None
