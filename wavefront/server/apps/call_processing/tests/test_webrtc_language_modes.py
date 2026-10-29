@@ -293,3 +293,16 @@ def test_direct_switch_needs_the_native_language_tool():
 
     assert room.language_switcher._enabled is False
     assert single.language_switcher._enabled is False
+
+
+def test_the_agents_choice_words_reach_the_direct_switch():
+    stack = _build(
+        conversation_config={
+            'language_switch': {
+                'direct_switch': True,
+                'choice_words': {'hi': ['chahiye']},
+            }
+        }
+    )
+
+    assert stack.language_switcher._choice_words == {'hi': ('chahiye',)}

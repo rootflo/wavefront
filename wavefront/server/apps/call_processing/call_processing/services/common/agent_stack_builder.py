@@ -381,6 +381,7 @@ def build_agent_stack(
         on_language_selected=lambda language: (
             shared.events.emit_language_changed(language)
         ),
+        choice_words=language_switch_config.choice_words,
     )
 
     # VAD must live on the user aggregator in Pipecat 1.x — TransportParams
@@ -448,8 +449,9 @@ def build_agent_stack(
         await shared.events.emit_agent_state(STATE_THINKING)
         # Backchannel only if the LLM is slow to start (see FillerSpeechProcessor)
         if filler_config.thinking:
+            # Read on firing: a direct language switch may still change it
             await filler.arm_thinking_filler(
-                filler_config.thinking_phrases_for(
+                lambda: filler_config.thinking_phrases_for(
                     language_state.get('current_language', 'en')
                 )
             )

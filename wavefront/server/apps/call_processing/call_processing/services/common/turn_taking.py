@@ -43,7 +43,10 @@ call's first agent, not for one swapped in mid-call.
 ``transcript_turn_start`` is the safety net for speech VAD misses (a short word
 such as "Hindi", or a quiet caller) while the STT still transcribes it. Off, that
 transcript waits unanswered until VAD hears the next utterance, and the bot sits
-silent. With ``barge_in`` off it only starts a turn while the bot is silent.
+silent. Only a final transcript counts (an interim could be the noise the VAD
+thresholds rejected), and not one landing within ``LATE_TRANSCRIPT_SECS`` of a
+turn ending: that is the tail of the utterance just answered, not new speech.
+With ``barge_in`` off it only starts a turn while the bot is silent.
 ``barge_in_min_words`` of 1 or more already starts turns from transcripts, so
 there it changes nothing.
 
@@ -55,8 +58,9 @@ before the user has finished.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Optional
 
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -94,10 +98,49 @@ from call_processing.services.common.smart_turn import SharedSmartTurnAnalyzer
 from call_processing.services.common.user_idle import DEFAULT_IDLE_GOODBYE
 
 _SECTION = 'conversation_config.turn_taking'
+# A final transcript this soon after a user turn ended belongs to that turn (an
+# STT that split one utterance in two), so it never starts a new one
+LATE_TRANSCRIPT_SECS = 1.0
 _MIN_IDLE_TIMEOUT_MS = 2000
 
 
-class VADWhenBotSilentStartStrategy(VADUserTurnStartStrategy):
+class _LateTranscriptGuard:
+    """Remembers when the last user turn ended, for transcript turn starts."""
+
+    _late_transcript_secs: float = LATE_TRANSCRIPT_SECS
+    _turn_stopped_at: Optional[float] = None
+
+    async def handle_user_turn_stopped(self):
+        await super().handle_user_turn_stopped()
+        self._turn_stopped_at = time.monotonic()
+
+    def _transcript_is_late(self) -> bool:
+        return (
+            self._turn_stopped_at is not None
+            and time.monotonic() - self._turn_stopped_at < self._late_transcript_secs
+        )
+
+
+class TranscriptFallbackStartStrategy(
+    _LateTranscriptGuard, TranscriptionUserTurnStartStrategy
+):
+    """A final transcript starts the turn when VAD missed the speech.
+
+    Never an interim, and never a final that lands just after a turn ended (see
+    ``LATE_TRANSCRIPT_SECS``): either would interrupt the bot for speech the
+    user did not mean as a new turn.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(use_interim=False, **kwargs)
+
+    async def process_frame(self, frame: Frame) -> ProcessFrameResult:
+        if isinstance(frame, TranscriptionFrame) and self._transcript_is_late():
+            return ProcessFrameResult.CONTINUE
+        return await super().process_frame(frame)
+
+
+class VADWhenBotSilentStartStrategy(_LateTranscriptGuard, VADUserTurnStartStrategy):
     """VAD starts the user's turn only while the bot is silent.
 
     Pipecat stops at the first start strategy that fires, so a plain VAD
@@ -111,7 +154,8 @@ class VADWhenBotSilentStartStrategy(VADUserTurnStartStrategy):
     turn starts then rather than waiting for the next pause.
 
     ``start_on_transcript``: while the bot is silent, a final transcript starts
-    the turn too, for speech VAD missed. Pipecat's own transcription strategy
+    the turn too, for speech VAD missed (not one landing just after a turn
+    ended, as for ``TranscriptFallbackStartStrategy``). Pipecat's own transcription strategy
     would also fire on talk-over, which barge-in off must ignore: the final
     transcript of talk-over that ended just before the bot did lands after it
     stops, so that one is dropped too.
@@ -157,6 +201,8 @@ class VADWhenBotSilentStartStrategy(VADUserTurnStartStrategy):
         if isinstance(frame, VADUserStartedSpeakingFrame):
             self._talk_over_transcript_due = False
         if self._start_on_transcript and isinstance(frame, TranscriptionFrame):
+            if self._transcript_is_late():
+                return ProcessFrameResult.CONTINUE
             if self._talk_over_transcript_due:
                 self._talk_over_transcript_due = False
                 await self.trigger_reset_aggregation()
@@ -264,7 +310,7 @@ class TurnTakingConfig:
             # transcript backs it up for speech VAD missed.
             strategies: List[BaseUserTurnStartStrategy] = [VADUserTurnStartStrategy()]
             if self.transcript_turn_start:
-                strategies.append(TranscriptionUserTurnStartStrategy())
+                strategies.append(TranscriptFallbackStartStrategy())
             return strategies
         return [
             VADWhenBotSilentStartStrategy(),

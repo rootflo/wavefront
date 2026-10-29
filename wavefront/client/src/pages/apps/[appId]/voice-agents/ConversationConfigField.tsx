@@ -283,6 +283,8 @@ function ConfigOption({ id, option, value, defaultValue, inactiveReason, onChang
           id={id}
           value={isPlainObject(value) ? (value as PhraseMap) : {}}
           builtIn={option.builtInPhrases ?? {}}
+          noun={option.phraseNoun}
+          note={option.phrasesNote}
           onChange={onChange}
           disabled={disabled}
         />
@@ -303,12 +305,22 @@ interface PhrasesInputProps {
   id: string;
   value: PhraseMap;
   builtIn: PhraseMap;
+  noun?: { one: string; many: string };
+  note?: string;
   onChange: (value: PhraseMap | undefined) => void;
   disabled?: boolean;
 }
 
 /** Custom phrases per chosen language; every other language keeps the built-in phrases shown below. */
-function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputProps) {
+function PhrasesInput({
+  id,
+  value,
+  builtIn,
+  noun = { one: 'phrase', many: 'phrases' },
+  note = 'Other languages use the English phrases (yours if set, otherwise the built-in ones).',
+  onChange,
+  disabled,
+}: PhrasesInputProps) {
   // Languages added here but not given phrases yet stay listed until removed
   const [added, setAdded] = useState<string[]>([]);
   const languages = [...Object.keys(value), ...added.filter((language) => !(language in value))];
@@ -347,7 +359,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
                   type="button"
                   onClick={() => removeLanguage(language)}
                   className="frost-text-muted hover:text-frost-text flex cursor-pointer items-center gap-1 text-xs"
-                  aria-label={`Remove ${getLanguageName(language)} phrases`}
+                  aria-label={`Remove ${getLanguageName(language)} ${noun.many}`}
                 >
                   <X className="h-3 w-3" />
                   {builtIn[language] ? 'Use built-in' : 'Remove'}
@@ -355,7 +367,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
               </div>
               <PhraseLines
                 value={Array.isArray(value[language]) ? value[language] : []}
-                placeholder={builtIn[language]?.join('\n') ?? 'One phrase per line'}
+                placeholder={builtIn[language]?.join('\n') ?? `One ${noun.one} per line`}
                 onChange={(phrases) => setLanguage(language, phrases)}
                 disabled={disabled}
               />
@@ -366,7 +378,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
       <Select value="" onValueChange={addLanguage} disabled={disabled}>
         <SelectTrigger className="w-full sm:w-64">
-          <SelectValue placeholder="Add phrases for a language" />
+          <SelectValue placeholder={`Add ${noun.many} for a language`} />
         </SelectTrigger>
         <SelectContent>
           {addable.map((language) => (
@@ -379,7 +391,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
       {builtInOnly.length > 0 && (
         <div className={cn('space-y-1', disabled && 'opacity-60')}>
-          <p className="frost-text-muted text-xs">Built-in phrases, used for languages you don&apos;t customise:</p>
+          <p className="frost-text-muted text-xs">Built-in {noun.many}, used for languages you don&apos;t customise:</p>
           <ul className="frost-text-muted space-y-0.5 text-xs">
             {builtInOnly.map((language) => (
               <li key={language}>
@@ -388,9 +400,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
               </li>
             ))}
           </ul>
-          <p className="frost-text-subtle text-xs">
-            Other languages use the English phrases (yours if set, otherwise the built-in ones).
-          </p>
+          <p className="frost-text-subtle text-xs">{note}</p>
         </div>
       )}
     </div>

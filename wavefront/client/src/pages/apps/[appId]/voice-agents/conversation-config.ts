@@ -48,6 +48,18 @@ export const BUILT_IN_THINKING_PHRASES: Record<string, string[]> = {
   kn: ['ಹ್ಮ್', 'ಸರಿ', 'ನೋಡುತ್ತೇನೆ'],
 };
 
+/**
+ * Built-in language choice words from the call-processing service (`LANGUAGE_CHOICE_WORDS` in
+ * `constants/language_config.py`). Tamil, Telugu and Kannada are unreviewed guesses.
+ */
+export const BUILT_IN_CHOICE_WORDS: Record<string, string[]> = {
+  en: ['please', 'in', 'language', 'ok', 'okay', 'yes', 'speak', 'talk', 'continue'],
+  hi: ['mein', 'mai', 'me', 'bhasha', 'में', 'मे', 'भाषा', 'हाँ', 'हां'],
+  ta: ['la'],
+  te: ['lo'],
+  kn: ['alli', 'dalli'],
+};
+
 export const BUILT_IN_TOOL_CALL_PHRASES: Record<string, string[]> = {
   en: ['Please wait a moment', 'Just a second', 'Give me a moment', 'One moment please'],
   hi: ['कृपया एक पल प्रतीक्षा करें', 'बस एक सेकंड', 'मुझे एक पल दें', 'एक पल रुकिए'],
@@ -75,6 +87,10 @@ export interface ConfigOptionDoc {
   inSettings?: boolean;
   /** For phrases: what the service says for languages the bot does not customise. */
   builtInPhrases?: Record<string, string[]>;
+  /** For phrases: what one entry is called, singular and plural (default phrase / phrases). */
+  phraseNoun?: { one: string; many: string };
+  /** For phrases: which languages the built-ins apply to, shown under them (default: English fallback note). */
+  phrasesNote?: string;
   defaultValue: string;
   range: string;
   description: string;
@@ -256,6 +272,20 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
         range: 'true / false',
         description:
           'Off: when the user picks a language, the AI first switches it and then makes a second call to reply, so the user waits for two AI calls (often 3 to 7 seconds). On: when the user says only a language name ("Hindi", "हिंदी", "Hindi please"), the bot switches straight away and the AI replies in one call, about 2 seconds sooner. Anything more than a language name ("can we talk in Hindi?") still goes through the AI as before.',
+      },
+      {
+        key: 'choice_words',
+        label: 'Words allowed around the language name',
+        kind: 'phrases',
+        requires: 'direct_switch',
+        builtInPhrases: BUILT_IN_CHOICE_WORDS,
+        phraseNoun: { one: 'word', many: 'words' },
+        phrasesNote:
+          'The language named decides the switch; the words around it only have to be allowed. A call allows the words of English plus every language the agent supports, all combined: an English, Hindi and Tamil agent switches to Tamil on "Tamil mein" and to Hindi on "Hindi please". Languages the agent does not support are ignored.',
+        defaultValue: 'built-in',
+        range: '{ "hi": ["mein", "chahiye"] }',
+        description:
+          'Optional. The only words a user may say alongside the language name for the switch to happen without the AI. Anything else ("not Hindi", "Hindi loan details") still goes through the AI. Adding a language starts from its built-in words: add your own or remove one that misfires, and your list replaces the built-ins for that language. Keep to words that change nothing on their own, such as "please" or "mein": a word like "not" would make the bot switch when the user did not ask. Language names are ignored here.',
       },
     ],
   },

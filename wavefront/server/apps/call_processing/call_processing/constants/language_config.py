@@ -18,7 +18,7 @@ LANGUAGE_KEYWORDS: Dict[str, List[str]] = {
     'ml': ['malayalam', 'മലയാളം'],
     'mr': ['marathi', 'मराठी'],
     'gu': ['gujarati', 'ગુજરાતી'],
-    'pa': ['punjabi', 'ਪੰਜਾಬੀ'],
+    'pa': ['punjabi', 'ਪੰਜਾਬੀ'],
     'bn': ['bengali', 'বাংলা'],
     'zh': ['chinese', 'mandarin', '中文', '普通话'],
     'ja': ['japanese', '日本語'],
@@ -51,6 +51,35 @@ LANGUAGE_KEYWORDS: Dict[str, List[str]] = {
     'th': ['thai', 'ภาษาไทย', 'phasa thai'],
     'uk': ['ukrainian', 'українська', 'ukrainska'],
     'vi': ['vietnamese', 'tiếng việt', 'tieng viet'],
+    'bg': ['bulgarian', 'български', 'balgarski'],
+}
+
+# Words that may surround a language name when the user only picks a language
+# ("Hindi please", "Hindi mein"); see services/common/direct_language_switch.py.
+# A call accepts English words plus those of the agent's supported languages; an
+# agent's ``language_switch.choice_words`` replaces a language's list for it.
+# Mirrored for the agent config page in the client's conversation-config.ts.
+# Every entry must be meaningless on its own in a reply ("not", "loan" would
+# change the answer): a wrong word makes the bot switch when the user did not ask.
+LANGUAGE_CHOICE_WORDS: Dict[str, List[str]] = {
+    'en': [
+        'please',
+        'in',
+        'language',
+        'ok',
+        'okay',
+        'yes',
+        'speak',
+        'talk',
+        'continue',
+    ],
+    'hi': ['mein', 'mai', 'me', 'bhasha', 'में', 'मे', 'भाषा', 'हाँ', 'हां'],
+    # TODO: minimal guesses ("Tamil la", "Telugu lo", "Kannada dalli"); need a
+    # native speaker's review before agents rely on them
+    'ta': ['la'],
+    'te': ['lo'],
+    'kn': ['alli', 'dalli'],
+    'ml': [],
 }
 
 # Human-readable language display names (first keyword, capitalized)
@@ -102,4 +131,5 @@ LANGUAGE_INSTRUCTIONS: Dict[str, str] = {
     'th': 'Respond in Thai (ตอบเป็นภาษาไทย).',
     'uk': 'Respond in Ukrainian (Відповідайте українською).',
     'vi': 'Respond in Vietnamese (Trả lời bằng tiếng Việt).',
+    'bg': 'Respond in Bulgarian (Отговаряйте на български).',
 }

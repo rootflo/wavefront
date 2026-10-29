@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_CHOICE_WORDS,
   CONVERSATION_CONFIG_DOCS,
   DEFAULT_CONVERSATION_CONFIG,
   isOutOfRange,
@@ -79,6 +80,22 @@ describe('language switching', () => {
   it('documents every default it writes out', () => {
     const documented = keys(languageSwitch.options);
 
-    expect(Object.keys(DEFAULT_CONVERSATION_CONFIG.language_switch)).toEqual(documented);
+    for (const key of Object.keys(DEFAULT_CONVERSATION_CONFIG.language_switch)) expect(documented).toContain(key);
+  });
+
+  it('offers per-language choice words, only once the direct switch is on, starting from the built-ins', () => {
+    const choiceWords = languageSwitch.options.find((o) => o.key === 'choice_words')!;
+
+    expect(choiceWords.kind).toBe('phrases');
+    expect(choiceWords.requires).toBe('direct_switch');
+    expect(choiceWords.builtInPhrases).toBe(BUILT_IN_CHOICE_WORDS);
+    expect(keys(splitSectionOptions(languageSwitch.options).settings)).toEqual(['choice_words']);
+  });
+
+  it('keeps built-in choice words to single lower-case words', () => {
+    for (const words of Object.values(BUILT_IN_CHOICE_WORDS)) {
+      for (const word of words) expect(word).toBe(word.toLowerCase().trim());
+      for (const word of words) expect(word.split(/\s+/)).toHaveLength(1);
+    }
   });
 });

@@ -4,7 +4,10 @@ Per agent, via ``conversation_config.language_switch`` on the voice agent::
 
     {
       "language_switch": {
-        "direct_switch": false   // on: "Hindi" switches before the LLM runs
+        "direct_switch": false,  // on: "Hindi" switches before the LLM runs
+        "choice_words": {        // optional, per language code
+          "hi": ["mein", "chahiye"]
+        }
       }
     }
 
@@ -16,6 +19,15 @@ prompt here, before the LLM runs, so a single call answers in the new language.
 Anything else ("can we talk in Hindi?", a sentence that mentions a language)
 goes to the LLM and its tool as before.
 
+Choice words are what may surround the name ("please", "mein", "la"). A turn
+may use the words of English and of every language the agent supports, combined:
+an en + hi + ta agent accepts "Tamil mein" and "Hindi please" alike, an agent
+without Hindi does not accept "mein". Each language's words are the built-ins in
+``LANGUAGE_CHOICE_WORDS`` unless ``choice_words`` lists that language: then the
+agent's list replaces the built-ins for it (add words, or drop one that misfires).
+Entries are split into words; language names are dropped, since a name used as
+a choice word would let "Hindi Tamil" pass as a choice.
+
 Only multi-language agents that use the tool take the shortcut: browser rooms
 whose app drives the language (``room_context_language``) never do.
 """
@@ -23,13 +35,25 @@ whose app drives the language (``room_context_language``) never do.
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
+from dataclasses import dataclass, field
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from pipecat.frames.frames import Frame, LLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from call_processing.constants.language_config import (
+    LANGUAGE_CHOICE_WORDS,
     LANGUAGE_DISPLAY_NAMES,
     LANGUAGE_KEYWORDS,
 )
@@ -41,39 +65,15 @@ from call_processing.services.common.language_switch import (
 )
 from call_processing.services.common.prompts import direct_language_switch_note
 
-# Words that may surround a language name in a bare choice. Anything else
-# ("not", "loan", "can") means the turn is more than a choice and goes to the LLM.
-_FILLER_WORDS = frozenset(
-    {
-        # English
-        'please',
-        'in',
-        'language',
-        'ok',
-        'okay',
-        'yes',
-        'speak',
-        'talk',
-        'continue',
-        # Romanized Hindi
-        'mein',
-        'mai',
-        'me',
-        'bhasha',
-        # Hindi
-        'में',
-        'मे',
-        'भाषा',
-        'हाँ',
-        'हां',
-    }
-)
+_SECTION = 'conversation_config.language_switch'
 
 
 @dataclass(frozen=True)
 class LanguageSwitchConfig:
     # Off: a language choice goes through the LLM tool (two LLM calls)
     direct_switch: bool = False
+    # Per language code: replaces that language's built-in choice words
+    choice_words: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def from_agent_config(cls, agent_config: Mapping[str, Any]) -> LanguageSwitchConfig:
@@ -83,7 +83,38 @@ class LanguageSwitchConfig:
             direct_switch=raw['direct_switch']
             if isinstance(raw.get('direct_switch'), bool)
             else d.direct_switch,
+            choice_words=_choice_word_book(raw.get('choice_words')),
         )
+
+
+_LANGUAGE_NAMES = frozenset(
+    name for names in LANGUAGE_KEYWORDS.values() for name in names
+)
+
+
+def _choice_word_book(value: Any) -> Dict[str, Tuple[str, ...]]:
+    """``choice_words`` as {language: words}; anything malformed is skipped."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        logger.warning(f'Ignoring invalid {_SECTION}.choice_words: {value!r}')
+        return {}
+    book: Dict[str, Tuple[str, ...]] = {}
+    for language, entries in value.items():
+        if not isinstance(language, str) or not isinstance(entries, list):
+            logger.warning(
+                f'Ignoring invalid {_SECTION}.choice_words[{language!r}]: {entries!r}'
+            )
+            continue
+        words = [
+            word
+            for entry in entries
+            if isinstance(entry, str)
+            for word in _words(entry)
+            if word not in _LANGUAGE_NAMES
+        ]
+        book[language.lower()] = tuple(dict.fromkeys(words))
+    return book
 
 
 def _words(text: str) -> List[str]:
@@ -94,9 +125,33 @@ def _words(text: str) -> List[str]:
     return cleaned.split()
 
 
-def match_language_choice(text: str, supported_languages: List[str]) -> Optional[str]:
-    """The supported language ``text`` does nothing but name, else None."""
-    words = [w for w in _words(text) if w not in _FILLER_WORDS]
+def _choice_words(
+    supported_languages: Sequence[str],
+    choice_words: Optional[Mapping[str, Sequence[str]]] = None,
+) -> Set[str]:
+    """Words allowed around a language name: English plus the agent's languages,
+    each the agent's own list if it has one, else the built-ins."""
+    agent_words = choice_words or {}
+    return {
+        word
+        for code in ('en', *supported_languages)
+        for word in agent_words.get(code, LANGUAGE_CHOICE_WORDS.get(code, []))
+    }
+
+
+def match_language_choice(
+    text: str,
+    supported_languages: Sequence[str],
+    choice_words: Optional[Mapping[str, Sequence[str]]] = None,
+) -> Optional[str]:
+    """The supported language ``text`` does nothing but name, else None.
+
+    Around the name only choice words of English and the agent's own languages
+    may appear (see the module docstring); anything else ("not", "loan", "can")
+    means the turn is more than a choice and goes to the LLM.
+    """
+    allowed = _choice_words(supported_languages, choice_words)
+    words = [w for w in _words(text) if w not in allowed]
     if not words:
         return None
     # "Hindi. Hindi." names one language; "bahasa indonesia" is one name
@@ -142,6 +197,7 @@ class DirectLanguageSwitchProcessor(FrameProcessor):
         stt_provider: str,
         tts_voice_ids: Dict[str, str],
         on_language_selected: Optional[Callable[[str], Awaitable[None]]] = None,
+        choice_words: Optional[Mapping[str, Sequence[str]]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -153,6 +209,7 @@ class DirectLanguageSwitchProcessor(FrameProcessor):
         self._stt_provider = stt_provider
         self._tts_voice_ids = tts_voice_ids
         self._on_language_selected = on_language_selected
+        self._choice_words = choice_words or {}
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -170,7 +227,9 @@ class DirectLanguageSwitchProcessor(FrameProcessor):
         text = _message_text(messages[-1]) if messages else None
         if not text:
             return
-        language = match_language_choice(text, self._supported_languages)
+        language = match_language_choice(
+            text, self._supported_languages, self._choice_words
+        )
         if language is None:
             return
         current = self._language_state.get('current_language')

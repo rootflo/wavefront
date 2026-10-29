@@ -1,3 +1,5 @@
+import time
+
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -9,12 +11,13 @@ from pipecat.frames.frames import (
 from pipecat.turns.types import ProcessFrameResult
 from pipecat.turns.user_start import (
     MinWordsUserTurnStartStrategy,
-    TranscriptionUserTurnStartStrategy,
     VADUserTurnStartStrategy,
 )
 
 from call_processing.services.common.smart_turn import SharedSmartTurnAnalyzer
 from call_processing.services.common.turn_taking import (
+    LATE_TRANSCRIPT_SECS,
+    TranscriptFallbackStartStrategy,
     TurnTakingConfig,
     VADWhenBotSilentStartStrategy,
 )
@@ -112,7 +115,7 @@ def test_default_is_instant_barge_in_on_vad_backed_by_transcripts():
     vad, transcript = TurnTakingConfig.from_agent_config({}).start_strategies()
 
     assert type(vad) is VADUserTurnStartStrategy
-    assert type(transcript) is TranscriptionUserTurnStartStrategy
+    assert type(transcript) is TranscriptFallbackStartStrategy
 
 
 def test_barge_in_can_be_turned_off():
@@ -184,7 +187,7 @@ def test_zero_words_interrupts_on_vad_alone():
     assert config.barge_in_min_words == 0
     vad, transcript = config.start_strategies()
     assert type(vad) is VADUserTurnStartStrategy
-    assert type(transcript) is TranscriptionUserTurnStartStrategy
+    assert type(transcript) is TranscriptFallbackStartStrategy
 
 
 def test_zero_words_does_nothing_while_barge_in_is_off():
@@ -375,3 +378,69 @@ def test_non_boolean_welcome_mute_falls_back_to_the_default():
     )
 
     assert config.mute_until_first_bot_complete is False
+
+
+# --------------------------------- transcript turn starts that must not interrupt
+
+
+def _interim(text='Hin'):
+    return InterimTranscriptionFrame(text, 'u', '', language=None)
+
+
+def _just_after_a_turn(strategies):
+    """As if a user turn had just ended (the controller tells every strategy)."""
+    for strategy in strategies:
+        strategy._turn_stopped_at = time.monotonic()
+
+
+def _long_after_a_turn(strategies):
+    for strategy in strategies:
+        strategy._turn_stopped_at = time.monotonic() - LATE_TRANSCRIPT_SECS - 1
+
+
+async def test_an_interim_transcript_never_starts_a_turn():
+    strategies = TurnTakingConfig.from_agent_config({}).start_strategies()
+    events = _turn_events(strategies)
+
+    await _feed(strategies, BotStartedSpeakingFrame())
+    await _feed(strategies, _interim())
+
+    assert events == []
+
+
+async def test_a_final_landing_just_after_a_turn_ended_does_not_interrupt():
+    strategies = TurnTakingConfig.from_agent_config({}).start_strategies()
+    events = _turn_events(strategies)
+
+    _just_after_a_turn(strategies)
+    await _feed(strategies, _transcript('and the rest of it'))
+    assert events == []
+
+    _long_after_a_turn(strategies)
+    await _feed(strategies, _transcript())
+    assert events == ['turn_started']
+
+
+async def test_the_turn_end_is_recorded_from_the_controller_callback():
+    strategy = TranscriptFallbackStartStrategy()
+    assert strategy._transcript_is_late() is False
+
+    await strategy.handle_user_turn_stopped()
+
+    assert strategy._transcript_is_late() is True
+
+
+async def test_barge_in_off_ignores_a_final_landing_just_after_a_turn_ended():
+    strategies = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': False})
+    ).start_strategies()
+    events = _turn_events(strategies)
+
+    await _feed(strategies, BotStoppedSpeakingFrame())
+    _just_after_a_turn(strategies)
+    await _feed(strategies, _transcript('and the rest of it'))
+    assert events == []
+
+    _long_after_a_turn(strategies)
+    await _feed(strategies, _transcript())
+    assert events == ['turn_started']
