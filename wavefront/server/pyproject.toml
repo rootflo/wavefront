@@ -86,7 +86,7 @@ constraint-dependencies = [
     "azure-core>=1.38.0",
     "click>=8.3.3",
     "ecdsa>=0.19.2",
-    "filelock>=3.20.3",
+    "filelock>=4.2.1",
     "fsspec>=2026.6.0",
     "google-cloud-aiplatform>=1.131.0",
     # google-auth deprecates grpcio < 1.83 (no post-quantum TLS) and will
