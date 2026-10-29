@@ -17,6 +17,7 @@ from pipecat.turns.user_start import (
 from call_processing.services.common.smart_turn import SharedSmartTurnAnalyzer
 from call_processing.services.common.turn_taking import (
     LATE_TRANSCRIPT_SECS,
+    TALK_OVER_TRANSCRIPT_SECS,
     TranscriptFallbackStartStrategy,
     TurnTakingConfig,
     VADWhenBotSilentStartStrategy,
@@ -345,6 +346,44 @@ async def test_barge_in_off_drops_talk_over_transcribed_after_the_bot_stops():
     assert events == ['reset', 'turn_started']
 
 
+async def test_barge_in_off_a_stale_talk_over_does_not_swallow_a_later_transcript():
+    strategies = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': False})
+    ).start_strategies()
+    events = _turn_events(strategies)
+
+    # A noise over the bot that STT never transcribes
+    await _feed(strategies, BotStartedSpeakingFrame())
+    await _feed(strategies, VADUserStartedSpeakingFrame())
+    await _feed(strategies, VADUserStoppedSpeakingFrame())
+    await _feed(strategies, BotStoppedSpeakingFrame())
+    for strategy in strategies:
+        if strategy._talk_over_ended_at is not None:
+            strategy._talk_over_ended_at -= TALK_OVER_TRANSCRIPT_SECS + 1
+
+    # Later a short reply VAD missed arrives as a transcript alone
+    await _feed(strategies, _transcript('Hindi'))
+
+    assert events == ['turn_started']
+
+
+async def test_barge_in_off_a_new_bot_turn_clears_a_pending_talk_over():
+    strategies = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': False})
+    ).start_strategies()
+    events = _turn_events(strategies)
+
+    await _feed(strategies, BotStartedSpeakingFrame())
+    await _feed(strategies, VADUserStartedSpeakingFrame())
+    await _feed(strategies, VADUserStoppedSpeakingFrame())
+    await _feed(strategies, BotStoppedSpeakingFrame())
+    await _feed(strategies, BotStartedSpeakingFrame())
+    await _feed(strategies, BotStoppedSpeakingFrame())
+    await _feed(strategies, _transcript('Hindi'))
+
+    assert events == ['turn_started']
+
+
 # ------------------------------------------------------ mute until first bot speech
 
 
@@ -414,11 +453,24 @@ async def test_a_final_landing_just_after_a_turn_ended_does_not_interrupt():
 
     _just_after_a_turn(strategies)
     await _feed(strategies, _transcript('and the rest of it'))
-    assert events == []
+    # Dropped, and its text cleared so it does not join the next turn
+    assert events == ['reset']
 
     _long_after_a_turn(strategies)
     await _feed(strategies, _transcript())
-    assert events == ['turn_started']
+    assert events == ['reset', 'turn_started']
+
+
+async def test_a_late_final_during_an_active_turn_keeps_that_turns_text():
+    strategies = TurnTakingConfig.from_agent_config({}).start_strategies()
+    events = _turn_events(strategies)
+
+    for strategy in strategies:
+        await strategy.handle_user_turn_stopped()
+        await strategy.handle_user_turn_started()
+    await _feed(strategies, _transcript('Hindi'))
+
+    assert events == []
 
 
 async def test_the_turn_end_is_recorded_from_the_controller_callback():
@@ -439,8 +491,9 @@ async def test_barge_in_off_ignores_a_final_landing_just_after_a_turn_ended():
     await _feed(strategies, BotStoppedSpeakingFrame())
     _just_after_a_turn(strategies)
     await _feed(strategies, _transcript('and the rest of it'))
-    assert events == []
+    # Dropped, and its text cleared so it does not join the next turn
+    assert events == ['reset']
 
     _long_after_a_turn(strategies)
     await _feed(strategies, _transcript())
-    assert events == ['turn_started']
+    assert events == ['reset', 'turn_started']

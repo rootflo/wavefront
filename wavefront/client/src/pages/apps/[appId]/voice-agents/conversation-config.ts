@@ -89,6 +89,8 @@ export interface ConfigOptionDoc {
   builtInPhrases?: Record<string, string[]>;
   /** For phrases: what one entry is called, singular and plural (default phrase / phrases). */
   phraseNoun?: { one: string; many: string };
+  /** For phrases: an empty list is a real setting (nothing allowed), not a reset to the built-ins. */
+  keepEmpty?: boolean;
   /** For phrases: which languages the built-ins apply to, shown under them (default: English fallback note). */
   phrasesNote?: string;
   defaultValue: string;
@@ -280,6 +282,7 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
         requires: 'direct_switch',
         builtInPhrases: BUILT_IN_CHOICE_WORDS,
         phraseNoun: { one: 'word', many: 'words' },
+        keepEmpty: true,
         phrasesNote:
           'The language named decides the switch; the words around it only have to be allowed. A call allows the words of English plus every language the agent supports, all combined: an English, Hindi and Tamil agent switches to Tamil on "Tamil mein" and to Hindi on "Hindi please". Languages the agent does not support are ignored.',
         defaultValue: 'built-in',

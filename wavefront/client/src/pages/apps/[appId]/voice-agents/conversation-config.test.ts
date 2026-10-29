@@ -88,6 +88,7 @@ describe('language switching', () => {
 
     expect(choiceWords.kind).toBe('phrases');
     expect(choiceWords.requires).toBe('direct_switch');
+    expect(choiceWords.keepEmpty).toBe(true);
     expect(choiceWords.builtInPhrases).toBe(BUILT_IN_CHOICE_WORDS);
     expect(keys(splitSectionOptions(languageSwitch.options).settings)).toEqual(['choice_words']);
   });

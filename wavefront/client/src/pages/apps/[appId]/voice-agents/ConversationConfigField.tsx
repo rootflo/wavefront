@@ -284,6 +284,7 @@ function ConfigOption({ id, option, value, defaultValue, inactiveReason, onChang
           value={isPlainObject(value) ? (value as PhraseMap) : {}}
           builtIn={option.builtInPhrases ?? {}}
           noun={option.phraseNoun}
+          keepEmpty={option.keepEmpty}
           note={option.phrasesNote}
           onChange={onChange}
           disabled={disabled}
@@ -306,17 +307,19 @@ interface PhrasesInputProps {
   value: PhraseMap;
   builtIn: PhraseMap;
   noun?: { one: string; many: string };
+  keepEmpty?: boolean;
   note?: string;
   onChange: (value: PhraseMap | undefined) => void;
   disabled?: boolean;
 }
 
 /** Custom phrases per chosen language; every other language keeps the built-in phrases shown below. */
-function PhrasesInput({
+export function PhrasesInput({
   id,
   value,
   builtIn,
   noun = { one: 'phrase', many: 'phrases' },
+  keepEmpty = false,
   note = 'Other languages use the English phrases (yours if set, otherwise the built-in ones).',
   onChange,
   disabled,
@@ -329,7 +332,7 @@ function PhrasesInput({
 
   const setLanguage = (language: string, phrases: string[]) => {
     const next = { ...value };
-    if (phrases.length > 0) next[language] = phrases;
+    if (phrases.length > 0 || keepEmpty) next[language] = phrases;
     else delete next[language];
     onChange(Object.keys(next).length > 0 ? next : undefined);
   };
@@ -342,7 +345,9 @@ function PhrasesInput({
 
   const removeLanguage = (language: string) => {
     setAdded((current) => current.filter((l) => l !== language));
-    setLanguage(language, []);
+    const next = { ...value };
+    delete next[language];
+    onChange(Object.keys(next).length > 0 ? next : undefined);
   };
 
   return (
@@ -367,7 +372,11 @@ function PhrasesInput({
               </div>
               <PhraseLines
                 value={Array.isArray(value[language]) ? value[language] : []}
-                placeholder={builtIn[language]?.join('\n') ?? `One ${noun.one} per line`}
+                placeholder={
+                  keepEmpty && Array.isArray(value[language]) && value[language].length === 0
+                    ? `No ${noun.many}: only the language name on its own`
+                    : (builtIn[language]?.join('\n') ?? `One ${noun.one} per line`)
+                }
                 onChange={(phrases) => setLanguage(language, phrases)}
                 disabled={disabled}
               />

@@ -101,6 +101,9 @@ _SECTION = 'conversation_config.turn_taking'
 # A final transcript this soon after a user turn ended belongs to that turn (an
 # STT that split one utterance in two), so it never starts a new one
 LATE_TRANSCRIPT_SECS = 1.0
+# Talk-over's final transcript lands within this long of the VAD stop; later
+# than that a transcript is the user's own speech VAD missed
+TALK_OVER_TRANSCRIPT_SECS = 2.0
 _MIN_IDLE_TIMEOUT_MS = 2000
 
 
@@ -109,9 +112,15 @@ class _LateTranscriptGuard:
 
     _late_transcript_secs: float = LATE_TRANSCRIPT_SECS
     _turn_stopped_at: Optional[float] = None
+    _user_turn_active: bool = False
+
+    async def handle_user_turn_started(self):
+        await super().handle_user_turn_started()
+        self._user_turn_active = True
 
     async def handle_user_turn_stopped(self):
         await super().handle_user_turn_stopped()
+        self._user_turn_active = False
         self._turn_stopped_at = time.monotonic()
 
     def _transcript_is_late(self) -> bool:
@@ -119,6 +128,16 @@ class _LateTranscriptGuard:
             self._turn_stopped_at is not None
             and time.monotonic() - self._turn_stopped_at < self._late_transcript_secs
         )
+
+    async def _drop_if_late(self) -> bool:
+        """Drop a late final: Pipecat already added its text to the aggregation,
+        which would otherwise join the user's next turn. Not while a turn is
+        active, whose own words are in that aggregation too."""
+        if not self._transcript_is_late():
+            return False
+        if not self._user_turn_active:
+            await self.trigger_reset_aggregation()
+        return True
 
 
 class TranscriptFallbackStartStrategy(
@@ -135,7 +154,7 @@ class TranscriptFallbackStartStrategy(
         super().__init__(use_interim=False, **kwargs)
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
-        if isinstance(frame, TranscriptionFrame) and self._transcript_is_late():
+        if isinstance(frame, TranscriptionFrame) and await self._drop_if_late():
             return ProcessFrameResult.CONTINUE
         return await super().process_frame(frame)
 
@@ -173,17 +192,25 @@ class VADWhenBotSilentStartStrategy(_LateTranscriptGuard, VADUserTurnStartStrate
         self._start_on_transcript = start_on_transcript
         self._bot_speaking = False
         self._talking_over = False
-        # Talk-over ended while the bot spoke and its final transcript is due
-        self._talk_over_transcript_due = False
+        # When talk-over last ended while the bot spoke; its final transcript is
+        # due until then plus TALK_OVER_TRANSCRIPT_SECS
+        self._talk_over_ended_at: Optional[float] = None
+
+    def _talk_over_transcript_due(self) -> bool:
+        return (
+            self._talk_over_ended_at is not None
+            and time.monotonic() - self._talk_over_ended_at < TALK_OVER_TRANSCRIPT_SECS
+        )
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
         if isinstance(frame, BotStartedSpeakingFrame):
             self._bot_speaking = True
+            self._talk_over_ended_at = None
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._bot_speaking = False
             if self._discard_talk_over and self._talking_over:
                 self._talking_over = False
-                self._talk_over_transcript_due = False
+                self._talk_over_ended_at = None
                 await self.trigger_user_turn_started()
                 return ProcessFrameResult.STOP
         if self._bot_speaking:
@@ -192,19 +219,19 @@ class VADWhenBotSilentStartStrategy(_LateTranscriptGuard, VADUserTurnStartStrate
                     self._talking_over = True
                 elif isinstance(frame, VADUserStoppedSpeakingFrame):
                     self._talking_over = False
-                    self._talk_over_transcript_due = True
+                    self._talk_over_ended_at = time.monotonic()
                 elif isinstance(frame, (TranscriptionFrame, InterimTranscriptionFrame)):
                     if isinstance(frame, TranscriptionFrame):
-                        self._talk_over_transcript_due = False
+                        self._talk_over_ended_at = None
                     await self.trigger_reset_aggregation()
             return ProcessFrameResult.CONTINUE
         if isinstance(frame, VADUserStartedSpeakingFrame):
-            self._talk_over_transcript_due = False
+            self._talk_over_ended_at = None
         if self._start_on_transcript and isinstance(frame, TranscriptionFrame):
-            if self._transcript_is_late():
+            if await self._drop_if_late():
                 return ProcessFrameResult.CONTINUE
-            if self._talk_over_transcript_due:
-                self._talk_over_transcript_due = False
+            if self._talk_over_transcript_due():
+                self._talk_over_ended_at = None
                 await self.trigger_reset_aggregation()
                 return ProcessFrameResult.CONTINUE
             await self.trigger_user_turn_started()
