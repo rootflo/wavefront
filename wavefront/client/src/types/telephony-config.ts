@@ -31,6 +31,21 @@ export interface SmartfloCredentials {
 // Union type for all provider credentials
 export type TelephonyCredentials = TwilioCredentials | ExotelCredentials | SmartfloCredentials;
 
+// A secret credential as returned by the API: always this mask, never the value
+export type MaskedSecret = '********';
+
+// Credentials as returned by the API: account_sid and subdomain are readable, secrets are masked
+export interface MaskedTelephonyCredentials {
+  account_sid?: string;
+  subdomain?: string;
+  auth_token?: MaskedSecret;
+  api_key?: MaskedSecret;
+  api_token?: MaskedSecret;
+}
+
+// Credentials sent on update: with the provider unchanged, fields left out keep their stored values
+export type TelephonyCredentialsUpdate = Partial<TwilioCredentials & ExotelCredentials & SmartfloCredentials>;
+
 // Webhook configuration (currently not implemented, always null)
 export interface WebhookConfig {
   status_callback_url: string;
@@ -50,7 +65,7 @@ export interface TelephonyConfig {
   description?: string | null;
   provider: TelephonyProvider;
   connection_type: ConnectionType;
-  credentials: TelephonyCredentials;
+  credentials: MaskedTelephonyCredentials;
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
   is_deleted: boolean;
@@ -75,7 +90,7 @@ export interface UpdateTelephonyConfigRequest {
   description?: string | null;
   provider?: TelephonyProvider;
   connection_type?: ConnectionType;
-  credentials?: TelephonyCredentials;
+  credentials?: TelephonyCredentialsUpdate;
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
 }
