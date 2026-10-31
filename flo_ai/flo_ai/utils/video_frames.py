@@ -1,8 +1,11 @@
 """Sample still frames from a video, for models that take images but not video."""
 
 import base64 as _base64
+import bisect
 import io
 from typing import TYPE_CHECKING, List, Tuple
+
+from flo_ai.utils.logger import logger
 
 if TYPE_CHECKING:
     from flo_ai.models.chat_message import VideoMessageContent
@@ -59,13 +62,17 @@ def sample_video_frames(data: bytes, max_frames: int) -> List[Tuple[float, bytes
         else:
             duration = 0.0
 
+        if duration <= 0:
+            # Browser recordings (MediaRecorder WebM) carry no duration or cues,
+            # so work out the timeline from the packets and decode once.
+            logger.warning(
+                'Video has no recorded duration; sampling frames by decoding it once'
+            )
+            return _sample_without_duration(data, max_frames, pymupdf)
+
         # Midpoints of equal slices, so a 1-frame sample is the middle of the
         # video rather than its (often black) first frame.
-        targets = (
-            [duration * (i + 0.5) / max_frames for i in range(max_frames)]
-            if duration > 0
-            else [0.0]
-        )
+        targets = [duration * (i + 0.5) / max_frames for i in range(max_frames)]
         frames: List[Tuple[float, bytes]] = []
         last_time = None
         for target in targets:
@@ -88,6 +95,50 @@ def sample_video_frames(data: bytes, max_frames: int) -> List[Tuple[float, bytes
         if not frames:
             raise ValueError('Could not decode any frames from the video')
         return frames
+
+
+def _sample_without_duration(
+    data: bytes, max_frames: int, pymupdf
+) -> List[Tuple[float, bytes]]:
+    """Sample a video whose container records no duration, without seeking.
+
+    A first pass reads packet timestamps (no decoding) to get the timeline; a
+    second pass decodes once and keeps only the frames that were picked.
+    """
+    import av
+
+    with av.open(io.BytesIO(data)) as container:
+        stream = container.streams.video[0]
+        time_base = stream.time_base
+        pts_list = sorted(p.pts for p in container.demux(stream) if p.pts is not None)
+    if not pts_list:
+        raise ValueError('Could not decode any frames from the video')
+
+    times = [float(pts * time_base) for pts in pts_list]
+    start = times[0]
+    duration = times[-1] - start
+    wanted = {}
+    for i in range(max_frames):
+        target = duration * (i + 0.5) / max_frames
+        # The frame nearest the target.
+        above = bisect.bisect_left(times, start + target)
+        index = min(
+            range(max(above - 1, 0), min(above + 1, len(times))),
+            key=lambda j: abs(times[j] - start - target),
+        )
+        wanted.setdefault(pts_list[index], target)
+
+    frames: List[Tuple[float, bytes]] = []
+    with av.open(io.BytesIO(data)) as container:
+        stream = container.streams.video[0]
+        for frame in container.decode(stream):
+            if frame.pts in wanted:
+                frames.append((wanted[frame.pts], _frame_to_png(frame, pymupdf)))
+                if len(frames) == len(wanted):
+                    break
+    if not frames:
+        raise ValueError('Could not decode any frames from the video')
+    return frames
 
 
 def _frame_to_png(frame, pymupdf) -> bytes:
