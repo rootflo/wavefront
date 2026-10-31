@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import Mock
 
 import pytest
+from common_module.security.secret_cipher import SecretCipher
 from dependency_injector import providers
 from flo_testing import make_test_client
 from knowledge_base_module.controllers.knowledge_base_controller import (
@@ -45,6 +46,7 @@ def setup_containers(core_containers):
         db_client=core_containers.db_client,
         cache_manager=core_containers.cache_manager,
         call_processing_cache_invalidator=Mock(),
+        secret_cipher=SecretCipher(enabled=False),
     )
     knowledge_base_container = KnowledgeBaseContainer(
         db_client=core_containers.db_client,

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -14,13 +15,19 @@ from llm_inference_config_module.utils.cache_utils import (
 
 
 class LlmInferenceConfigService:
-    """Service for handling LLM inference configuration CRUD operations with caching"""
+    """Service for handling LLM inference configuration CRUD operations with caching
+
+    The api_key is stored (and cached) as `secret_cipher.protect` returns it, so
+    ciphertext when envelope encryption is on. Only `get_runtime_config` hands
+    out the plaintext, and never caches it.
+    """
 
     def __init__(
         self,
         llm_inference_config_repository: SQLAlchemyRepository[LlmInferenceConfig],
         cache_manager: CacheManager,
         cache_invalidator: CallProcessingCacheInvalidator,
+        secret_cipher: SecretCipher,
     ):
         """
         Initialize the LLM inference config service
@@ -29,10 +36,12 @@ class LlmInferenceConfigService:
             llm_inference_config_repository: Repository for LLM inference configs
             cache_manager: Cache manager instance
             cache_invalidator: Invalidates call_processing's cached configs
+            secret_cipher: Protects the api_key at rest and reveals it for use
         """
         self.llm_inference_config_repository = llm_inference_config_repository
         self.cache_manager = cache_manager
         self.cache_invalidator = cache_invalidator
+        self.secret_cipher = secret_cipher
         self.llm_inference_config_cache_time = 3600 * 24
 
     async def create_config(
@@ -58,7 +67,7 @@ class LlmInferenceConfigService:
             model_type: Type of model: "llm" or "embedding" (defaults to "llm")
 
         Returns:
-            Created LLM inference config as dict
+            Created LLM inference config as a public dict (no api_key)
         """
         logger.info(
             f'Creating LLM inference config - model: {llm_model}, type: {type}, model_type: {model_type}'
@@ -67,15 +76,15 @@ class LlmInferenceConfigService:
         config = await self.llm_inference_config_repository.create(
             llm_model=llm_model,
             display_name=display_name,
-            api_key=api_key,
+            api_key=await self.secret_cipher.aprotect(api_key),
             type=type,
             base_url=base_url,
             parameters=parameters,
             model_type=model_type,
         )
 
-        # Convert to dict
-        config_dict = config.to_dict(exclude_api_key=False)
+        # Cache the stored form; the caller only gets the public one
+        config_dict = config.to_stored_dict()
 
         # Cache the config
         cache_key = get_llm_inference_config_cache_key(config.id)
@@ -95,7 +104,7 @@ class LlmInferenceConfigService:
         )
 
         logger.info(f'Successfully created LLM inference config with id: {config.id}')
-        return config_dict
+        return LlmInferenceConfig.public_dict(config_dict)
 
     async def get_config(self, config_id: UUID) -> Optional[dict]:
         """
@@ -105,7 +114,8 @@ class LlmInferenceConfigService:
             config_id: UUID of the configuration
 
         Returns:
-            LLM inference config as dict or None if not found
+            LLM inference config in its stored form (api_key as stored, so
+            ciphertext when encryption is on) or None if not found
         """
         cache_key = get_llm_inference_config_cache_key(config_id)
 
@@ -123,7 +133,7 @@ class LlmInferenceConfigService:
 
         if config:
             # Convert to dict and cache
-            config_dict = config.to_dict(exclude_api_key=False)
+            config_dict = config.to_stored_dict()
             self.cache_manager.add(
                 cache_key,
                 json.dumps(config_dict),
@@ -133,12 +143,38 @@ class LlmInferenceConfigService:
 
         return None
 
+    async def get_public_config(self, config_id: UUID) -> Optional[dict]:
+        """Get an LLM inference configuration by ID in its public form (no api_key)"""
+        config_dict = await self.get_config(config_id)
+        return LlmInferenceConfig.public_dict(config_dict) if config_dict else None
+
+    async def get_runtime_config(self, config_id: UUID) -> Optional[dict]:
+        """
+        Get an LLM inference configuration with its plaintext api_key, for
+        making provider calls. The result stays in memory and is never cached.
+
+        Args:
+            config_id: UUID of the configuration
+
+        Returns:
+            LLM inference config as dict or None if not found
+        """
+        config_dict = await self.get_config(config_id)
+        if not config_dict:
+            return None
+
+        runtime_config = dict(config_dict)
+        runtime_config['api_key'] = await self.secret_cipher.areveal(
+            config_dict.get('api_key')
+        )
+        return runtime_config
+
     async def list_configs(self) -> List[dict]:
         """
         List all LLM inference configurations (with caching)
 
         Returns:
-            List of LLM inference configs as dicts
+            List of LLM inference configs as public dicts (no api_key)
         """
         list_cache_key = get_llm_inference_configs_list_cache_key()
 
@@ -146,21 +182,23 @@ class LlmInferenceConfigService:
         cached_list_str = self.cache_manager.get_str(list_cache_key)
         if cached_list_str:
             logger.info('Cache hit for LLM inference configs list')
-            return json.loads(cached_list_str)
+            return [
+                LlmInferenceConfig.public_dict(c) for c in json.loads(cached_list_str)
+            ]
 
         # Cache miss - fetch from DB
         logger.info('Cache miss - fetching LLM inference configs list from DB')
         configs = await self.llm_inference_config_repository.find(is_deleted=False)
 
         # Convert to dicts and cache
-        configs_dicts = [config.to_dict(exclude_api_key=False) for config in configs]
+        configs_dicts = [config.to_stored_dict() for config in configs]
         self.cache_manager.add(
             list_cache_key,
             json.dumps(configs_dicts),
             expiry=self.llm_inference_config_cache_time,
         )
 
-        return configs_dicts
+        return [LlmInferenceConfig.public_dict(c) for c in configs_dicts]
 
     async def update_config(self, config_id: UUID, **update_data) -> Optional[dict]:
         """
@@ -171,7 +209,7 @@ class LlmInferenceConfigService:
             **update_data: Fields to update
 
         Returns:
-            Updated config as dict or None if not found
+            Updated config as a public dict (no api_key) or None if not found
         """
         logger.info(f'Updating LLM inference config: {config_id}')
 
@@ -180,6 +218,11 @@ class LlmInferenceConfigService:
         )
         if not existing_config:
             return None
+
+        if 'api_key' in update_data:
+            update_data['api_key'] = await self.secret_cipher.aprotect(
+                update_data['api_key']
+            )
 
         updated_config = await self.llm_inference_config_repository.find_one_and_update(
             {'id': config_id}, refresh=True, **update_data
@@ -198,7 +241,7 @@ class LlmInferenceConfigService:
         )
 
         logger.info(f'Successfully updated LLM inference config: {config_id}')
-        return updated_config.to_dict(exclude_api_key=False)
+        return updated_config.to_dict()
 
     async def delete_config(self, config_id: UUID) -> bool:
         """

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from common_module.security.secret_cipher import SecretCipher
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
@@ -15,7 +16,8 @@ CONFIG_ID = uuid.uuid4()
 def make_record():
     record = Mock()
     record.id = CONFIG_ID
-    record.to_dict.return_value = {'id': str(CONFIG_ID)}
+    record.to_dict.return_value = {'id': str(CONFIG_ID), 'has_api_key': False}
+    record.to_stored_dict.return_value = {'id': str(CONFIG_ID), 'api_key': None}
     return record
 
 
@@ -37,7 +39,9 @@ def repository():
 
 @pytest.fixture
 def service(repository, invalidator):
-    return LlmInferenceConfigService(repository, Mock(), invalidator)
+    return LlmInferenceConfigService(
+        repository, Mock(), invalidator, SecretCipher(enabled=False)
+    )
 
 
 async def test_create_invalidates(service, invalidator):

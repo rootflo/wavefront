@@ -79,7 +79,7 @@ async def agent_inference(
     # Fetch LLM config if provided
     llm_config = None
     if agent_inference_payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
+        llm_config_dict = await llm_inference_config_service.get_runtime_config(
             agent_inference_payload.llm_inference_config_id
         )
         if not llm_config_dict:

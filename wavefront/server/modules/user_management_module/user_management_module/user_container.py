@@ -30,6 +30,7 @@ class UserContainer(containers.DeclarativeContainer):
     # module, so the dependency cannot point the other way. Password reset mail
     # goes out through the primary email connection.
     email_send_service = providers.Dependency()
+    secret_cipher = providers.Dependency()
     user_repository = providers.Singleton(
         SQLAlchemyRepository[User], model=User, db_client=db_client
     )

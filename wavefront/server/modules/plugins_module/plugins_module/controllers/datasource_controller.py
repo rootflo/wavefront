@@ -29,6 +29,7 @@ from common_module.feature.feature_flag import (
     FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from common_module.utils.serializer import serialize_values
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.datasource import Datasource
@@ -45,6 +46,7 @@ from datasource import (
     build_datasource_uri,
     build_file_storage_config,
     split_datasource_uri,
+    get_datasource_secret_fields,
     is_file_storage_type,
 )
 from datasource.file_storage.config import normalize_storage_path
@@ -116,6 +118,15 @@ async def _test_datasource_connection(datasource_type: str, config) -> bool:
     return result.result
 
 
+def _datasource_response(datasource: Datasource) -> dict:
+    """``datasource`` as returned to clients, with its secrets masked."""
+    result = Datasource.to_dict(datasource)
+    result['config'] = SecretCipher.mask_fields(
+        result['config'], get_datasource_secret_fields(datasource.type)
+    )
+    return result
+
+
 def _file_storage_unsupported(response_formatter: ResponseFormatter) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -137,6 +148,7 @@ async def add_datasource(
         Provide[PluginsContainer.datasource_repository]
     ),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     role_id = request.state.session.role_id
 
@@ -180,7 +192,9 @@ async def add_datasource(
     datasource: Datasource = await datasource_repository.create(
         name=add_datasource_payload.name,
         type=add_datasource_payload.type,
-        config=config_json,
+        config=await secret_cipher.aprotect_fields(
+            config_json, get_datasource_secret_fields(add_datasource_payload.type)
+        ),
         description=add_datasource_payload.description,
     )
     invalidate_datasources_cache(cache_manager)
@@ -209,6 +223,7 @@ async def update_datasource(
         Provide[PluginsContainer.datasource_repository]
     ),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     role_id = request.state.session.role_id
 
@@ -231,6 +246,28 @@ async def update_datasource(
             ),
         )
 
+    # Use provided type or keep existing type
+    datasource_type = update_datasource_payload.type or existing_datasource.type
+    secret_fields = get_datasource_secret_fields(datasource_type)
+
+    # Secrets come back masked (or are left out) when the user did not change
+    # them; merge the stored ones back so everything below works on plaintext.
+    stored_config: dict = {}
+    payload_config = None
+    if update_datasource_payload.config is not None:
+        stored_config = (
+            await secret_cipher.areveal_fields(
+                existing_datasource.config,
+                get_datasource_secret_fields(existing_datasource.type),
+            )
+            or {}
+        )
+        payload_config = json.loads(update_datasource_payload.config)
+        if isinstance(payload_config, dict):
+            payload_config = SecretCipher.merge_masked(
+                payload_config, stored_config, secret_fields
+            )
+
     # A file storage datasource's type and config are fixed: a new bucket or
     # provider would orphan every path already handed out. Unchanged values
     # (the edit dialog resends them) are ignored.
@@ -241,9 +278,10 @@ async def update_datasource(
             update_datasource_payload.type is not None
             and update_datasource_payload.type != existing_datasource.type
         )
-        changes_config = update_datasource_payload.config is not None and json.loads(
-            update_datasource_payload.config
-        ) != (existing_datasource.config or {})
+        changes_config = (
+            update_datasource_payload.config is not None
+            and payload_config != stored_config
+        )
         if changes_type or changes_config:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -270,12 +308,7 @@ async def update_datasource(
         update_datasource_payload.type is not None
         or update_datasource_payload.config is not None
     ):
-        # Use provided type or keep existing type
-        datasource_type = update_datasource_payload.type or existing_datasource.type
-
         if update_datasource_payload.config is not None:
-            payload_config = json.loads(update_datasource_payload.config)
-
             try:
                 config = _build_datasource_config(datasource_type, payload_config)
             except (ValueError, TypeError) as e:
@@ -297,7 +330,9 @@ async def update_datasource(
                     ),
                 )
 
-            update_data['config'] = payload_config
+            update_data['config'] = await secret_cipher.aprotect_fields(
+                payload_config, secret_fields
+            )
 
         if update_datasource_payload.type is not None:
             update_data['type'] = datasource_type
@@ -322,7 +357,7 @@ async def update_datasource(
             {
                 'message': 'Datasource updated successfully',
                 'datasource_id': str(updated_datasource.id),
-                'datasource': Datasource.to_dict(updated_datasource),
+                'datasource': _datasource_response(updated_datasource),
             }
         ),
     )
@@ -398,7 +433,7 @@ async def get_datasources(
             ),
         )
     datasources = await datasource_repository.find()
-    datasources = [Datasource.to_dict(datasource) for datasource in datasources]
+    datasources = [_datasource_response(datasource) for datasource in datasources]
     return JSONResponse(
         content=response_formatter.buildSuccessResponse({'datasources': datasources}),
         status_code=status.HTTP_200_OK,
@@ -434,7 +469,9 @@ async def get_datasource(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     return JSONResponse(
-        content=response_formatter.buildSuccessResponse(Datasource.to_dict(datasource)),
+        content=response_formatter.buildSuccessResponse(
+            _datasource_response(datasource)
+        ),
         status_code=status.HTTP_200_OK,
     )
 

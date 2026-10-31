@@ -1,6 +1,7 @@
 """Voice agent cache service for fetching configs from Redis"""
 
 import asyncio
+import json
 from typing import Dict, Any, List, Tuple, Optional
 from uuid import UUID
 
@@ -15,19 +16,36 @@ from call_processing.cache.cache_utils import (
 )
 from call_processing.log.logger import logger
 from call_processing.services.common.floware_http_client import FlowareHttpClient
+from common_module.security.secret_cipher import SecretCipher
 from fastapi import HTTPException
+
+# Secret keys inside a telephony config's credentials, by provider. A copy of
+# TELEPHONY_SECRET_FIELDS in floware's voice_agents_module/utils/telephony_secrets.py
+# (call_processing does not depend on that module); keep them in sync.
+TELEPHONY_SECRET_FIELDS: Dict[str, Tuple[str, ...]] = {
+    'twilio': ('auth_token',),
+    'exotel': ('api_key', 'api_token'),
+    'smartflo': ('api_key',),
+}
 
 
 class VoiceAgentCacheService:
-    """Service for fetching voice agent configurations from Redis cache"""
+    """Service for fetching voice agent configurations from Redis cache
+
+    Configs are cached exactly as floware returns them, so their secrets are
+    ciphertext when envelope encryption is on. `get_all_agent_configs` hands
+    callers copies with the secrets revealed.
+    """
 
     def __init__(
         self,
         cache_manager: CacheManager,
         floware_http_client: Optional[FlowareHttpClient] = None,
+        secret_cipher: Optional[SecretCipher] = None,
     ):
         self.cache_manager = cache_manager
         self.floware_http_client = floware_http_client
+        self.secret_cipher = secret_cipher or SecretCipher(enabled=False)
         self.cache_ttl = 3600 * 24
 
     async def _fetch_missing_configs_from_api(
@@ -154,6 +172,7 @@ class VoiceAgentCacheService:
                 'telephony_config': {...} | None,
                 'tools': {...}
             }
+            with plaintext secrets (the cache keeps the stored form)
 
         Raises:
             HTTPException: If agent not found or configs cannot be fetched
@@ -304,11 +323,35 @@ class VoiceAgentCacheService:
 
         return {
             'agent': agent,
-            'llm_config': llm_config,
-            'tts_config': tts_config,
-            'stt_config': stt_config,
-            'telephony_config': telephony_config,
+            'llm_config': await self._reveal_api_key(llm_config),
+            'tts_config': await self._reveal_api_key(tts_config),
+            'stt_config': await self._reveal_api_key(stt_config),
+            'telephony_config': await self._reveal_credentials(telephony_config),
             'tools': tools,
+        }
+
+    async def _reveal_api_key(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Copy of an LLM/TTS/STT config with its api_key in plaintext."""
+        if 'api_key' not in config:
+            return dict(config)
+        return {
+            **config,
+            'api_key': await self.secret_cipher.areveal(config['api_key']),
+        }
+
+    async def _reveal_credentials(
+        self, config: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Copy of a telephony config with its secret credentials in plaintext."""
+        if not config:
+            return config
+        credentials = config.get('credentials')
+        if isinstance(credentials, str):
+            credentials = json.loads(credentials)
+        fields = TELEPHONY_SECRET_FIELDS.get(config.get('provider'), ())
+        return {
+            **config,
+            'credentials': await self.secret_cipher.areveal_fields(credentials, fields),
         }
 
     async def prefetch_agent_configs(

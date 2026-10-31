@@ -29,6 +29,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     cache_manager = providers.Dependency()
     cloud_storage_manager = providers.Dependency()
     call_processing_cache_invalidator = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     # Repositories
     telephony_config_repository = providers.Singleton(
@@ -79,6 +80,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         telephony_config_repository=telephony_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     tts_config_service = providers.Singleton(
@@ -86,6 +88,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         tts_config_repository=tts_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     stt_config_service = providers.Singleton(
@@ -93,6 +96,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         stt_config_repository=stt_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     tts_generator_service = providers.Singleton(

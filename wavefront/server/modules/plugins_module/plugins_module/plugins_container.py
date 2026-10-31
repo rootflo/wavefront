@@ -48,6 +48,7 @@ class PluginsContainer(containers.DeclarativeContainer):
     cloud_storage_manager = providers.Dependency()
 
     kms_cipher = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     feature_flags = providers.Dependency(default=FeatureFlags())
 

@@ -18,6 +18,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "dependency-injector>=4.46.0,<5.0.0",
     "flo-lib",
+    # KMS envelope decryption of stored provider credentials
+    "flo-cloud",
     # Redis and caching
     "redis>=5.0.0",
     "azure-identity>=1.17.0,<2.0.0",
@@ -40,6 +42,7 @@ dev = ["flo-testing"]
 
 [tool.uv.sources]
 common-module = { workspace = true }
+flo-cloud = { workspace = true }
 flo-lib = { workspace = true }
 flo-testing = { workspace = true }
 

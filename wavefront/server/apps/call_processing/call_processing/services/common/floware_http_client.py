@@ -7,6 +7,7 @@ from uuid import UUID
 from call_processing.log.logger import logger
 from call_processing.constants.api_endpoints import (
     CONFIG_TYPE_ENDPOINTS,
+    SECRET_CONFIG_TYPES,
     VOICE_AGENT_ENDPOINT,
 )
 from call_processing.constants.auth import RootfloHeaders
@@ -83,7 +84,8 @@ class FlowareHttpClient:
         self, config_type: str, config_id: UUID
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch a config from floware API
+        Fetch a config from floware API. Configs with secrets are requested in
+        stored form (`include_secrets=true`); the cache service reveals them.
 
         Args:
             config_type: Type of config (llm_inference_config, tts_config, etc.)
@@ -102,10 +104,15 @@ class FlowareHttpClient:
             raise ValueError(f'Invalid config type: {config_type}')
 
         url = f'{self.base_url}{endpoint.format(config_id=config_id)}'
+        params = (
+            {'include_secrets': 'true'} if config_type in SECRET_CONFIG_TYPES else None
+        )
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                response = await client.get(url, headers=self._get_headers())
+                response = await client.get(
+                    url, headers=self._get_headers(), params=params
+                )
                 response.raise_for_status()
 
                 # Extract config from response_formatter wrapped response

@@ -18,6 +18,7 @@ class AuthContainer(containers.DeclarativeContainer):
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
     kms_signer = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     resource_repository = providers.Singleton(
         SQLAlchemyRepository[Resource],
