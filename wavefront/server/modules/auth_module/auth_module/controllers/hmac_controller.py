@@ -4,6 +4,7 @@ import uuid
 from auth_module.auth_container import AuthContainer
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
@@ -28,6 +29,7 @@ async def generate_hmac_secret(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Generate a new HMAC client key and secret pair."""
     role_id = request.state.session.role_id
@@ -45,15 +47,16 @@ async def generate_hmac_secret(
 
     # Store in database
     auth_secret = await auth_secrets_repository.create(
-        client_key=client_key, client_secret=client_secret
+        client_key=client_key, client_secret=await secret_cipher.aprotect(client_secret)
     )
 
+    # The plaintext secret is returned only here, once
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=response_formatter.buildSuccessResponse(
             {
                 'client_key': auth_secret.client_key,
-                'client_secret': auth_secret.client_secret,
+                'client_secret': client_secret,
                 'created_at': auth_secret.created_at.isoformat(),
             }
         ),

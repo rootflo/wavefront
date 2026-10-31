@@ -16,6 +16,7 @@ dependencies = [
     "dependency-injector>=4.41.0",
     "common-module",
     "db-repo-module",
+    "user-management-module",
 ]
 
 [tool.uv]
@@ -29,6 +30,7 @@ exclude-newer = "7 days"
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 flo-lib = { workspace = true }
+user-management-module = { workspace = true }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

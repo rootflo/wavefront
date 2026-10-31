@@ -2,10 +2,12 @@ from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.feature.feature_flag import FeatureFlags
 from common_module.response_formatter import ResponseFormatter
 from common_module.runtime_settings import RuntimeSettings
+from common_module.security.secret_cipher import SecretCipher
 from dependency_injector import containers
 from dependency_injector import providers
 
 from flo_cloud.cloud_storage import CloudStorageManager
+from flo_cloud.envelope import EnvelopeCipher
 from flo_cloud.kms import FloKmsCipher, FloKmsSigner
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud._types import KmsKeySettings, QueueSettings
@@ -65,6 +67,15 @@ class CommonContainer(containers.DeclarativeContainer):
 
     kms_signer = providers.Singleton(FloKmsSigner, settings=kms_signing_settings)
     kms_cipher = providers.Singleton(FloKmsCipher, settings=kms_encryption_settings)
+
+    # The factory is handed over uncalled, so KMS is only touched with the flag on.
+    secret_cipher = providers.Singleton(
+        SecretCipher,
+        enabled=feature_flags.provided.envelope_encryption_enabled,
+        envelope_factory=providers.Factory(
+            EnvelopeCipher, kms_cipher=kms_cipher
+        ).provider,
+    )
 
     rag_queue_settings = providers.Factory(
         QueueSettings,

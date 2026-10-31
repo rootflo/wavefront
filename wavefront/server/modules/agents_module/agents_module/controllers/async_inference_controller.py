@@ -164,7 +164,9 @@ async def async_agent_inference(
 
     llm_config: Optional[dict] = None
     if payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
+        # The worker builds LlmInferenceConfig(**llm_config) from the payload, so
+        # it needs the plaintext key here, exactly as before encryption.
+        llm_config_dict = await llm_inference_config_service.get_runtime_config(
             payload.llm_inference_config_id
         )
         if not llm_config_dict:

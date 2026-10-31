@@ -81,6 +81,7 @@ class ApiServicesManager:
             bucket_name=self.application_bucket,
             file_path=service_def_path,
         )
+        self.cache_manager.remove(service_def_path)
         return True
 
     async def deactivate_api_service(self, id: str) -> bool:

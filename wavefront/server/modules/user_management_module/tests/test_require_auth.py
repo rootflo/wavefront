@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from starlette.datastructures import Headers
 
+from common_module.security.secret_cipher import SecretCipher
+from flo_cloud._types import FloCipher
+from flo_cloud.envelope import EnvelopeCipher
+
 from user_management_module.authorization.require_auth import (
     RequireAuthMiddleware,
     is_request_hmac,
@@ -21,6 +25,46 @@ from user_management_module.authorization.require_auth import (
     validate_passthrough_auth,
 )
 from user_management_module.constants.auth import RootfloHeaders, SERVICE_AUTH_ROLE_ID
+
+
+class FakeKms(FloCipher):
+    def encrypt(self, plaintext):
+        data = plaintext.encode() if isinstance(plaintext, str) else plaintext
+        return b'kms:' + bytes(reversed(data))
+
+    def decrypt(self, ciphertext):
+        return bytes(reversed(ciphertext[4:]))
+
+    def encrypt_for_storage(self, plaintext):
+        raise NotImplementedError
+
+    def decrypt_from_storage(self, stored):
+        raise NotImplementedError
+
+
+def _cipher(enabled: bool) -> SecretCipher:
+    return SecretCipher(
+        enabled=enabled, envelope_factory=lambda: EnvelopeCipher(FakeKms())
+    )
+
+
+def _signed_hmac_request(secret: str):
+    ts = str(int(time.time()))
+    nonce = 'n' * 32
+    signature = hmac.new(
+        secret.encode(), f'{nonce}:{ts}'.encode(), hashlib.sha256
+    ).hexdigest()
+    request = MagicMock()
+    request.headers = Headers(
+        {
+            RootfloHeaders.CLIENT_KEY: 'client',
+            RootfloHeaders.SIGNATURE: signature,
+            RootfloHeaders.TIMESTAMP: ts,
+            RootfloHeaders.NONCE: nonce,
+        }
+    )
+    request.state = SimpleNamespace(request_id='r1')
+    return request
 
 
 def test_matches_dynamic_route_success():
@@ -53,29 +97,44 @@ def test_is_request_hmac_true_when_any_hmac_header_present():
 
 
 @pytest.mark.asyncio
-async def test_validate_hmac_signature_accepts_valid_header_nonce():
+@pytest.mark.parametrize('enabled', [False, True], ids=['flag_off', 'flag_on'])
+async def test_validate_hmac_signature_accepts_valid_header_nonce(enabled):
     secret = 'super-secret'
-    ts = str(int(time.time()))
-    nonce = 'n' * 32
-    signature = hmac.new(
-        secret.encode(), f'{nonce}:{ts}'.encode(), hashlib.sha256
-    ).hexdigest()
-
-    request = MagicMock()
-    request.headers = Headers(
-        {
-            RootfloHeaders.CLIENT_KEY: 'client',
-            RootfloHeaders.SIGNATURE: signature,
-            RootfloHeaders.TIMESTAMP: ts,
-            RootfloHeaders.NONCE: nonce,
-        }
-    )
-    request.state = SimpleNamespace(request_id='r1')
+    cipher = _cipher(enabled)
+    stored = cipher.protect(secret)
+    assert SecretCipher.is_encrypted(stored) is enabled
 
     repo = AsyncMock()
-    repo.find_one = AsyncMock(return_value=SimpleNamespace(client_secret=secret))
+    repo.find_one = AsyncMock(return_value=SimpleNamespace(client_secret=stored))
 
-    assert await validate_hmac_signature(request, repo) is True
+    assert (
+        await validate_hmac_signature(_signed_hmac_request(secret), repo, cipher)
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_hmac_signature_rejects_stored_form_of_the_other_mode():
+    secret = 'super-secret'
+    repo = AsyncMock()
+
+    # Encrypted secret while encryption is off
+    repo.find_one = AsyncMock(
+        return_value=SimpleNamespace(client_secret=_cipher(True).protect(secret))
+    )
+    assert (
+        await validate_hmac_signature(
+            _signed_hmac_request(secret), repo, _cipher(False)
+        )
+        is False
+    )
+
+    # Plaintext secret while encryption is on
+    repo.find_one = AsyncMock(return_value=SimpleNamespace(client_secret=secret))
+    assert (
+        await validate_hmac_signature(_signed_hmac_request(secret), repo, _cipher(True))
+        is False
+    )
 
 
 @pytest.mark.asyncio
@@ -92,7 +151,7 @@ async def test_validate_hmac_signature_rejects_stale_timestamp():
     request.state = SimpleNamespace(request_id='r1')
     repo = AsyncMock()
 
-    assert await validate_hmac_signature(request, repo) is False
+    assert await validate_hmac_signature(request, repo, _cipher(False)) is False
     repo.find_one.assert_not_called()
 
 
@@ -101,7 +160,7 @@ async def test_validate_hmac_signature_rejects_missing_headers():
     request = MagicMock()
     request.headers = Headers({})
     request.state = SimpleNamespace(request_id='r1')
-    assert await validate_hmac_signature(request, AsyncMock()) is False
+    assert await validate_hmac_signature(request, AsyncMock(), _cipher(False)) is False
 
 
 CLIENT_APPS_PREFIXES = mtls_principal_prefixes(['client-applications'])

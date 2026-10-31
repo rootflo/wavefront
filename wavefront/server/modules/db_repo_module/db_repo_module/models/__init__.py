@@ -48,6 +48,7 @@ from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.saml_config import SAMLConfig
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
+from db_repo_module.models.secret import Secret
 from db_repo_module.models.session import Session
 from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.models.task import Task
@@ -112,6 +113,7 @@ __all__ = [
     'SIFTFeatures',
     'ScheduledJob',
     'ScheduledJobExecution',
+    'Secret',
     'Session',
     'SttConfig',
     'Task',
