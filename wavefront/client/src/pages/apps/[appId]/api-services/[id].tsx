@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { useDeleteApiService, useGetApiService, useUpdateApiService } from '@app/hooks';
+import { useDeleteApiService, useGetApiService, useGetSecrets, useUpdateApiService } from '@app/hooks';
 import { formatAppName } from '@app/utils/string-formatting';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -28,6 +28,12 @@ import {
   mapServiceToForm,
   parseYaml,
 } from './api-service-form';
+import { hasSecretRef, isSensitiveHeader } from '@app/types/secret';
+import SecretInput, { SecretNamesHint } from './SecretInput';
+
+// A credential typed in place of a reference stays hidden on screen.
+const headerValueType = (key: string, value: string) =>
+  isSensitiveHeader(key) && !hasSecretRef(value || '') ? 'password' : 'text';
 
 const ApiServiceDetail: React.FC = () => {
   const [editing, setEditing] = useState(false);
@@ -42,6 +48,8 @@ const ApiServiceDetail: React.FC = () => {
   const deleteApiService = useDeleteApiService(appId);
 
   const { data: service, isLoading: serviceLoading } = useGetApiService(appId, id);
+  // Names only, for the secret pickers; fetched once editing starts.
+  const { data: secrets = [] } = useGetSecrets(appId, editing);
 
   const form = useForm<ApiServiceForm>({
     resolver: zodResolver(apiServiceFormSchema),
@@ -425,7 +433,13 @@ const ApiServiceDetail: React.FC = () => {
                             <FormItem>
                               <FormLabel>Password</FormLabel>
                               <FormControl>
-                                <Input type="password" disabled={!editing} {...field} />
+                                <SecretInput
+                                  ref={field.ref}
+                                  value={field.value || ''}
+                                  onChange={field.onChange}
+                                  secrets={secrets}
+                                  disabled={!editing}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -441,7 +455,13 @@ const ApiServiceDetail: React.FC = () => {
                           <FormItem className="lg:col-span-2">
                             <FormLabel>Token</FormLabel>
                             <FormControl>
-                              <Input disabled={!editing} {...field} />
+                              <SecretInput
+                                ref={field.ref}
+                                value={field.value || ''}
+                                onChange={field.onChange}
+                                secrets={secrets}
+                                disabled={!editing}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -457,7 +477,13 @@ const ApiServiceDetail: React.FC = () => {
                             <FormItem>
                               <FormLabel>API Key</FormLabel>
                               <FormControl>
-                                <Input disabled={!editing} {...field} />
+                                <SecretInput
+                                  ref={field.ref}
+                                  value={field.value || ''}
+                                  onChange={field.onChange}
+                                  secrets={secrets}
+                                  disabled={!editing}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -479,6 +505,9 @@ const ApiServiceDetail: React.FC = () => {
                       </>
                     )}
                   </div>
+                  {editing && ['basic', 'bearer', 'api_key'].includes(form.watch('auth.type')) && (
+                    <SecretNamesHint appId={appId} secrets={secrets} />
+                  )}
 
                   {/* Additional Headers */}
                   <div className="mt-4 w-full">
@@ -509,7 +538,15 @@ const ApiServiceDetail: React.FC = () => {
                             render={({ field }) => (
                               <FormItem className="flex-1">
                                 <FormControl>
-                                  <Input placeholder="Header Value" disabled={!editing} {...field} />
+                                  <Input
+                                    type={headerValueType(
+                                      form.watch(`auth.additional_headers.${index}.key`),
+                                      field.value
+                                    )}
+                                    placeholder="Header Value"
+                                    disabled={!editing}
+                                    {...field}
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -682,7 +719,15 @@ const ApiServiceDetail: React.FC = () => {
                                       render={({ field }) => (
                                         <FormItem className="flex-1">
                                           <FormControl>
-                                            <Input placeholder="Value" disabled={!editing} {...field} />
+                                            <Input
+                                              type={headerValueType(
+                                                form.watch(`apis.${index}.additional_headers.${hIndex}.key`),
+                                                field.value
+                                              )}
+                                              placeholder="Value"
+                                              disabled={!editing}
+                                              {...field}
+                                            />
                                           </FormControl>
                                           <FormMessage />
                                         </FormItem>

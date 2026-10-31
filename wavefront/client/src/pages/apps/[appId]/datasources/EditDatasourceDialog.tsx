@@ -17,7 +17,14 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import ConnectionFields from './ConnectionFields';
 import DatasourceTypeOptions from './DatasourceTypeOptions';
-import { CONFIG_FIELDS, ConfigValues, configToValues, defaultConfigValues, valuesToConfig } from './datasource-config';
+import {
+  CONFIG_FIELDS,
+  ConfigValues,
+  SECRET_MASK,
+  configToValues,
+  defaultConfigValues,
+  valuesToConfig,
+} from './datasource-config';
 import { DATASOURCE_TYPES, isFileStorageType } from './datasource-types';
 import { createDatasourceSchema, type CreateDatasourceInput, type DatasourceTypeValue } from './schemas';
 import { useUpdateDatasource } from '@app/hooks';
@@ -112,6 +119,8 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({ isOpen, onO
   }
 
   const fieldsType = datasourceType || savedType;
+  const hasMaskedSecret =
+    fieldsType === savedType && Object.values(datasource.config || {}).some((value) => value === SECRET_MASK);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -196,6 +205,9 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({ isOpen, onO
                   </span>
                 ) : null}
               </div>
+              {!isFileStorage && hasMaskedSecret ? (
+                <p className="frost-text-muted text-xs">Leave {SECRET_MASK} to keep the existing secret.</p>
+              ) : null}
               {CONFIG_FIELDS[fieldsType] ? (
                 <ConnectionFields
                   key={`${fieldsType}-${isOpen}`}
