@@ -4,6 +4,7 @@ Shared by the telephony and browser (WebRTC) flows; what differs between them
 is passed in as ``StackOptions``.
 """
 
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.frames.frames import EndFrame, TTSSpeakFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     AssistantTurnStoppedMessage,
@@ -24,6 +26,10 @@ from call_processing.constants.language_config import LANGUAGE_DISPLAY_NAMES
 from call_processing.log.logger import logger
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.common.audio_config import with_sample_rate
+from call_processing.services.common.direct_language_switch import (
+    DirectLanguageSwitchProcessor,
+    LanguageSwitchConfig,
+)
 from call_processing.services.common.filler_speech import (
     FillerSpeechConfig,
     FillerSpeechProcessor,
@@ -32,6 +38,8 @@ from call_processing.services.common.prompts import (
     END_CONVERSATION_DESCRIPTION,
     END_CONVERSATION_FAREWELL_DESCRIPTION,
     LANGUAGE_TOOL_INTENT_DESCRIPTION,
+    USER_IDLE_CHECK_IN_PROMPT,
+    USER_IDLE_GOODBYE_PROMPT,
     language_instruction,
     language_switching_rules,
     language_tool_description,
@@ -56,6 +64,11 @@ from call_processing.services.common.tools.tool_wrapper_service import (
     ToolWrapperFactory,
 )
 from call_processing.services.common.turn_taking import TurnTakingConfig
+from call_processing.services.common.user_idle import (
+    IDLE_GOODBYE_GRACE_SECS,
+    IdleAction,
+    IdleCheckIns,
+)
 
 
 @dataclass(frozen=True)
@@ -347,6 +360,30 @@ def build_agent_stack(
     if use_language_tool:
         context_container['context'] = context
 
+    # A bare language name switches before the LLM runs (one LLM call, not two)
+    language_switch_config = LanguageSwitchConfig.from_agent_config(agent_config)
+    direct_switch = language_switch_config.direct_switch and use_language_tool
+    if language_switch_config.direct_switch and not use_language_tool:
+        logger.info(
+            'language_switch.direct_switch ignored: the agent does not switch '
+            'language through the LLM tool'
+        )
+    elif use_language_tool:
+        logger.info(f'Direct language switch: {"on" if direct_switch else "off"}')
+    language_switcher = DirectLanguageSwitchProcessor(
+        enabled=direct_switch,
+        supported_languages=supported_languages,
+        language_state=language_state,
+        task_container=task_container,
+        tts_provider=tts_config['provider'],
+        stt_provider=stt_config['provider'],
+        tts_voice_ids=tts_voice_ids_dict,
+        on_language_selected=lambda language: (
+            shared.events.emit_language_changed(language)
+        ),
+        choice_words=language_switch_config.choice_words,
+    )
+
     # VAD must live on the user aggregator in Pipecat 1.x — TransportParams
     # no longer accepts vad_analyzer (silently dropped), which would leave
     # VADUserTurnStartStrategy with nothing to drive turn starts.
@@ -362,6 +399,11 @@ def build_agent_stack(
         )
     filler_config = FillerSpeechConfig.from_agent_config(agent_config)
     filler = FillerSpeechProcessor(delay_secs=filler_config.thinking_delay_secs)
+    # Silent caller: check in, then hang up (off unless the agent opts in)
+    idle_check_ins = IdleCheckIns(
+        turn_taking.idle_max_check_ins,
+        fixed_goodbye=turn_taking.idle_fixed_goodbye,
+    )
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
@@ -371,6 +413,7 @@ def build_agent_stack(
                 stop=turn_taking.stop_strategies(),
             ),
             user_mute_strategies=turn_taking.mute_strategies(will_greet=will_greet),
+            user_idle_timeout=turn_taking.idle_timeout_secs,
         ),
     )
 
@@ -393,6 +436,7 @@ def build_agent_stack(
             await shared.events.emit_agent_state(STATE_LISTENING)
             return
         call_stats['user_turns'] += 1
+        idle_check_ins.user_spoke(message.content)
         transcript_log.append(
             {
                 'role': 'user',
@@ -405,11 +449,53 @@ def build_agent_stack(
         await shared.events.emit_agent_state(STATE_THINKING)
         # Backchannel only if the LLM is slow to start (see FillerSpeechProcessor)
         if filler_config.thinking:
+            # Read on firing: a direct language switch may still change it
             await filler.arm_thinking_filler(
-                filler_config.thinking_phrases_for(
+                lambda: filler_config.thinking_phrases_for(
                     language_state.get('current_language', 'en')
                 )
             )
+
+    async def end_call_for_silence(goodbye: Optional[str] = None):
+        task = task_container.get('task')
+        if not task:
+            logger.error('User idle: no pipeline task to end the call')
+            return
+        logger.info('User idle: caller never answered, ending the call')
+        # Goodbye then EndFrame, in order, so the audio is not cut off
+        if goodbye:
+            await task.queue_frame(TTSSpeakFrame(goodbye))
+        await task.queue_frame(EndFrame())
+
+    async def end_call_if_goodbye_overdue(goodbye_id: int):
+        await asyncio.sleep(IDLE_GOODBYE_GRACE_SECS)
+        if idle_check_ins.goodbye_overdue(goodbye_id):
+            logger.warning('User idle: no goodbye from the LLM, ending anyway')
+            await end_call_for_silence()
+
+    @context_aggregator.user().event_handler('on_user_turn_idle')
+    async def on_user_turn_idle(aggregator):
+        action = idle_check_ins.on_idle()
+        if action is IdleAction.CHECK_IN:
+            logger.info('User idle: checking whether they are still there')
+            prompt = USER_IDLE_CHECK_IN_PROMPT
+        elif action is IdleAction.SAY_GOODBYE:
+            logger.info('User idle: no answer to check-ins, asking for a goodbye')
+            prompt = USER_IDLE_GOODBYE_PROMPT
+            aggregator.create_task(
+                end_call_if_goodbye_overdue(idle_check_ins.goodbye_id)
+            )
+        elif action is IdleAction.FIXED_GOODBYE:
+            await end_call_for_silence(turn_taking.idle_goodbye_message)
+            return
+        elif action is IdleAction.HANG_UP:
+            await end_call_for_silence()
+            return
+        else:
+            return
+        # The LLM words it, so it matches the conversation's language
+        aggregator.add_messages([{'role': 'developer', 'content': prompt}])
+        await aggregator.push_context_frame()
 
     @context_aggregator.assistant().event_handler('on_assistant_turn_started')
     async def on_assistant_turn_started(aggregator):
@@ -431,6 +517,12 @@ def build_agent_stack(
                 'timestamp': message.timestamp,
             }
         )
+        # The LLM's idle goodbye has been spoken in full
+        if idle_check_ins.assistant_turn_stopped(
+            interrupted=message.interrupted,
+            spoke=bool((message.content or '').strip()),
+        ):
+            await end_call_for_silence()
 
     @llm.event_handler('on_function_calls_started')
     async def on_function_calls_started(service, function_calls):
@@ -466,6 +558,7 @@ def build_agent_stack(
         tts_voice_ids=tts_voice_ids_dict,
         welcome_message=(agent_config.get('welcome_message') or '').strip(),
         filler=filler,
+        language_switcher=language_switcher,
         stt_config=stt_config_with_params,
         tts_config=tts_config_with_params,
     )

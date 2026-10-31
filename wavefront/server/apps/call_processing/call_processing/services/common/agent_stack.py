@@ -44,6 +44,9 @@ class AgentStack:
     welcome_message: str
     # Between LLM and TTS: speaks thinking / tool-call fillers
     filler: Any
+    # Between the user aggregator and the LLM: switches language for a turn that
+    # only names one (``direct_language_switch.py``); None in stacks without it
+    language_switcher: Any = None
     # The exact configs the STT/TTS services were created from. A swap keeps the
     # live service when the new agent's config is identical (no reconnect).
     stt_config: Dict[str, Any] = field(default_factory=dict)
@@ -59,10 +62,16 @@ class AgentStack:
         return str(self.agent_config.get('name') or '')
 
     @property
+    def pre_llm_processors(self) -> List[Any]:
+        """Between the user aggregator and the LLM."""
+        return [self.language_switcher] if self.language_switcher else []
+
+    @property
     def slot_a_processors(self) -> List[Any]:
         """Everything between the STT and the TTS."""
         return [
             self.context_aggregator.user(),
+            *self.pre_llm_processors,
             self.llm,
             self.filler,
         ]

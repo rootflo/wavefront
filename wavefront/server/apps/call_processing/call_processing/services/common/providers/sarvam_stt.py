@@ -5,6 +5,10 @@ the stream (e.g. ``1003 Rate limit exceeded``), every audio chunk fails with an
 ``ErrorFrame`` (~50 per second) and the caller is not heard again until
 something else reconnects the service (a language switch). This subclass drops
 audio while the socket is down and reconnects with a backoff instead.
+
+A settings change (a language switch) reconnects on its own, and the socket is
+briefly missing while it does. That is not a drop: reconnecting then would throw
+away the caller's audio for a whole backoff delay and open a second stream.
 """
 
 import asyncio
@@ -39,12 +43,17 @@ class ReconnectingSarvamSTTService(SarvamSTTService):
         # Consecutive drops without a message from Sarvam in between
         self._drops = 0
         self._stopping = False
+        # A settings change is reconnecting the socket itself
+        self._updating_settings = False
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
         if self._reconnect_task is not None:
             yield None  # Reconnecting: the audio has nowhere to go
             return
         if self._socket_client is None:
+            if self._updating_settings:
+                yield None  # The settings change is reconnecting
+                return
             # The connect at start (or a reconnect for a settings change) failed
             self._schedule_reconnect('not connected')
             yield None
@@ -92,7 +101,9 @@ class ReconnectingSarvamSTTService(SarvamSTTService):
         try:
             await self._disconnect()
             await asyncio.sleep(delay)
-            if self._stopping:
+            # A settings change may have reconnected meanwhile: never open a
+            # second stream over it
+            if self._stopping or self._socket_client is not None:
                 return
             await self._connect()
         finally:
@@ -110,7 +121,11 @@ class ReconnectingSarvamSTTService(SarvamSTTService):
     async def _update_settings(self, delta: STTSettings):
         # A settings change reconnects itself; never race it with our reconnect
         await self._cancel_reconnect()
-        return await super()._update_settings(delta)
+        self._updating_settings = True
+        try:
+            return await super()._update_settings(delta)
+        finally:
+            self._updating_settings = False
 
     async def stop(self, frame: EndFrame):
         self._stopping = True
