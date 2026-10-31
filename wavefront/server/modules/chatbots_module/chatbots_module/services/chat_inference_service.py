@@ -61,7 +61,7 @@ class ChatInferenceService:
         chatbot, drop `user_id` at the same time -- a reused wrapper would
         attribute one person's turns to whoever built it first.
         """
-        config_dict = await self.llm_inference_config_service.get_config(
+        config_dict = await self.llm_inference_config_service.get_runtime_config(
             chatbot.llm_config_id
         )
         if not config_dict:

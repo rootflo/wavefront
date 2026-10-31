@@ -113,6 +113,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cloud_storage_manager=common.cloud_storage_manager,
         kms_cipher=providers.Object(None),
+        secret_cipher=common.secret_cipher,
         dynamic_query_repository=db.dynamic_query_repository,
         cache_manager=db.cache_manager,
         namespace_repository=db.namespace_repository,
@@ -127,10 +128,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ApiServicesContainer,
         config=config,
         api_services_repository=db.api_services_repository,
+        secret_repository=db.secret_repository,
         cloud_storage_manager=common.cloud_storage_manager,
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         response_formatter=providers.Object(None),
+        secret_cipher=common.secret_cipher,
     )
     tools = providers.Container(
         ToolsContainer,
@@ -149,6 +152,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+        secret_cipher=common.secret_cipher,
     )
     agents = providers.Container(
         AgentsContainer,

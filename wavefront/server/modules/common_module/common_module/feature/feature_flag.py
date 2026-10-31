@@ -16,6 +16,7 @@ DATASOURCE_AUDIT_ENABLED_FLAG = 'DATASOURCE_AUDIT_ENABLED_FLAG'
 DATASOURCE_CHANGE_NOTIFICATION_FLAG = 'DATASOURCE_CHANGE_NOTIFICATION_FLAG'
 INACTIVE_ACCOUNT_DISABLE_FLAG = 'INACTIVE_ACCOUNT_DISABLE_FLAG'
 SUPERSET_FLAG = 'SUPERSET_FLAG'
+ENVELOPE_ENCRYPTION_ENABLED = 'ENVELOPE_ENCRYPTION_ENABLED'
 
 _ALL_FLAGS = (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
@@ -23,6 +24,7 @@ _ALL_FLAGS = (
     DATASOURCE_CHANGE_NOTIFICATION_FLAG,
     INACTIVE_ACCOUNT_DISABLE_FLAG,
     SUPERSET_FLAG,
+    ENVELOPE_ENCRYPTION_ENABLED,
 )
 
 
@@ -41,6 +43,7 @@ class FeatureFlags:
     datasource_change_notification: bool = False
     inactive_account_disable: bool = False
     superset: bool = False
+    envelope_encryption_enabled: bool = False
 
     def enabled(self, feature: str) -> bool:
         return {
@@ -49,6 +52,7 @@ class FeatureFlags:
             DATASOURCE_CHANGE_NOTIFICATION_FLAG: self.datasource_change_notification,
             INACTIVE_ACCOUNT_DISABLE_FLAG: self.inactive_account_disable,
             SUPERSET_FLAG: self.superset,
+            ENVELOPE_ENCRYPTION_ENABLED: self.envelope_encryption_enabled,
         }[feature]
 
     @classmethod
@@ -63,4 +67,5 @@ class FeatureFlags:
             datasource_change_notification=values[DATASOURCE_CHANGE_NOTIFICATION_FLAG],
             inactive_account_disable=values[INACTIVE_ACCOUNT_DISABLE_FLAG],
             superset=values[SUPERSET_FLAG],
+            envelope_encryption_enabled=values[ENVELOPE_ENCRYPTION_ENABLED],
         )

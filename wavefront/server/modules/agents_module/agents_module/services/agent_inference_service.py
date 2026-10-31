@@ -508,7 +508,7 @@ class AgentInferenceService:
                 'Required to resolve rootflo model_id references.'
             )
 
-        llm_config_dict = await self.llm_inference_config_service.get_config(
+        llm_config_dict = await self.llm_inference_config_service.get_runtime_config(
             config_uuid
         )
         if not llm_config_dict:

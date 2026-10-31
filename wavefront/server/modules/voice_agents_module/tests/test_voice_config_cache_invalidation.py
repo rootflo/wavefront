@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from common_module.security.secret_cipher import SecretCipher
 from voice_agents_module.services.stt_config_service import SttConfigService
 from voice_agents_module.services.tts_config_service import TtsConfigService
 
@@ -19,6 +20,7 @@ def make_record(config_id=CONFIG_ID):
     record = Mock()
     record.id = config_id
     record.to_dict.return_value = {'id': str(config_id)}
+    record.to_stored_dict.return_value = {'id': str(config_id)}
     return record
 
 
@@ -41,7 +43,7 @@ def repository():
 )
 def service_case(request, repository, invalidator):
     config_type, service_cls = request.param
-    service = service_cls(repository, Mock(), invalidator)
+    service = service_cls(repository, Mock(), invalidator, SecretCipher(enabled=False))
     return config_type, service
 
 

@@ -1,5 +1,6 @@
 """Dependency injection container for API services module."""
 
+from common_module.security.secret_cipher import SecretCipher
 from dependency_injector import containers, providers
 
 from .config.registry import ServiceRegistry
@@ -9,6 +10,7 @@ from .core.proxy import ApiProxy
 from .core.router import ProxyRouter
 from .core.manager import ApiServicesManager
 from .pipeline.builder import PipelineBuilder, PipelineCache
+from .secrets.secret_store_service import SecretStoreService
 from .utils.api_change_processor import ApiChangeProcessor
 from .utils.api_change_publisher import ApiChangePublisher
 
@@ -32,9 +34,12 @@ class ApiServicesContainer(containers.DeclarativeContainer):
 
     # api services repository
     api_services_repository = providers.Dependency()
+    secret_repository = providers.Dependency()
 
     # cache
     cloud_storage_manager = providers.Dependency()
+
+    secret_cipher = providers.Dependency()
 
     # Core service components
     service_definition_parser = providers.Singleton(ServiceDefinitionParser)
@@ -52,8 +57,17 @@ class ApiServicesContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
     )
 
+    # Named secrets that service definitions reference as ${secrets.NAME}
+    secret_store_service = providers.Singleton(
+        SecretStoreService,
+        secret_repository=secret_repository,
+        secret_cipher=secret_cipher,
+    )
+
     service_registry = providers.Singleton(
-        ServiceRegistry, api_service_manager=api_service_manager
+        ServiceRegistry,
+        api_service_manager=api_service_manager,
+        secret_store=secret_store_service,
     )
 
     # Initialize service registry with loaded configurations
@@ -74,6 +88,7 @@ class ApiServicesContainer(containers.DeclarativeContainer):
         service_registry=initialized_service_registry,
         api_services_manager=api_service_manager,
         api_change_publisher=api_change_publisher,
+        secret_store=secret_store_service,
     )
 
     # Router (using initialized service registry)
@@ -108,6 +123,8 @@ def create_api_services_container(
     response_formatter,
     db_client=None,
     cache_manager=None,
+    secret_repository=None,
+    secret_cipher=None,
 ) -> ApiServicesContainer:
     """
     Factory function to create and configure API services container.
@@ -117,6 +134,8 @@ def create_api_services_container(
         cloud_storage_manager: Cloud storage manager for service definitions
         db_client: Database client (optional, for future use)
         cache_manager: Cache manager (optional, for future use)
+        secret_repository: Repository of the `secrets` table (optional)
+        secret_cipher: SecretCipher (optional; defaults to encryption disabled)
 
     Returns:
         Configured ApiServicesContainer
@@ -125,6 +144,8 @@ def create_api_services_container(
         api_services_repository=api_service_repository,
         cloud_storage_manager=cloud_storage_manager,
         response_formatter=response_formatter,
+        secret_repository=secret_repository,
+        secret_cipher=secret_cipher or SecretCipher(enabled=False),
     )
 
     # Wire external dependencies if provided

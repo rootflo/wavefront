@@ -1,6 +1,7 @@
 """Core proxy functionality for handling API requests."""
 
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+import yaml
 from fastapi import HTTPException
 from fastapi.responses import Response
 from common_module.log.logger import logger
@@ -15,6 +16,15 @@ from api_services_module.utils.api_change_publisher import (
     ApiChangePublisher,
     UpdateMessage,
 )
+from api_services_module.secrets.references import (
+    find_literal_secrets,
+    find_service_refs,
+    mask_definition,
+    restore_masked_secrets,
+)
+
+if TYPE_CHECKING:
+    from api_services_module.secrets.secret_store_service import SecretStoreService
 
 
 class ApiProxy:
@@ -30,10 +40,12 @@ class ApiProxy:
         service_registry: ServiceRegistry,
         api_services_manager: Optional[ApiServicesManager] = None,
         api_change_publisher: Optional[ApiChangePublisher] = None,
+        secret_store: Optional['SecretStoreService'] = None,
     ):
         self.service_registry = service_registry
         self.api_services_manager = api_services_manager
         self.api_change_publisher = api_change_publisher
+        self.secret_store = secret_store
 
         self.auth_manager = AuthManager()
         self.pipeline_cache = PipelineCache()
@@ -288,17 +300,21 @@ class ApiProxy:
         """
         Get information about a service.
 
+        Built from the definition as stored, so `${secrets.NAME}` references
+        show as written; any literal secret is masked.
+
         Args:
             service_id: Service identifier
 
         Returns:
             Service information dictionary
         """
-        service_definition = self.service_registry.get_service(service_id)
-        if not service_definition:
+        stored_definition = self.service_registry.get_service_definition(service_id)
+        if not stored_definition:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
+        service_definition = mask_definition(stored_definition)
 
         return {
             'service_id': service_definition.id,
@@ -327,7 +343,7 @@ class ApiProxy:
     def get_all_services_info(self) -> Dict[str, Any]:
         """Get information about all registered services."""
         services = []
-        for service_id in self.service_registry.get_service_ids():
+        for service_id in self.service_registry.get_definition_ids():
             try:
                 services.append(self.get_service_info(service_id))
             except HTTPException as e:
@@ -357,6 +373,53 @@ class ApiProxy:
         except Exception as e:
             return {'status': 'unhealthy', 'error': str(e)}
 
+    async def _validate_secrets(
+        self, service_yaml: str, stored_yaml: Optional[str] = None
+    ) -> str:
+        """Check the secrets of an incoming definition; return the YAML to store.
+
+        - A field sent back masked keeps its stored value.
+        - Every `${secrets.NAME}` must exist.
+        - With envelope encryption on, secret fields and sensitive headers must
+          use references, not literal values.
+        """
+        document = yaml.safe_load(service_yaml)
+        if not isinstance(document, dict):
+            return service_yaml
+
+        stored_document = yaml.safe_load(stored_yaml) if stored_yaml else None
+        merged, unmatched = restore_masked_secrets(document, stored_document)
+        if unmatched:
+            raise HTTPException(
+                status_code=400,
+                detail=f'No stored value to keep for masked field: {", ".join(unmatched)}',
+            )
+        if merged != document:
+            service_yaml = yaml.safe_dump(merged, sort_keys=False)
+
+        names = find_service_refs(merged)
+        if names:
+            if not self.secret_store:
+                raise HTTPException(
+                    status_code=500, detail='Secret store is not configured'
+                )
+            missing = await self.secret_store.missing(names)
+            if missing:
+                raise HTTPException(
+                    status_code=400, detail=f'Unknown secret: {", ".join(missing)}'
+                )
+
+        if self.secret_store and self.secret_store.encryption_enabled:
+            literals = find_literal_secrets(merged)
+            if literals:
+                paths = ', '.join(path for path, _value in literals)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'Use ${{secrets.NAME}} instead of a literal value for {paths}',
+                )
+
+        return service_yaml
+
     async def create_api_services(self, service_yaml: str):
         self._require_api_services_manager()
         service_def: ServiceDefinition = ServiceDefinitionParser.parse_yaml_string(
@@ -370,6 +433,7 @@ class ApiProxy:
                 status_code=400,
                 detail=f'Service already exists: {service_id}, reloaded again',
             )
+        service_yaml = await self._validate_secrets(service_yaml)
         await self.api_services_manager.create_api_service(
             id=service_id, service_def_yaml=service_yaml
         )
@@ -397,6 +461,10 @@ class ApiProxy:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
+        service_yaml = await self._validate_secrets(
+            service_yaml,
+            stored_yaml=self.api_services_manager.fetch_service_def(service),
+        )
         await self.api_services_manager.update_api_service(
             id=service_id, service_def_yaml=service_yaml
         )

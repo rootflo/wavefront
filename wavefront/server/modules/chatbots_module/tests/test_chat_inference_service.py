@@ -77,10 +77,10 @@ class TestResolveLlm:
         assert params == ['self', 'chatbot', 'user_id']
 
     async def test_soft_deleted_llm_config_is_reported_not_crashed(self):
-        # get_config filters is_deleted, so a config removed after the chatbot
-        # was saved comes back as None. Reachable in normal operation.
+        # get_runtime_config filters is_deleted, so a config removed after the
+        # chatbot was saved comes back as None. Reachable in normal operation.
         config_service = AsyncMock()
-        config_service.get_config.return_value = None
+        config_service.get_runtime_config.return_value = None
         chatbot = SimpleNamespace(llm_config_id=uuid.uuid4(), config=None)
 
         service = ChatInferenceService(llm_inference_config_service=config_service)
@@ -90,7 +90,7 @@ class TestResolveLlm:
 
     async def test_unsupported_provider_is_surfaced_as_inference_error(self):
         config_service = AsyncMock()
-        config_service.get_config.return_value = {
+        config_service.get_runtime_config.return_value = {
             'llm_model': 'some-model',
             'display_name': 'x',
             'type': 'not-a-provider',

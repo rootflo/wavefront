@@ -4,6 +4,7 @@ from uuid import UUID
 
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.tts_config import TtsConfig
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -21,6 +22,7 @@ class TtsConfigService:
         tts_config_repository: SQLAlchemyRepository[TtsConfig],
         cache_manager: CacheManager,
         cache_invalidator: CallProcessingCacheInvalidator,
+        secret_cipher: SecretCipher,
     ):
         """
         Initialize the TTS config service
@@ -29,10 +31,12 @@ class TtsConfigService:
             tts_config_repository: Repository for TTS configs
             cache_manager: Cache manager instance
             cache_invalidator: Invalidates call_processing's cached configs
+            secret_cipher: Protects the api_key at rest
         """
         self.tts_config_repository = tts_config_repository
         self.cache_manager = cache_manager
         self.cache_invalidator = cache_invalidator
+        self.secret_cipher = secret_cipher
         self.tts_config_cache_time = 3600 * 24
 
     async def create_config(
@@ -64,17 +68,15 @@ class TtsConfigService:
             display_name=display_name,
             description=description,
             provider=provider,
-            api_key=api_key,
+            api_key=await self.secret_cipher.aprotect(api_key),
             region=region,
         )
 
-        # Convert to dict
-        config_dict = config.to_dict(exclude_api_key=False)
-
-        # Cache the config
+        # Cache the stored form (api_key is ciphertext when encryption is on)
+        stored_dict = config.to_stored_dict()
         cache_key = get_tts_config_cache_key(config.id)
         self.cache_manager.add(
-            cache_key, json.dumps(config_dict), expiry=self.tts_config_cache_time
+            cache_key, json.dumps(stored_dict), expiry=self.tts_config_cache_time
         )
 
         # Invalidate list cache
@@ -85,11 +87,38 @@ class TtsConfigService:
         await self.cache_invalidator.invalidate('tts_config', config.id, 'create')
 
         logger.info(f'Successfully created TTS config with id: {config.id}')
-        return config_dict
+        return TtsConfig.public_dict(stored_dict)
 
     async def get_config(self, config_id: UUID) -> Optional[dict]:
         """
-        Get a TTS configuration by ID (with caching)
+        Get a TTS configuration by ID, without the api_key (has_api_key instead)
+
+        Args:
+            config_id: UUID of the configuration
+
+        Returns:
+            TTS config as dict or None if not found
+        """
+        stored_dict = await self.get_stored_config(config_id)
+        return TtsConfig.public_dict(stored_dict) if stored_dict else None
+
+    async def get_runtime_config(self, config_id: UUID) -> Optional[dict]:
+        """
+        Get a TTS configuration with the plaintext api_key, for making provider calls.
+        The result is never cached.
+        """
+        stored_dict = await self.get_stored_config(config_id)
+        if not stored_dict:
+            return None
+        return {
+            **stored_dict,
+            'api_key': await self.secret_cipher.areveal(stored_dict.get('api_key')),
+        }
+
+    async def get_stored_config(self, config_id: UUID) -> Optional[dict]:
+        """
+        Get a TTS configuration as stored (with caching): the api_key is
+        ciphertext when encryption is on, plaintext otherwise.
 
         Args:
             config_id: UUID of the configuration
@@ -113,7 +142,7 @@ class TtsConfigService:
 
         if config:
             # Convert to dict and cache
-            config_dict = config.to_dict(exclude_api_key=False)
+            config_dict = config.to_stored_dict()
             self.cache_manager.add(
                 cache_key, json.dumps(config_dict), expiry=self.tts_config_cache_time
             )
@@ -123,7 +152,7 @@ class TtsConfigService:
 
     async def list_configs(self) -> List[dict]:
         """
-        List all TTS configurations (with caching)
+        List all TTS configurations (with caching), without their api_keys
 
         Returns:
             List of TTS configs as dicts
@@ -134,19 +163,19 @@ class TtsConfigService:
         cached_list_str = self.cache_manager.get_str(list_cache_key)
         if cached_list_str:
             logger.info('Cache hit for TTS configs list')
-            return json.loads(cached_list_str)
+            return [TtsConfig.public_dict(c) for c in json.loads(cached_list_str)]
 
         # Cache miss - fetch from DB
         logger.info('Cache miss - fetching TTS configs list from DB')
         configs = await self.tts_config_repository.find(is_deleted=False)
 
-        # Convert to dicts and cache
-        configs_dicts = [config.to_dict(exclude_api_key=False) for config in configs]
+        # Cache the stored form, return the public form
+        configs_dicts = [config.to_stored_dict() for config in configs]
         self.cache_manager.add(
             list_cache_key, json.dumps(configs_dicts), expiry=self.tts_config_cache_time
         )
 
-        return configs_dicts
+        return [TtsConfig.public_dict(c) for c in configs_dicts]
 
     async def update_config(self, config_id: UUID, **update_data) -> Optional[dict]:
         """
@@ -167,6 +196,11 @@ class TtsConfigService:
         if not existing_config:
             return None
 
+        if 'api_key' in update_data:
+            update_data['api_key'] = await self.secret_cipher.aprotect(
+                update_data['api_key']
+            )
+
         updated_config = await self.tts_config_repository.find_one_and_update(
             {'id': config_id}, refresh=True, **update_data
         )
@@ -182,7 +216,7 @@ class TtsConfigService:
         await self.cache_invalidator.invalidate('tts_config', config_id, 'update')
 
         logger.info(f'Successfully updated TTS config: {config_id}')
-        return updated_config.to_dict(exclude_api_key=False)
+        return updated_config.to_dict()
 
     async def delete_config(self, config_id: UUID) -> bool:
         """

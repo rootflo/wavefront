@@ -414,10 +414,12 @@ async def initiate_call(
         # Default to first outbound number
         from_number = outbound_numbers[0]
 
-    # Fetch telephony config
+    # Fetch telephony config with plaintext credentials
     telephony_config_id = agent_dict.get('telephony_config_id')
-    telephony_config = await voice_agent_service.telephony_config_service.get_config(
-        telephony_config_id
+    telephony_config = (
+        await voice_agent_service.telephony_config_service.get_runtime_config(
+            telephony_config_id
+        )
     )
 
     if not telephony_config:

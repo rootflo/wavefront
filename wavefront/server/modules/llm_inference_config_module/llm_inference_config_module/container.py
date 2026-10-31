@@ -17,6 +17,7 @@ class LlmInferenceConfigContainer(containers.DeclarativeContainer):
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
     call_processing_cache_invalidator = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     # Repository
     llm_inference_config_repository = providers.Singleton(
@@ -31,6 +32,7 @@ class LlmInferenceConfigContainer(containers.DeclarativeContainer):
         llm_inference_config_repository=llm_inference_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     inference_proxy_service = providers.Singleton(

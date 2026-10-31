@@ -109,6 +109,7 @@ async def get_llm_inference_configs(
 async def get_llm_inference_config(
     request: Request,
     config_id: uuid.UUID,
+    include_secrets: bool = False,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -117,7 +118,14 @@ async def get_llm_inference_config(
     ),
 ):
     try:
-        config_dict = await llm_inference_config_service.get_config(config_id)
+        # include_secrets returns the stored form (ciphertext when encryption is
+        # on) for service-to-service callers. It is not gated to them yet.
+        if include_secrets:
+            config_dict = await llm_inference_config_service.get_config(config_id)
+        else:
+            config_dict = await llm_inference_config_service.get_public_config(
+                config_id
+            )
         if not config_dict:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
