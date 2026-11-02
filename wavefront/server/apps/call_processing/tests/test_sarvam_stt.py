@@ -4,7 +4,7 @@ import asyncio
 from typing import List
 
 from pipecat.frames.frames import CancelFrame
-from pipecat.services.sarvam.stt import SarvamSTTSettings
+from pipecat.services.sarvam.stt import SarvamSTTService, SarvamSTTSettings
 
 from call_processing.services.common.providers.sarvam_stt import (
     ReconnectingSarvamSTTService,
@@ -112,3 +112,71 @@ async def test_cancel_stops_a_pending_reconnect():
     # Nothing is scheduled once the service is stopping
     await h.send()
     assert h.stt._reconnect_task is None
+
+
+def _reconnecting_update(gate: asyncio.Event):
+    """Pipecat's language update: disconnect, then connect. ``gate`` holds it
+    between the two, where the socket is missing and audio still arrives."""
+
+    async def update(self, delta):
+        await self._disconnect()
+        await gate.wait()
+        await self._connect()
+        return {'language': None}
+
+    return update
+
+
+async def test_a_language_switch_is_not_mistaken_for_a_dropped_stream(monkeypatch):
+    gate = asyncio.Event()
+    monkeypatch.setattr(
+        SarvamSTTService, '_update_settings', _reconnecting_update(gate)
+    )
+    h = Harness(fail_first=False)
+    update = asyncio.create_task(
+        h.stt._update_settings(SarvamSTTSettings(language='hi-IN'))
+    )
+    await _until(lambda: h.stt._socket_client is None)
+
+    # Audio during the switch's own reconnect: dropped, but no reconnect of ours
+    assert await h.send() == [None]
+    assert h.stt._reconnect_task is None
+
+    gate.set()
+    await update
+    assert h.connects == 1
+    # Audio flows on the switch's socket at once, not after a backoff
+    await h.send()
+    assert h.stt._socket_client.sent == 1
+    assert h.stt._reconnect_task is None
+
+
+async def test_a_failed_switch_reconnect_is_retried_on_the_next_audio(monkeypatch):
+    gate = asyncio.Event()
+    gate.set()
+    monkeypatch.setattr(
+        SarvamSTTService, '_update_settings', _reconnecting_update(gate)
+    )
+    h = Harness(fail_first=False, connect_fails=1)
+
+    await h.stt._update_settings(SarvamSTTSettings(language='hi-IN'))
+    assert h.stt._socket_client is None
+
+    await h.send()
+    await _until(lambda: h.connects == 2)
+    await h.send()
+    assert h.stt._socket_client.sent == 1
+
+
+async def test_a_pending_reconnect_never_opens_a_second_stream():
+    h = Harness()
+    h.stt._reconnect_delays = (0.05,)
+
+    await h.send()  # the drop schedules our reconnect
+    await _until(lambda: h.disconnects == 1)
+    socket = FakeSocket(fail=False)
+    h.stt._socket_client = socket  # something else reconnected meanwhile
+    await _until(lambda: h.stt._reconnect_task is None)
+
+    assert h.connects == 0
+    assert h.stt._socket_client is socket
