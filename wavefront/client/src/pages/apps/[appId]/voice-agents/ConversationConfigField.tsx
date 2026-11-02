@@ -18,7 +18,9 @@ import {
   DEFAULT_CONVERSATION_CONFIG,
   DEFAULT_EDITOR_TEXT,
   isDeepEqual,
+  isOutOfRange,
   isPlainObject,
+  splitSectionOptions,
 } from './conversation-config';
 
 type PhraseMap = Record<string, string[]>;
@@ -29,6 +31,8 @@ interface ConversationConfigFieldProps<T extends FieldValues> {
   name: Path<T>;
   /** Whether the agent has a welcome message; without one the welcome options do nothing. */
   hasWelcomeMessage: boolean;
+  /** Whether the agent supports more than one language; without that the language options do nothing. */
+  isMultiLanguage: boolean;
 }
 
 const parseObject = (text: string): ConversationConfig | null => {
@@ -54,6 +58,7 @@ function ConversationConfigField<T extends FieldValues>({
   form,
   name,
   hasWelcomeMessage,
+  isMultiLanguage,
 }: ConversationConfigFieldProps<T>) {
   // An empty field means "no config": every option follows its default.
   const readConfig = () => parseObject((form.getValues(name) as string | undefined) || '{}');
@@ -100,6 +105,7 @@ function ConversationConfigField<T extends FieldValues>({
               doc={section}
               values={sectionOf(config, section.section)}
               hasWelcomeMessage={hasWelcomeMessage}
+              isMultiLanguage={isMultiLanguage}
               onChange={(key, value) => setOption(section.section, key, value)}
             />
           ))}
@@ -115,10 +121,11 @@ interface ConfigSectionProps {
   doc: ConfigSectionDoc;
   values: Record<string, unknown>;
   hasWelcomeMessage: boolean;
+  isMultiLanguage: boolean;
   onChange: (key: string, value: unknown) => void;
 }
 
-function ConfigSection({ doc, values, hasWelcomeMessage, onChange }: ConfigSectionProps) {
+function ConfigSection({ doc, values, hasWelcomeMessage, isMultiLanguage, onChange }: ConfigSectionProps) {
   const [open, setOpen] = useState(false);
   const effective = (key: string) => values[key] ?? defaultOf(doc.section, key);
 
@@ -128,9 +135,23 @@ function ConfigSection({ doc, values, hasWelcomeMessage, onChange }: ConfigSecti
       const required = doc.options.find((o) => o.key === option.requires);
       return `Turn on "${required?.label ?? option.requires}" to use this.`;
     }
+    if (option.requiresPositive && !(Number(effective(option.requiresPositive)) > 0)) {
+      const required = doc.options.find((o) => o.key === option.requiresPositive);
+      return `Set "${required?.label ?? option.requiresPositive}" above 0 to use this.`;
+    }
     if (option.key === 'mute_until_first_bot_complete') {
       if (!hasWelcomeMessage) return 'Needs a welcome message (Behavior tab).';
       if (effective('barge_in') === false) return 'Barge-in is off, so the welcome already plays fully.';
+    }
+    if (doc.section === 'language_switch' && !isMultiLanguage) {
+      return 'Needs more than one supported language (Languages tab).';
+    }
+    if (
+      option.key === 'transcript_turn_start' &&
+      effective('barge_in') !== false &&
+      Number(effective('barge_in_min_words')) > 0
+    ) {
+      return 'Words needed to interrupt is above 0, so transcripts already start turns.';
     }
     return undefined;
   };
@@ -147,9 +168,7 @@ function ConfigSection({ doc, values, hasWelcomeMessage, onChange }: ConfigSecti
     />
   );
 
-  // Toggles always show; the settings that tune them show when the section is opened
-  const toggles = doc.options.filter((option) => option.kind === 'boolean');
-  const settings = doc.options.filter((option) => option.kind !== 'boolean');
+  const { toggles, settings } = splitSectionOptions(doc.options);
   const settingsChanged = settings.filter((option) =>
     isChanged(values[option.key], defaultOf(doc.section, option.key))
   ).length;
@@ -195,10 +214,7 @@ interface ConfigOptionProps {
 function ConfigOption({ id, option, value, defaultValue, inactiveReason, onChange }: ConfigOptionProps) {
   const isSet = isChanged(value, defaultValue);
   const disabled = !!inactiveReason;
-  const outOfRange =
-    option.kind === 'number' &&
-    typeof value === 'number' &&
-    ((option.min !== undefined && value < option.min) || (option.max !== undefined && value > option.max));
+  const outOfRange = isOutOfRange(option, value);
 
   return (
     <div className={cn('flex flex-col gap-2', option.kind === 'phrases' && 'sm:col-span-2')}>
@@ -267,6 +283,9 @@ function ConfigOption({ id, option, value, defaultValue, inactiveReason, onChang
           id={id}
           value={isPlainObject(value) ? (value as PhraseMap) : {}}
           builtIn={option.builtInPhrases ?? {}}
+          noun={option.phraseNoun}
+          keepEmpty={option.keepEmpty}
+          note={option.phrasesNote}
           onChange={onChange}
           disabled={disabled}
         />
@@ -287,12 +306,24 @@ interface PhrasesInputProps {
   id: string;
   value: PhraseMap;
   builtIn: PhraseMap;
+  noun?: { one: string; many: string };
+  keepEmpty?: boolean;
+  note?: string;
   onChange: (value: PhraseMap | undefined) => void;
   disabled?: boolean;
 }
 
 /** Custom phrases per chosen language; every other language keeps the built-in phrases shown below. */
-function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputProps) {
+export function PhrasesInput({
+  id,
+  value,
+  builtIn,
+  noun = { one: 'phrase', many: 'phrases' },
+  keepEmpty = false,
+  note = 'Other languages use the English phrases (yours if set, otherwise the built-in ones).',
+  onChange,
+  disabled,
+}: PhrasesInputProps) {
   // Languages added here but not given phrases yet stay listed until removed
   const [added, setAdded] = useState<string[]>([]);
   const languages = [...Object.keys(value), ...added.filter((language) => !(language in value))];
@@ -301,7 +332,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
   const setLanguage = (language: string, phrases: string[]) => {
     const next = { ...value };
-    if (phrases.length > 0) next[language] = phrases;
+    if (phrases.length > 0 || keepEmpty) next[language] = phrases;
     else delete next[language];
     onChange(Object.keys(next).length > 0 ? next : undefined);
   };
@@ -314,7 +345,9 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
   const removeLanguage = (language: string) => {
     setAdded((current) => current.filter((l) => l !== language));
-    setLanguage(language, []);
+    const next = { ...value };
+    delete next[language];
+    onChange(Object.keys(next).length > 0 ? next : undefined);
   };
 
   return (
@@ -331,7 +364,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
                   type="button"
                   onClick={() => removeLanguage(language)}
                   className="frost-text-muted hover:text-frost-text flex cursor-pointer items-center gap-1 text-xs"
-                  aria-label={`Remove ${getLanguageName(language)} phrases`}
+                  aria-label={`Remove ${getLanguageName(language)} ${noun.many}`}
                 >
                   <X className="h-3 w-3" />
                   {builtIn[language] ? 'Use built-in' : 'Remove'}
@@ -339,7 +372,11 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
               </div>
               <PhraseLines
                 value={Array.isArray(value[language]) ? value[language] : []}
-                placeholder={builtIn[language]?.join('\n') ?? 'One phrase per line'}
+                placeholder={
+                  keepEmpty && Array.isArray(value[language]) && value[language].length === 0
+                    ? `No ${noun.many}: only the language name on its own`
+                    : (builtIn[language]?.join('\n') ?? `One ${noun.one} per line`)
+                }
                 onChange={(phrases) => setLanguage(language, phrases)}
                 disabled={disabled}
               />
@@ -350,7 +387,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
       <Select value="" onValueChange={addLanguage} disabled={disabled}>
         <SelectTrigger className="w-full sm:w-64">
-          <SelectValue placeholder="Add phrases for a language" />
+          <SelectValue placeholder={`Add ${noun.many} for a language`} />
         </SelectTrigger>
         <SelectContent>
           {addable.map((language) => (
@@ -363,7 +400,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
 
       {builtInOnly.length > 0 && (
         <div className={cn('space-y-1', disabled && 'opacity-60')}>
-          <p className="frost-text-muted text-xs">Built-in phrases, used for languages you don&apos;t customise:</p>
+          <p className="frost-text-muted text-xs">Built-in {noun.many}, used for languages you don&apos;t customise:</p>
           <ul className="frost-text-muted space-y-0.5 text-xs">
             {builtInOnly.map((language) => (
               <li key={language}>
@@ -372,9 +409,7 @@ function PhrasesInput({ id, value, builtIn, onChange, disabled }: PhrasesInputPr
               </li>
             ))}
           </ul>
-          <p className="frost-text-subtle text-xs">
-            Other languages use the English phrases (yours if set, otherwise the built-in ones).
-          </p>
+          <p className="frost-text-subtle text-xs">{note}</p>
         </div>
       )}
     </div>

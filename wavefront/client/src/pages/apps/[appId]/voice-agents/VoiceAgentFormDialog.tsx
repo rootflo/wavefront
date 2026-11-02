@@ -280,6 +280,7 @@ const VoiceAgentFormDialog: React.FC<VoiceAgentFormDialogProps> = ({ isOpen, onO
                   form={form}
                   name="conversation_config"
                   hasWelcomeMessage={!!form.watch('welcome_message')?.trim()}
+                  isMultiLanguage={(watchedSupportedLanguages?.length ?? 0) > 1}
                 />
               </TabsContent>
 
