@@ -68,6 +68,10 @@ override-dependencies = [
     # Pipecat 1.12 wants onnxruntime~=1.24.3, which dropped Intel macOS wheels.
     "onnxruntime==1.23.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "onnxruntime~=1.24.3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # pipecat-ai 1.12 caps Pillow <13, but 12.x has CVE-2026-112393 and ~40 more
+    # fixed only in 13.0.0. pipecat only uses Image.open/frombytes/resize/save
+    # for image frames, unchanged in 13.
+    "pillow>=13.0.0,<14",
 ]
 
 # Security floors for packages that mostly arrive indirectly -- via flo-ai,
@@ -78,11 +82,13 @@ override-dependencies = [
 constraint-dependencies = [
     "aiohttp>=3.14.4",
     "anyio>=4.14.2",
-    "authlib>=1.6.12",
+    "authlib>=1.9.1",
     "azure-core>=1.38.0",
+    "certifi>=2026.10.18",
     "click>=8.3.3",
+    "dnspython>=2.9.0",
     "ecdsa>=0.19.2",
-    "filelock>=3.20.3",
+    "filelock>=4.2.1",
     "fsspec>=2026.6.0",
     "google-cloud-aiplatform>=1.131.0",
     # google-auth deprecates grpcio < 1.83 (no post-quantum TLS) and will
@@ -105,7 +111,7 @@ constraint-dependencies = [
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.31",
     "requests>=2.33.0",
-    "setuptools>=83.0.0",
+    "setuptools>=84.1.0",
     # Forces FastAPI off 0.115.6, which caps starlette<0.42.0 and so pinned us to
     # starlette 0.41.3 and its seven advisories (CVE-2026-54282 and six more).
     # FastAPI is the only thing in the graph that depends on starlette, so this

@@ -3,6 +3,7 @@ images/videos returned by tools becoming media turns in the conversation."""
 
 import base64
 import io
+import logging
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -37,6 +38,41 @@ def make_video(seconds: int = 2, fps: int = 5, width: int = 64, height: int = 48
         for packet in stream.encode():
             container.mux(packet)
     return buf.getvalue()
+
+
+def make_webm_without_duration(seconds: int = 3, fps: int = 10):
+    """A WebM like MediaRecorder writes: streamed, so no duration and no cues."""
+
+    class Sink(io.RawIOBase):
+        def __init__(self):
+            self.data = bytearray()
+
+        def writable(self):
+            return True
+
+        def seekable(self):
+            return False
+
+        def write(self, b):
+            self.data += bytes(b)
+            return len(b)
+
+    sink = Sink()
+    try:
+        with av.open(sink, 'w', format='webm') as container:
+            stream = container.add_stream('libvpx', rate=fps)
+            stream.width, stream.height, stream.pix_fmt = 64, 48, 'yuv420p'
+            for i in range(seconds * fps):
+                frame = av.VideoFrame(64, 48, 'rgb24')
+                plane = frame.planes[0]
+                plane.update(bytes([i * 8 % 256]) * plane.buffer_size)
+                for packet in stream.encode(frame.reformat(format='yuv420p')):
+                    container.mux(packet)
+            for packet in stream.encode():
+                container.mux(packet)
+    except (ValueError, av.error.FFmpegError) as exc:
+        pytest.skip(f'PyAV build cannot write WebM: {exc}')
+    return bytes(sink.data)
 
 
 @pytest.fixture(scope='module')
@@ -99,6 +135,33 @@ class TestSampleVideoFrames:
         # 10 frames, 8 targets: the last target falls after the final frame.
         frames = sample_video_frames(video_bytes, 8)
         assert len({png for _, png in frames}) == len(frames) == 7
+
+    def test_video_without_duration_is_sampled_across_its_length(self):
+        data = make_webm_without_duration()
+        with av.open(io.BytesIO(data)) as container:
+            assert not container.duration
+            assert not container.streams.video[0].duration
+        frames = sample_video_frames(data, 8)
+        assert len(frames) == 8
+        times = [t for t, _ in frames]
+        assert times == sorted(times)
+        assert times[0] < 0.3 and times[-1] > 2.0
+        assert all(is_png(png) for _, png in frames)
+        assert len({png for _, png in frames}) == 8
+
+    def test_video_without_duration_with_fewer_frames_than_requested(self):
+        frames = sample_video_frames(make_webm_without_duration(1, 3), 8)
+        assert len({png for _, png in frames}) == len(frames) == 3
+
+    def test_video_without_duration_warns(self, caplog):
+        data = make_webm_without_duration(1, 5)
+        logger = logging.getLogger('flo_ai')
+        logger.addHandler(caplog.handler)
+        try:
+            sample_video_frames(data, 2)
+        finally:
+            logger.removeHandler(caplog.handler)
+        assert 'no recorded duration' in caplog.text
 
     def test_needs_at_least_one_frame(self, video_bytes):
         with pytest.raises(ValueError, match='at least 1'):
