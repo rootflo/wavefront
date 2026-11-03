@@ -21,7 +21,7 @@ import json
 import threading
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
-from flo_cloud.envelope import (
+from flo_utils.envelope import (
     EnvelopeCipher,
     UnencryptedSecretError,
     is_envelope_encrypted,

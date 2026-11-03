@@ -7,7 +7,7 @@ from dependency_injector import containers
 from dependency_injector import providers
 
 from flo_cloud.cloud_storage import CloudStorageManager
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 from flo_cloud.kms import FloKmsCipher, FloKmsSigner
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud._types import KmsKeySettings, QueueSettings

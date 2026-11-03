@@ -28,7 +28,7 @@ from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
 from db_repo_module.models.secret import Secret
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import ENVELOPE_PREFIX, EnvelopeCipher
+from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 
 
 class FakeKms(FloCipher):

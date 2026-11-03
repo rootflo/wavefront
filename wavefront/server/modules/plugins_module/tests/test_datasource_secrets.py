@@ -29,7 +29,7 @@ from common_module.security.secret_cipher import (
 from db_repo_module.models.datasource import Datasource
 from dependency_injector import providers
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 from plugins_module.controllers import datasource_controller as controller
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services import datasource_services

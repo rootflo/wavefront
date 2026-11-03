@@ -17,7 +17,7 @@ from common_module.config_loader import load_ini
 from common_module.feature.feature_flag import FeatureFlags
 from common_module.security.secret_cipher import SecretCipher
 from flo_cloud._types import KmsKeySettings
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 from flo_cloud.kms import FloKmsCipher
 
 CONFIG_INI = Path(__file__).resolve().parent.parent / 'config.ini'

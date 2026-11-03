@@ -5,7 +5,7 @@ import base64
 import pytest
 
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import (
+from flo_utils.envelope import (
     ENVELOPE_PREFIX,
     EnvelopeCipher,
     UnencryptedSecretError,
@@ -109,7 +109,7 @@ def test_dek_cache_entries_expire(monkeypatch):
     token = EnvelopeCipher(kms).encrypt('sk-live-123')
     reader = EnvelopeCipher(kms, cache_ttl_seconds=60)
     clock = [1000.0]
-    monkeypatch.setattr('flo_cloud.envelope.time.monotonic', lambda: clock[0])
+    monkeypatch.setattr('flo_utils.envelope.time.monotonic', lambda: clock[0])
 
     reader.decrypt(token)
     clock[0] += 61

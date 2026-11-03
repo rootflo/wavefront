@@ -1407,6 +1407,7 @@ dependencies = [
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "flo-lib" },
+    { name = "flo-utils" },
     { name = "loguru" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
@@ -1431,6 +1432,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "flo-lib", editable = "packages/flo_lib" },
+    { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "loguru", specifier = ">=0.7.2,<1.0.0" },
     { name = "opentelemetry-api", specifier = ">=1.28.2,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.28.2,<2.0.0" },
@@ -2212,11 +2214,17 @@ name = "flo-utils"
 version = "0.1.0"
 source = { editable = "packages/flo_utils" }
 dependencies = [
+    { name = "cryptography" },
+    { name = "flo-cloud" },
     { name = "tiktoken" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tiktoken", specifier = ">=0.9.0" }]
+requires-dist = [
+    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "flo-cloud", editable = "packages/flo_cloud" },
+    { name = "tiktoken", specifier = ">=0.9.0" },
+]
 
 [[package]]
 name = "floconsole"

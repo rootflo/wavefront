@@ -16,7 +16,7 @@ from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.models.telephony_config import TelephonyConfig
 from db_repo_module.models.tts_config import TtsConfig
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import ENVELOPE_PREFIX, EnvelopeCipher
+from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 from voice_agents_module.controllers.stt_config_controller import get_stt_config
 from voice_agents_module.controllers.telephony_config_controller import (
     get_telephony_config,

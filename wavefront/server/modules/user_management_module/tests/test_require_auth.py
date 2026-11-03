@@ -11,7 +11,7 @@ from starlette.datastructures import Headers
 
 from common_module.security.secret_cipher import SecretCipher
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 
 from user_management_module.authorization.require_auth import (
     RequireAuthMiddleware,

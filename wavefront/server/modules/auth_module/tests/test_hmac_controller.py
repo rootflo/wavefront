@@ -12,7 +12,7 @@ from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.auth_secrets import AuthSecrets
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 
 
 class FakeKms(FloCipher):

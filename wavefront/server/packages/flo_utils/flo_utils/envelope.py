@@ -23,8 +23,8 @@ from typing import Optional
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from ._types import FloCipher
-from .exceptions import KmsError
+from flo_cloud._types import FloCipher
+from flo_cloud.exceptions import KmsError
 
 ENVELOPE_PREFIX = 'enc:v1:'
 

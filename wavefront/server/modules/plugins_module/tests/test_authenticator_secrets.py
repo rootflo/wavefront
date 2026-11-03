@@ -15,7 +15,7 @@ from common_module.security.secret_cipher import (
 )
 from db_repo_module.models.authenticator import Authenticator
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import EnvelopeCipher
+from flo_utils.envelope import EnvelopeCipher
 from plugins_module.services import authenticator_services as services
 from plugins_module.utils.authenticator_helper import (
     AUTHENTICATOR_SECRET_FIELDS,

@@ -26,7 +26,7 @@ from call_processing.services.common.voice_agent_cache_service import (
 )
 from common_module.security.secret_cipher import SecretCipher, SecretModeMismatchError
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import ENVELOPE_PREFIX, EnvelopeCipher
+from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 
 AGENT_ID = uuid.uuid4()
 LLM_ID, TTS_ID, STT_ID, TEL_ID = (uuid.uuid4() for _ in range(4))

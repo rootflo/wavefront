@@ -10,7 +10,7 @@ from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import ENVELOPE_PREFIX, EnvelopeCipher
+from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )

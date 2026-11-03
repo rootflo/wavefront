@@ -18,7 +18,7 @@ from common_module.security.secret_cipher import (
 )
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from flo_cloud._types import FloCipher
-from flo_cloud.envelope import ENVELOPE_PREFIX, EnvelopeCipher
+from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.controllers import llm_inference_config_controller
 from llm_inference_config_module.controllers.llm_inference_config_controller import (
