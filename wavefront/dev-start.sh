@@ -1204,7 +1204,7 @@ install_client_deps() {
 
 # The dev server serves index.html, so match its title to be sure it is ours.
 is_client_up() {
-  curl -fsS --max-time 2 "$CLIENT_URL" 2>/dev/null | grep -q '<title>Rootflo Console</title>'
+  curl -fsS --max-time 2 "$CLIENT_URL" 2>/dev/null | grep -q '<title>Wavefront Console'
 }
 
 start_client() {
