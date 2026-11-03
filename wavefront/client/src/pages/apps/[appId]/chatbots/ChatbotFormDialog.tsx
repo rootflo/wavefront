@@ -1,5 +1,5 @@
 import { NamespaceItem } from '@app/types/namespace';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form } from '@app/components/ui/form';
+} from '@wavefront/ui/dialog';
+import { Form } from '@wavefront/ui/form';
 import { useCreateChatbot, useGetLLMConfigs, useUpdateChatbot } from '@app/hooks';
 import { Chatbot, CreateChatbotRequest, UpdateChatbotRequest } from '@app/types/chatbot';
 import { zodResolver } from '@hookform/resolvers/zod';

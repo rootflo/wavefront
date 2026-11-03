@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
 import { getRouterStrategy, getRoutingOptions, isExecutableNode } from '../graphUtils';
 import { NumberInput } from './NumberInput';
 import { LlmModelOption, NodePropertiesProps } from './types';

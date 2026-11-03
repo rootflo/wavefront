@@ -1,4 +1,4 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { INFERENCE_ENGINE_TYPES, LLM_PROVIDERS_CONFIG, type InferenceEngineType } from '@app/config/llm-providers';
 
 interface ProviderSelectProps {

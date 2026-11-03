@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@wavefront/ui/tabs';
 import { useGetVoiceAgent } from '@app/hooks';
 import { cn } from '@app/lib/utils';
 import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';

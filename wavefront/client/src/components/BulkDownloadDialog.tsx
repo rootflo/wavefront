@@ -1,5 +1,5 @@
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
+} from '@wavefront/ui/dialog';
 import { useEffect, useMemo, useState } from 'react';
 
 const BulkDownloadDialog = <T,>({

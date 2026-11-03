@@ -1,18 +1,14 @@
+import { ExtensionSlot } from '@app/extensions';
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
 import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@app/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@wavefront/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { ArrowLeft, MoreVertical } from 'lucide-react';
 import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion, useUpdateAgent } from '@app/hooks';
 import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks';
@@ -582,6 +578,14 @@ const AgentDetail: React.FC = () => {
             }}
             saving={updateAgent.isPending}
           />
+
+          {appId && id ? (
+            <ExtensionSlot
+              name="agent.detail.sidebar"
+              props={{ appId, agentId: id }}
+              className="flex shrink-0 flex-col gap-3 pt-3 md:pt-6"
+            />
+          ) : null}
 
           {/* Versions Dialog */}
           <VersionsDialog

@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
+} from '@wavefront/ui/dialog';
 import { cn } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Check, Folder, FolderUp, HardDrive, Loader2, X, Upload } from 'lucide-react';

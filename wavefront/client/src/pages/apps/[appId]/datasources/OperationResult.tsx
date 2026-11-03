@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import { cn } from '@app/lib/utils';
 import { Check, CircleAlert, Copy } from 'lucide-react';
 import RowsWorkspace from './RowsWorkspace';

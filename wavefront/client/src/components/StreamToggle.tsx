@@ -1,5 +1,5 @@
-import { Label } from '@app/components/ui/label';
-import { Switch } from '@app/components/ui/switch';
+import { Label } from '@wavefront/ui/label';
+import { Switch } from '@wavefront/ui/switch';
 import clsx from 'clsx';
 import { Zap } from 'lucide-react';
 import React from 'react';

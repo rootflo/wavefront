@@ -2,10 +2,10 @@ import * as React from 'react';
 import dayjs from 'dayjs';
 
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { EntityVersion } from '@app/types/version';
 
 interface VersionsDialogProps {

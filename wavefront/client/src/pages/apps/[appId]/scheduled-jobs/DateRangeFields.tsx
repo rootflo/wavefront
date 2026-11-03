@@ -1,5 +1,5 @@
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { DateRangeOption } from '@app/types/scheduled-job';
 import { DATE_RANGE_OPTIONS, isDateRangeOption } from './scheduled-job-form';
 

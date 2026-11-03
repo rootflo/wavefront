@@ -1,9 +1,9 @@
-import { Button } from '@app/components/ui/button';
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Slider } from '@app/components/ui/slider';
-import { Textarea } from '@app/components/ui/textarea';
+import { Button } from '@wavefront/ui/button';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Slider } from '@wavefront/ui/slider';
+import { Textarea } from '@wavefront/ui/textarea';
 import type { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';

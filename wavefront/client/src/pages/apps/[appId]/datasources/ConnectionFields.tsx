@@ -1,8 +1,8 @@
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Switch } from '@app/components/ui/switch';
-import { Textarea } from '@app/components/ui/textarea';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Switch } from '@wavefront/ui/switch';
+import { Textarea } from '@wavefront/ui/textarea';
 import { cn } from '@app/lib/utils';
 import { ChevronDown, Eye, EyeOff, FileUp } from 'lucide-react';
 import React, { useRef, useState } from 'react';

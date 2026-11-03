@@ -1,5 +1,5 @@
 import { Plus, Bot } from 'lucide-react';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 
 interface EmptyCanvasWelcomeProps {
   onLoadLinearTemplate: () => void;

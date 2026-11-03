@@ -1,6 +1,6 @@
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Textarea } from '@wavefront/ui/textarea';
 import {
   COLUMN_STYLES_PLACEHOLDER,
   DEFAULT_CRON_EXPR,

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { Outlet } from 'react-router';
 import PageTitle from '@app/components/PageTitle';
-import { Tabs, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@wavefront/ui/tabs';
 import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const VoiceAgentsLayout: React.FC = () => {

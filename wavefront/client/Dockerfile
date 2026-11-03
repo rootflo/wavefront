@@ -7,6 +7,8 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION}
 
 COPY wavefront/client/pnpm-lock.yaml wavefront/client/pnpm-workspace.yaml ./
 COPY wavefront/client/package.json ./
+# Workspace packages (the shared UI kit) install with the app.
+COPY wavefront/client/packages/ui/package.json ./packages/ui/
 
 RUN pnpm install
 
@@ -18,6 +20,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION}
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/pnpm-workspace.yaml ./
 COPY --from=deps /app/package.json ./
+COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
 
 COPY wavefront/client/ ./
 

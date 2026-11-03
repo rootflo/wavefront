@@ -1,7 +1,7 @@
 import { ProblemsPanel, type Problem } from '@app/components/WorkflowBuilder/ProblemsPanel';
 import ThemeToggle from '@app/components/ThemeToggle';
-import { Button } from '@app/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import { Button } from '@wavefront/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@wavefront/ui/tabs';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';

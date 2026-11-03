@@ -1,4 +1,4 @@
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
 import { useFormContext } from 'react-hook-form';
 import { VoiceAgentInput } from './voice-agent-form';
 

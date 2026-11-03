@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import FieldHelp from '@app/components/FieldHelp';
 import { VoiceIdSelect } from './VoiceIdSelect';
-import { Label } from '@app/components/ui/label';
-import { Switch } from '@app/components/ui/switch';
+import { Label } from '@wavefront/ui/label';
+import { Switch } from '@wavefront/ui/switch';
 import { getLanguageDisplayName } from '@app/constants/languages';
 import {
   allowsCustomTtsVoiceId,

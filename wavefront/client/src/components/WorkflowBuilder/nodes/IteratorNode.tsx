@@ -1,7 +1,7 @@
 import { Handle, NodeProps } from '@xyflow/react';
 import { Repeat, RotateCcw } from 'lucide-react';
 import React from 'react';
-import { Badge } from '@app/components/ui/badge';
+import { Badge } from '@wavefront/ui/badge';
 import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 

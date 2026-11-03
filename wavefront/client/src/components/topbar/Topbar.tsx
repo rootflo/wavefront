@@ -8,7 +8,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@app/components/ui/dropdown-menu';
+} from '@wavefront/ui/dropdown-menu';
 import { isLiveStatus } from '@app/lib/app-status';
 import { formatAppName } from '@app/utils/string-formatting';
 import { IUser } from '@app/types/user';
@@ -16,7 +16,8 @@ import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { useThemeStore } from '@app/store/theme-store';
 import { App } from '@app/types/app';
-import { Check, ChevronsUpDown, LogOut, Menu, Monitor, Settings } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, Monitor, Puzzle, Settings } from 'lucide-react';
+import { useExtensionNavItems } from '@app/extensions';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { getRouteAppId } from '@app/lib/current-app';
@@ -30,6 +31,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [appPickerOpen, setAppPickerOpen] = useState(false);
+  const consoleNavItems = useExtensionNavItems('console');
 
   // The workspace menu only exists inside an app's pages (/apps/:appId/<section>).
   const pathParts = location.pathname.split('/');
@@ -157,6 +159,20 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                   <Settings className="frost-text-muted size-4" />
                   Settings
                 </DropdownMenuItem>
+                {consoleNavItems.map(({ value: item }) => {
+                  const Icon = item.icon ?? Puzzle;
+                  return (
+                    <DropdownMenuItem
+                      key={item.id}
+                      title={item.description}
+                      className="frost-text focus:bg-frost-glass focus:text-frost-text cursor-pointer gap-2 rounded-md px-2.5 py-2 text-[12px] [&>svg]:size-3"
+                      onClick={() => navigate(`/${item.path.replace(/^\/+/, '')}`)}
+                    >
+                      <Icon className="frost-text-muted size-4" />
+                      {item.name}
+                    </DropdownMenuItem>
+                  );
+                })}
                 <DropdownMenuItem
                   className="frost-text focus:bg-frost-glass focus:text-frost-text cursor-pointer gap-2 rounded-md px-2.5 py-2 text-[12px] [&>svg]:size-3"
                   onSelect={(event) => {

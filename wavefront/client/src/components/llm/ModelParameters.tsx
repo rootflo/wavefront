@@ -2,11 +2,11 @@ import { ChevronDown, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
 import FieldHelp from '@app/components/FieldHelp';
-import { Alert, AlertDescription } from '@app/components/ui/alert';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Slider } from '@app/components/ui/slider';
+import { Alert, AlertDescription } from '@wavefront/ui/alert';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Slider } from '@wavefront/ui/slider';
 import {
   findModelPreset,
   getModelGroups,

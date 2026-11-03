@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,11 +8,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Skeleton } from '@app/components/ui/skeleton';
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+} from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Skeleton } from '@wavefront/ui/skeleton';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { cn } from '@app/lib/utils';
 import { copyToClipboard } from '@app/utils/clipboard';
 import { downloadBlobFile } from '@app/utils/download';

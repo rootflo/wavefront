@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Plus, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Button } from '@app/components/ui/button';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Button } from '@wavefront/ui/button';
 
 /** One field of an agent's output parser; objects nest `fields`, arrays describe their `items`. */
 export interface ParserField {

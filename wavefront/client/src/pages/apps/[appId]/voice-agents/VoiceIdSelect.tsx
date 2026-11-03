@@ -1,17 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 
-import { Button } from '@app/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
-import { Input } from '@app/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { Button } from '@wavefront/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@wavefront/ui/command';
+import { Input } from '@wavefront/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
 import { allowsCustomTtsVoiceId, getTtsVoiceLabel, getTtsVoiceOptions } from '@app/config/tts-voice-catalogs';
 import { cn } from '@app/lib/utils';
 

@@ -1,12 +1,7 @@
-import { Button } from '@app/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@app/components/ui/dropdown-menu';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Button } from '@wavefront/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@wavefront/ui/dropdown-menu';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { cn } from '@app/lib/utils';
 import { MoreHorizontal, Plus, Search } from 'lucide-react';
 import React, { useContext } from 'react';

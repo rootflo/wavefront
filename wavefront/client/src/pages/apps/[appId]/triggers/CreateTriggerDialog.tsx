@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,9 +6,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+} from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { TRIGGER_ENTITY_TYPES, TRIGGER_MIME_TYPE_OPTIONS, TRIGGER_PROVIDER_GMAIL } from '@app/constants/trigger';
 import { useCreateTrigger, useGetAgents, useGetEmailConnections, useGetWorkflows } from '@app/hooks';
 import { cn } from '@app/lib/utils';

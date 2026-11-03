@@ -1,6 +1,6 @@
 import FieldHelp from '@app/components/FieldHelp';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { cn } from '@app/lib/utils';
 import { removeUnderscoreAndSentenceCase } from '@app/utils/string-formatting';
 import { CircleAlert, Plus, X } from 'lucide-react';

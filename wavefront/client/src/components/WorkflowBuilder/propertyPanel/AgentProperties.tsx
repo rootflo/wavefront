@@ -1,8 +1,8 @@
 import React from 'react';
 import { Node } from '@xyflow/react';
-import { Badge } from '@app/components/ui/badge';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
+import { Badge } from '@wavefront/ui/badge';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
 import { AgentConfigMethod } from '@app/types/workflow-builder';
 import { ParserBuilder, ParserSchema } from '../ParserBuilder';

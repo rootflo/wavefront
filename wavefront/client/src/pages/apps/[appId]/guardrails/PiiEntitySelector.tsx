@@ -1,18 +1,11 @@
 import { PiiEntity, PiiEntityGroup } from '@app/types/guardrails';
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@wavefront/ui/command';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
 import { Check, ChevronDown, ChevronRight, ChevronsUpDown, Search, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { LOOSE_PATTERN_SCORE, PRECISION_TOOLTIPS, PRECISION_WARNINGS } from './adapter-meta';

@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
-import { Button } from '@app/components/ui/button';
-import { Skeleton } from '@app/components/ui/skeleton';
+import { Button } from '@wavefront/ui/button';
+import { Skeleton } from '@wavefront/ui/skeleton';
 import { cn } from '@app/lib/utils';
 import { Datasource } from '@app/types/datasource';
 import { useQuery } from '@tanstack/react-query';

@@ -1,6 +1,6 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import { Download, Loader2, Play, Rows3 } from 'lucide-react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
 import { cn } from '@app/lib/utils';
 import { DynamicQueryItem } from '@app/types/datasource';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';

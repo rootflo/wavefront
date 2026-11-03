@@ -1,9 +1,9 @@
 import floConsoleService from '@app/api';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Skeleton } from '@app/components/ui/skeleton';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Skeleton } from '@wavefront/ui/skeleton';
 import { cn } from '@app/lib/utils';
 import { extractErrorMessage } from '@app/lib/errors';
 import { useQuery } from '@tanstack/react-query';

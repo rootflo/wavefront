@@ -8,8 +8,8 @@ import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUpl
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { useDeleteWorkflow, useGetNamespaces, useGetWorkflows } from '@app/hooks';
 import { getWorkflowsKey } from '@app/hooks/data/query-keys';
 import { copyToClipboard } from '@app/utils/clipboard';

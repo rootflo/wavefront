@@ -1,9 +1,9 @@
 import floConsoleService from '@app/api';
 import { FilterSelect } from '@app/components/ListHeader';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { cn } from '@app/lib/utils';
 import { extractErrorMessage } from '@app/lib/errors';
 import { DatasourceAuditLog, DatasourceAuditOperation } from '@app/types/datasource';

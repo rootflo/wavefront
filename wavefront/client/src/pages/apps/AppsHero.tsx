@@ -1,7 +1,7 @@
 import AppStats from './AppStats';
 import FloatingCreateButton from '@app/components/FloatingCreateButton';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
 import { cn } from '@app/lib/utils';
 import { App } from '@app/types/app';
 import { CalendarDays, Plus, Search } from 'lucide-react';

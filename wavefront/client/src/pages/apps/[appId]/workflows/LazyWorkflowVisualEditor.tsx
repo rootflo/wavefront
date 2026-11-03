@@ -1,4 +1,4 @@
-import { Spinner } from '@app/components/ui/spinner';
+import { Spinner } from '@wavefront/ui/spinner';
 import React, { Suspense } from 'react';
 
 // Loaded on demand so React Flow, its CSS and dagre stay out of the workflows page bundle.

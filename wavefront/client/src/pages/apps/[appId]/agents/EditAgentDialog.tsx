@@ -1,13 +1,6 @@
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import { Button } from '@app/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
+import { Button } from '@wavefront/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@wavefront/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -15,10 +8,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+} from '@wavefront/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@wavefront/ui/tabs';
 import { cn } from '@app/lib/utils';
 import { ToolsDetailsData } from '@app/types/tool';
 import { useNotifyStore } from '@app/store';

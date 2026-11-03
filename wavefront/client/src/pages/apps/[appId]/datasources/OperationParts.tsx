@@ -1,5 +1,5 @@
 import FieldHelp from '@app/components/FieldHelp';
-import { Textarea } from '@app/components/ui/textarea';
+import { Textarea } from '@wavefront/ui/textarea';
 import { cn } from '@app/lib/utils';
 import React from 'react';
 

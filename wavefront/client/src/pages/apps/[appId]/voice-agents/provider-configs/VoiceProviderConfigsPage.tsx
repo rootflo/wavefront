@@ -4,8 +4,8 @@ import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/compone
 import { useListView } from '@app/lib/list-view';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { VoiceProviderKind, useDeleteVoiceProviderConfig, useGetSttConfigs, useGetTtsConfigs } from '@app/hooks';
 import { Pencil, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';

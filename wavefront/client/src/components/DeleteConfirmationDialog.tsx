@@ -8,8 +8,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@app/components/ui/alert-dialog';
-import { Button } from '@app/components/ui/button';
+} from '@wavefront/ui/alert-dialog';
+import { Button } from '@wavefront/ui/button';
 
 interface DeleteConfirmationDialogProps {
   isOpen: boolean;

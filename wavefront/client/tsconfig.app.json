@@ -9,7 +9,11 @@
 
     "baseUrl": ".",
     "paths": {
-      "@app/*": ["src/*"]
+      "@app/*": ["src/*"],
+      "@wavefront/ui": ["packages/ui/src/index.ts"],
+      "@wavefront/ui/lib/*": ["packages/ui/src/lib/*"],
+      "@wavefront/ui/icons/*": ["packages/ui/src/icons/*"],
+      "@wavefront/ui/*": ["packages/ui/src/*"]
     },
 
     /* Bundler mode */
@@ -27,5 +31,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src", "packages/ui/src"]
 }

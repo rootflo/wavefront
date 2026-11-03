@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import { Node } from '@xyflow/react';
-import { Badge } from '@app/components/ui/badge';
+import { Badge } from '@wavefront/ui/badge';
 import { getNodeTypeStyle } from './nodeTypeStyles';
 
 interface OutlineItemProps {

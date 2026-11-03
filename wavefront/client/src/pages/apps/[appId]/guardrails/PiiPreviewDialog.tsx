@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
 import { PiiEntityGroup, PiiPreviewResult } from '@app/types/guardrails';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Label } from '@app/components/ui/label';
-import { Textarea } from '@app/components/ui/textarea';
+} from '@wavefront/ui/dialog';
+import { Label } from '@wavefront/ui/label';
+import { Textarea } from '@wavefront/ui/textarea';
 import { extractErrorMessage } from '@app/lib/errors';
 import React, { useEffect, useMemo, useState } from 'react';
 import { buildEntityLabels } from './adapter-meta';

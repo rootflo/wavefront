@@ -1,7 +1,7 @@
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Textarea } from '@wavefront/ui/textarea';
 import {
   COLUMN_STYLES_PLACEHOLDER,
   DATE_RANGE,

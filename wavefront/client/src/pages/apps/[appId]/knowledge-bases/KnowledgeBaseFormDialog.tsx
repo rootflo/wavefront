@@ -1,6 +1,6 @@
 import { KNOWLEDGE_BASE_TYPES } from '@app/constants/knowledge-base';
 import { KbData } from '@app/types/knowledge-base';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,10 +8,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+} from '@wavefront/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { useCreateKnowledgeBase, useUpdateKnowledgeBase } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';

@@ -1,5 +1,5 @@
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { Plus, X } from 'lucide-react';
 import React, { useId, useState } from 'react';
 import { buildFilter, FILTER_OPERATORS, FilterCondition, FilterJoin, FilterOperator } from './odata-filter';

@@ -1,3 +1,4 @@
+import { ExtensionSlot } from '@app/extensions';
 import AppsBackdrop from '@app/components/AppsBackdrop';
 import { toneClass } from '@app/lib/tones';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
@@ -5,8 +6,8 @@ import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { useDeleteUser, useGetConsoleUsers, useGetCurrentUser } from '@app/hooks';
 import { IUser } from '@app/types/user';
 import { Pencil, Trash2, Shield, User } from 'lucide-react';
@@ -75,6 +76,7 @@ const UsersPage: React.FC = () => {
         search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search users...' }}
         primary={isOwner ? { label: 'Create user', onClick: handleCreateUser } : undefined}
       />
+      <ExtensionSlot name="console.users.actions" className="relative flex flex-wrap gap-2 pb-4" />
 
       {consoleUsersLoading ? (
         <ResourceListSkeleton view="table" />

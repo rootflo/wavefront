@@ -1,6 +1,6 @@
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { useFormContext } from 'react-hook-form';
 import { VoiceAgentInput } from './voice-agent-form';
 

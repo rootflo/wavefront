@@ -1,7 +1,7 @@
 import { IndexStatus, KnowledgeBaseIndexStatusData } from '@app/types/knowledge-base';
-import { Button } from '@app/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { cn } from '@app/lib/utils';
 import dayjs from 'dayjs';
 import React, { useState } from 'react';

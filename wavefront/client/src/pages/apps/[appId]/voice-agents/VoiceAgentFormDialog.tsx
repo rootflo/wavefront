@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,9 +6,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form } from '@app/components/ui/form';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+} from '@wavefront/ui/dialog';
+import { Form } from '@wavefront/ui/form';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@wavefront/ui/tabs';
 import { getProviderConfig, groupParamKeys, initializeParameters } from '@app/config/voice-providers';
 import { useCreateVoiceAgent, useGetSttConfigs, useGetTtsConfigs, useUpdateVoiceAgent } from '@app/hooks';
 import { useDashboardStore, useNotifyStore } from '@app/store';

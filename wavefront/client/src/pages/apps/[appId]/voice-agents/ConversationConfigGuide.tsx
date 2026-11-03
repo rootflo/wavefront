@@ -1,4 +1,4 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { CONVERSATION_CONFIG_DOCS } from './conversation-config';
 
 /** The Guide tab: what every Advanced option does, its default and range, plus common recipes. */

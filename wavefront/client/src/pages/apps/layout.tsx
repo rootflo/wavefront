@@ -14,6 +14,7 @@ import {
   Mail,
   MessageSquareText,
   Plug,
+  Puzzle,
   ShieldCheck,
   SlidersHorizontal,
   Webhook,
@@ -24,6 +25,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { saveLastApp } from '@app/lib/last-app';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
 import { useGetGuardrailAdapters } from '@app/hooks';
+import { useExtensionNavItems, type ExtensionNavItem } from '@app/extensions';
 
 interface NavItem {
   id: string;
@@ -165,7 +167,7 @@ const NAV_PADDING = 24;
 const expandedGroupHeight = (itemCount: number) =>
   NAV_GROUP_TITLE_HEIGHT + itemCount * NAV_ITEM_HEIGHT + Math.max(itemCount - 1, 0) * NAV_ITEM_GAP;
 
-const groupedNav = (() => {
+const buildGroupedNav = (extensionItems: ExtensionNavItem[]) => {
   const groups = NAV_GROUPS.map((group) => ({
     title: group.title,
     items: group.ids
@@ -175,8 +177,28 @@ const groupedNav = (() => {
   const placed = new Set(NAV_GROUPS.flatMap((group) => group.ids));
   const rest = finalNavItems.filter((item) => !placed.has(item.id));
   if (rest.length > 0) groups.push({ title: 'More', items: rest });
+
+  // Items from remotes join the group they name (a new title makes a new group,
+  // kept above "More"), or "More" when they name none.
+  for (const extension of extensionItems) {
+    const item: NavItem = {
+      id: extension.id,
+      name: extension.name,
+      icon: extension.icon ?? Puzzle,
+      link: `/apps/:appId/${extension.path.replace(/^\/+/, '')}`,
+      description: extension.description ?? '',
+    };
+    const title = extension.group ?? 'More';
+    let group = groups.find((candidate) => candidate.title === title);
+    if (!group) {
+      group = { title, items: [] };
+      const more = groups.findIndex((candidate) => candidate.title === 'More');
+      groups.splice(more === -1 ? groups.length : more, 0, group);
+    }
+    group.items.push(item);
+  }
   return groups.filter((group) => group.items.length > 0);
-})();
+};
 
 const AppLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
@@ -199,6 +221,12 @@ const AppLayout: React.FC = () => {
     return Boolean(adapterInfo?.enabled);
   }, [isAdapterError, adapterInfo]);
 
+  const extensionNavItems = useExtensionNavItems('app');
+  const groupedNav = useMemo(
+    () => buildGroupedNav(extensionNavItems.map((contribution) => contribution.value)),
+    [extensionNavItems]
+  );
+
   const visibleGroupedNav = useMemo(
     () =>
       groupedNav
@@ -207,7 +235,7 @@ const AppLayout: React.FC = () => {
           items: group.items.filter((item) => item.id !== 'guardrails' || isGuardrailsActive),
         }))
         .filter((group) => group.items.length > 0),
-    [isGuardrailsActive]
+    [groupedNav, isGuardrailsActive]
   );
 
   useEffect(() => {

@@ -1,7 +1,7 @@
-import { Button } from '@app/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { Button } from '@wavefront/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Textarea } from '@wavefront/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
 import { DOCUMENT_ACCEPT_ATTRIBUTE, IMAGE_ACCEPT_ATTRIBUTE } from '@app/constants/upload';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ChatMessageContent, ImageContent, DocumentContent } from '@app/types/chat-message';

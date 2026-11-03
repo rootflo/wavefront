@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { Label } from '@app/components/ui/label';
+import { Label } from '@wavefront/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
 import { isExecutableNode } from '../graphUtils';
 import { NodePropertiesProps } from './types';

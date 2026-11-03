@@ -1,5 +1,5 @@
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import { Skeleton } from '@app/components/ui/skeleton';
+import { Skeleton } from '@wavefront/ui/skeleton';
 import { cn } from '@app/lib/utils';
 import { LayoutGrid, List } from 'lucide-react';
 import { ListView } from '@app/lib/list-view';

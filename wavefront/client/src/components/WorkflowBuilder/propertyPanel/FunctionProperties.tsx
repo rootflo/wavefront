@@ -1,7 +1,7 @@
 import React from 'react';
 import { Node } from '@xyflow/react';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
 import { isExecutableNode } from '../graphUtils';
 import { NodePropertiesProps, ToolOption } from './types';

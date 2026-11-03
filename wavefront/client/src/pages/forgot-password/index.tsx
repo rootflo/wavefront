@@ -1,8 +1,8 @@
 import floService from '@app/api';
 import ThemeToggle from '@app/components/ThemeToggle';
-import { Button } from '@app/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
+import { Button } from '@wavefront/ui/button';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
 import { cn } from '@app/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
