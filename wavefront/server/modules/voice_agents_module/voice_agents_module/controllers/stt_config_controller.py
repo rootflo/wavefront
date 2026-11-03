@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
@@ -17,7 +18,18 @@ from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 stt_config_router = APIRouter()
 
 
-@stt_config_router.post('/v1/stt-configs')
+@stt_config_router.post(
+    '/v1/stt-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:CreateSttConfig',
+                resource=from_path('stt_config'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_stt_config(
     request: Request,
@@ -59,7 +71,18 @@ async def create_stt_config(
     )
 
 
-@stt_config_router.get('/v1/stt-configs')
+@stt_config_router.get(
+    '/v1/stt-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:ListSttConfigs',
+                resource=from_path('stt_config'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_stt_configs(
     response_formatter: ResponseFormatter = Depends(
@@ -83,7 +106,18 @@ async def list_stt_configs(
     )
 
 
-@stt_config_router.get('/v1/stt-configs/{config_id}')
+@stt_config_router.get(
+    '/v1/stt-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetSttConfig',
+                resource=from_path('stt_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_stt_config(
     config_id: UUID = Path(..., description='The ID of the STT configuration'),
@@ -119,7 +153,18 @@ async def get_stt_config(
     )
 
 
-@stt_config_router.put('/v1/stt-configs/{config_id}')
+@stt_config_router.put(
+    '/v1/stt-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateSttConfig',
+                resource=from_path('stt_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_stt_config(
     config_id: UUID = Path(..., description='The ID of the STT configuration'),
@@ -182,7 +227,18 @@ async def update_stt_config(
     )
 
 
-@stt_config_router.delete('/v1/stt-configs/{config_id}')
+@stt_config_router.delete(
+    '/v1/stt-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:DeleteSttConfig',
+                resource=from_path('stt_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_stt_config(
     config_id: UUID = Path(..., description='The ID of the STT configuration'),

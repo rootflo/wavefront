@@ -1,0 +1,120 @@
+{
+  "access": {
+    "GET /inference/v1/health": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /inference/v1/query/embeddings": {
+      "resolves_to": [
+        "inference:CreateEmbeddings"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /inference/v1/query/embeddings/batch": {
+      "resolves_to": [
+        "inference:CreateEmbeddings"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /inference/v1/query/text-embeddings": {
+      "resolves_to": [
+        "inference:CreateEmbeddings"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    }
+  },
+  "actions": [
+    {
+      "action": "inference:CreateEmbeddings",
+      "description": "",
+      "legacy": "PUBLIC",
+      "resource_type": null,
+      "service": "inference"
+    }
+  ],
+  "routes": [
+    {
+      "actions": [],
+      "endpoint": "inference_app.controllers.health_controller.health_check",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/inference/v1/health",
+      "public": true
+    },
+    {
+      "actions": [
+        "inference:CreateEmbeddings"
+      ],
+      "endpoint": "inference_app.controllers.inference_controller.image_embedding",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/inference/v1/query/embeddings",
+      "public": false
+    },
+    {
+      "actions": [
+        "inference:CreateEmbeddings"
+      ],
+      "endpoint": "inference_app.controllers.inference_controller.image_embedding_batch",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/inference/v1/query/embeddings/batch",
+      "public": false
+    },
+    {
+      "actions": [
+        "inference:CreateEmbeddings"
+      ],
+      "endpoint": "inference_app.controllers.inference_controller.text_embedding",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/inference/v1/query/text-embeddings",
+      "public": false
+    }
+  ],
+  "unannotated": []
+}

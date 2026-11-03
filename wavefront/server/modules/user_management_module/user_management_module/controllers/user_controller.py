@@ -1,3 +1,12 @@
+from authz_module import (
+    Legacy,
+    define_action,
+    from_path,
+    is_allowed,
+    public_route,
+    requires,
+)
+from fastapi import Depends
 import secrets
 from typing import List, Optional
 from urllib.parse import quote
@@ -37,7 +46,6 @@ from user_management_module.dependencies.injection import (
     CommonCacheDep,
     EmailSenderDep,
     RecaptchaServiceDep,
-    FeatureFlagsDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -68,8 +76,6 @@ from user_management_module.utils.rate_limit import (
     password_reset_rate_limited,
 )
 from user_management_module.utils.user_utils import (
-    can_read_users,
-    check_is_admin,
     normalize_email,
 )
 from user_management_module.utils.user_utils import get_current_user
@@ -82,6 +88,18 @@ from common_module.utils.serializer import serialize_values
 from common_module.utils.validators import is_valid_uuid
 
 user_router = APIRouter(prefix='/v1')
+
+define_action(
+    'users:ListUserDetails',
+    legacy=Legacy.ADMIN,
+    resource_type='user',
+    description='List users with roles, groups and usernames, and filter by role',
+)
+define_action(
+    'dashboards:AccessAllDashboards',
+    legacy=Legacy.ADMIN,
+    description='Every dashboard, with no row-level data filters',
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 
@@ -145,37 +163,40 @@ def _recaptcha_failure_response(
     )
 
 
-@user_router.post('/users')
+@user_router.post(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'users:CreateUser',
+                resource=from_path('user'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def create_user(
     new_user: NewUser,
-    request: Request,
     response_formatter: ResponseFormatterDep,
     user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
     cache_manager: CacheManagerDep,
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     # Groups can carry the admin role too, so admin status is decided over the
     # direct roles and the group roles together.
     assignment_role_ids = await user_service.resolve_assignment_role_ids(
         role_ids=new_user.role_id, group_ids=new_user.group_ids
     )
-    is_creating_admin = role_id in assignment_role_ids
+    is_creating_admin = await user_service.includes_admin_role(assignment_role_ids)
 
     existing_user = await user_repository.find_one(email=new_user.email)
     if existing_user:
         if existing_user.deleted:
             return await user_service.reactivate_user(
-                existing_user, new_user, role_id, response_formatter
+                existing_user, new_user, response_formatter
             )
         else:
             return JSONResponse(
@@ -303,7 +324,20 @@ async def create_user(
             )
 
 
-@user_router.patch('/users')
+@user_router.patch(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateUser',
+                resource=from_path('user'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def update_user(
     update_user: UpdateUser,
@@ -315,13 +349,6 @@ async def update_user(
     user_service: UserServiceDep,
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
 
     target_user = await user_repository.find_one(id=update_user.user_id)
     if not target_user or target_user.deleted:
@@ -506,14 +533,26 @@ async def update_user(
     )
 
 
-@user_router.get('/users')
+@user_router.get(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'users:ListUsers',
+                resource=from_path('user'),
+                legacy=Legacy.ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG),
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_all_user(
     request: Request,
     response_formatter: ResponseFormatterDep,
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
-    feature_flags: FeatureFlagsDep,
     search: Optional[str] = Query(
         None, max_length=200, description='Search by name or email'
     ),
@@ -530,16 +569,10 @@ async def get_all_user(
     nothing more — which is what the console needs to put a name to an id it
     already holds. Without the flag, non-admins are refused outright.
     """
-    # This is can_read_users' gate, inlined: the admin bit decides the payload
-    # shape here, not just access, and calling both would re-resolve the role.
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin and not feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+    # users:ListUsers (admins, or everyone while
+    # ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG is on) got the caller this far; the
+    # full directory entry, and filtering by role, take more.
+    is_admin = await is_allowed(request, 'users:ListUserDetails')
 
     # Refused rather than ignored: `?roles=admin` would partition the directory
     # by role and hand back exactly the membership the trimmed payload withholds,
@@ -686,7 +719,20 @@ def _admin_user_listing_query(roles: Optional[List[str]]):
     ).where(User.deleted.is_(False))
 
 
-@user_router.get('/users/{user_id}')
+@user_router.get(
+    '/users/{user_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:GetUser',
+                resource=from_path('user', 'user_id'),
+                legacy=Legacy.ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG),
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_user(
     request: Request,
@@ -709,12 +755,6 @@ async def get_user(
     clear it — there is no new invalidation to remember. Pass `force_fetch=1` to
     read through to the database.
     """
-    if not await can_read_users(request):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     # User.id is a uuid column, so a malformed id would otherwise reach the
     # database and come back as a 500 rather than a 400.
     if not is_valid_uuid(user_id):
@@ -752,7 +792,20 @@ async def get_user(
     )
 
 
-@user_router.get('/users/{user_id}/groups')
+@user_router.get(
+    '/users/{user_id}/groups',
+    dependencies=[
+        Depends(
+            requires(
+                'users:ListUserGroups',
+                resource=from_path('user', 'user_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_user_groups(
     request: Request,
@@ -765,14 +818,6 @@ async def get_user_groups(
     Returns an empty list for a user in no groups, which is a perfectly normal
     state -- group membership is optional.
     """
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
 
     if not is_valid_uuid(user_id):
         return JSONResponse(
@@ -814,7 +859,20 @@ async def get_user_groups(
     )
 
 
-@user_router.delete('/users')
+@user_router.delete(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'users:DeleteUser',
+                resource=from_path('user'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def delete_user(
     request: Request,
@@ -825,13 +883,6 @@ async def delete_user(
     delete_id: str = Query(alias='id', min_length=1, max_length=100),
 ):
     role_id, user_id, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
 
     if not is_valid_uuid(delete_id):
         return JSONResponse(
@@ -880,7 +931,9 @@ async def delete_user(
     )
 
 
-@user_router.post('/user/send-reset-password-email')
+@user_router.post(
+    '/user/send-reset-password-email', dependencies=[Depends(public_route)]
+)
 @inject
 async def send_reset_url(
     payload: SendResetPasswordEmailRequest,
@@ -970,7 +1023,7 @@ async def send_reset_url(
         return _password_reset_generic_response(response_formatter)
 
 
-@user_router.post('/user/reset-password')
+@user_router.post('/user/reset-password', dependencies=[Depends(public_route)])
 @inject
 async def reset_password(
     reset_user: ResetUser,
@@ -1037,7 +1090,12 @@ async def reset_password(
     )
 
 
-@user_router.get('/whoami')
+@user_router.get(
+    '/whoami',
+    dependencies=[
+        Depends(requires('users:GetCurrentUser', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def get_resources(
     request: Request,
@@ -1045,7 +1103,7 @@ async def get_resources(
     user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
 ):
-    role_id, user_id, _ = get_current_user(request)
+    _, user_id, _ = get_current_user(request)
     user = await user_repository.find_one(id=user_id)
 
     if not user:
@@ -1054,7 +1112,7 @@ async def get_resources(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
-    is_admin = await check_is_admin(role_id)
+    is_admin = await is_allowed(request, 'dashboards:AccessAllDashboards')
 
     # Console resources are the user's UI identity marker (e.g. admin_resource),
     # so they always stay role-based.
@@ -1096,7 +1154,20 @@ async def get_resources(
     )
 
 
-@user_router.patch('/users/{user_id}/unblock')
+@user_router.patch(
+    '/users/{user_id}/unblock',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UnblockUser',
+                resource=from_path('user', 'user_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def unblock_user(
     request: Request,
@@ -1104,15 +1175,6 @@ async def unblock_user(
     account_lockout_service: AccountLockoutServiceDep,
     user_id: str = Path(..., description='User id to unblock', max_length=100),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     if not is_valid_uuid(user_id):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

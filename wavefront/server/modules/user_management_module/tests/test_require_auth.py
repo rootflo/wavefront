@@ -15,11 +15,11 @@ from user_management_module.authorization.require_auth import (
     matches_any_route,
     matches_dynamic_route,
     mtls_principal_prefixes,
-    optional_auth_apis,
     validate_hmac_signature,
     validate_mtls_auth,
     validate_passthrough_auth,
 )
+from authz_module import AuthenticationError
 from user_management_module.constants.auth import RootfloHeaders, SERVICE_AUTH_ROLE_ID
 
 
@@ -38,12 +38,10 @@ def test_matches_dynamic_route_rejects_extra_segments():
 
 
 def test_matches_any_route_exact_and_dynamic():
-    assert matches_any_route('/floware/v1/health', optional_auth_apis)
-    assert matches_any_route(
-        '/floware/v1/triggers/t1/a1/invoke',
-        optional_auth_apis,
-    )
-    assert not matches_any_route('/floware/v1/users', optional_auth_apis)
+    routes = ['/floware/v1/image/analyse', '/floware/v1/triggers/{t}/{a}/invoke']
+    assert matches_any_route('/floware/v1/image/analyse', routes)
+    assert matches_any_route('/floware/v1/triggers/t1/a1/invoke', routes)
+    assert not matches_any_route('/floware/v1/users', routes)
 
 
 def test_is_request_hmac_true_when_any_hmac_header_present():
@@ -107,8 +105,7 @@ async def test_validate_hmac_signature_rejects_missing_headers():
 CLIENT_APPS_PREFIXES = mtls_principal_prefixes(['client-applications'])
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_accepts_allowed_spiffe():
+def test_validate_mtls_auth_accepts_allowed_spiffe():
     request = MagicMock()
     request.headers = Headers(
         {
@@ -119,19 +116,21 @@ async def test_validate_mtls_auth_accepts_allowed_spiffe():
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is True
-    assert request.state.session.role_id == SERVICE_AUTH_ROLE_ID
+    principal = validate_mtls_auth(request, CLIENT_APPS_PREFIXES)
+    assert principal is not None
+    assert principal.is_service
+    assert principal.role_id == SERVICE_AUTH_ROLE_ID
+    assert principal.attributes['spiffe_id'].endswith('/sa/app')
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_rejects_disallowed_namespace():
+def test_validate_mtls_auth_rejects_disallowed_namespace():
     request = MagicMock()
     request.headers = Headers(
         {'X-Forwarded-Client-Cert': 'URI=spiffe://cluster.local/ns/evil/sa/app'}
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is False
+    assert validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is None
 
 
 def _passthrough_request(header_value):
@@ -142,47 +141,28 @@ def _passthrough_request(header_value):
 
 
 def test_validate_passthrough_auth_success():
-    formatter = MagicMock()
-
-    assert (
-        validate_passthrough_auth(
-            _passthrough_request('shared-secret'), formatter, 'shared-secret'
-        )
-        is None
+    principal = validate_passthrough_auth(
+        _passthrough_request('shared-secret'), 'shared-secret'
     )
 
-
-def test_validate_passthrough_auth_sets_service_session():
-    request = _passthrough_request('shared-secret')
-
-    validate_passthrough_auth(request, MagicMock(), 'shared-secret')
-
-    assert request.state.session.user_id == 'passthrough'
+    assert principal.is_service
+    assert principal.user_id == 'passthrough'
+    assert principal.role_id == SERVICE_AUTH_ROLE_ID
 
 
 def test_validate_passthrough_auth_mismatch():
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with pytest.raises(AuthenticationError) as exc:
+        validate_passthrough_auth(_passthrough_request('wrong'), 'shared-secret')
 
-    response = validate_passthrough_auth(
-        _passthrough_request('wrong'), formatter, 'shared-secret'
-    )
-
-    assert response is not None
-    assert response.status_code == 401
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.parametrize('secret', [None, ''])
 def test_validate_passthrough_auth_unconfigured(secret):
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with pytest.raises(AuthenticationError) as exc:
+        validate_passthrough_auth(_passthrough_request('anything'), secret)
 
-    response = validate_passthrough_auth(
-        _passthrough_request('anything'), formatter, secret
-    )
-
-    assert response is not None
-    assert response.status_code == 500
+    assert exc.value.status_code == 500
 
 
 _MTLS_NAMESPACES = ('client-applications', 'gpu-processing')

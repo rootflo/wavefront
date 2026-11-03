@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 import json
 from enum import Enum
 from typing import Optional
@@ -20,7 +21,12 @@ class StorageFileType(str, Enum):
     json = 'json'
 
 
-@cloud_storage_router.get('/v1/storage/signed-url')
+@cloud_storage_router.get(
+    '/v1/storage/signed-url',
+    dependencies=[
+        Depends(requires('storage:GetSignedUrl', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def get_resource_presigned_url(
     resource_url: str = Query(..., description='The cloud storage URL of the resource'),
@@ -55,7 +61,10 @@ async def get_resource_presigned_url(
         )
 
 
-@cloud_storage_router.get('/v1/storage/read')
+@cloud_storage_router.get(
+    '/v1/storage/read',
+    dependencies=[Depends(requires('storage:ReadFile', legacy=Legacy.AUTHENTICATED))],
+)
 @inject
 async def read_storage_file(
     resource_url: str = Query(..., description='The cloud storage URL of the resource'),

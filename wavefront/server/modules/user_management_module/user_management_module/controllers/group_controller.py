@@ -12,6 +12,8 @@ omitted. An inner join would hide exactly the group an admin just created and
 still needs to configure.
 """
 
+from authz_module import Legacy, from_path, requires
+from fastapi import Depends
 from typing import Optional
 import uuid
 
@@ -46,23 +48,8 @@ from user_management_module.dependencies.injection import (
 from user_management_module.models.group import CreateGroupPayload
 from user_management_module.models.group import GroupMembersPayload
 from user_management_module.models.group import UpdateGroupPayload
-from user_management_module.utils.user_utils import check_is_admin
-from user_management_module.utils.user_utils import get_current_user
 
 group_router = APIRouter(prefix='/v1/groups')
-
-
-async def _require_admin(
-    request: Request, response_formatter
-) -> Optional[JSONResponse]:
-    """Shared admin gate, matching the prologue used across access_controller."""
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-    return None
 
 
 def _invalid_group_id_response(group_id: str, response_formatter) -> JSONResponse:
@@ -161,7 +148,20 @@ async def _validate_user_ids(session, user_ids: list[str]) -> Optional[str]:
     return None
 
 
-@group_router.post('')
+@group_router.post(
+    '',
+    dependencies=[
+        Depends(
+            requires(
+                'users:CreateGroup',
+                resource=from_path('group'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def create_group(
     request: Request,
@@ -170,10 +170,6 @@ async def create_group(
     group_repository: UserGroupRepositoryDep,
     cache_manager: CacheManagerDep,
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     existing = await group_repository.find_one(name=payload.name)
     if existing:
         return JSONResponse(
@@ -234,7 +230,20 @@ async def create_group(
     )
 
 
-@group_router.get('')
+@group_router.get(
+    '',
+    dependencies=[
+        Depends(
+            requires(
+                'users:ListGroups',
+                resource=from_path('group'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def list_groups(
     request: Request,
@@ -251,10 +260,6 @@ async def list_groups(
     ),
     offset: int = Query(0, ge=0, description='Number of groups to skip'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     filters = []
     if search and search.strip():
         term = f'%{search.strip()}%'
@@ -310,7 +315,20 @@ async def list_groups(
     )
 
 
-@group_router.get('/{group_id}')
+@group_router.get(
+    '/{group_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:GetGroup',
+                resource=from_path('group', 'group_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_group(
     request: Request,
@@ -318,10 +336,6 @@ async def get_group(
     group_repository: UserGroupRepositoryDep,
     group_id: str = Path(..., description='Group id to fetch'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     if not is_valid_uuid(group_id):
         return _invalid_group_id_response(group_id, response_formatter)
 
@@ -371,7 +385,20 @@ async def get_group(
     )
 
 
-@group_router.patch('/{group_id}')
+@group_router.patch(
+    '/{group_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateGroup',
+                resource=from_path('group', 'group_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def update_group(
     request: Request,
@@ -381,10 +408,6 @@ async def update_group(
     cache_manager: CacheManagerDep,
     group_id: str = Path(..., description='Group id to update'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     if not is_valid_uuid(group_id):
         return _invalid_group_id_response(group_id, response_formatter)
 
@@ -468,7 +491,20 @@ async def update_group(
     )
 
 
-@group_router.delete('/{group_id}')
+@group_router.delete(
+    '/{group_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:DeleteGroup',
+                resource=from_path('group', 'group_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def delete_group(
     request: Request,
@@ -477,10 +513,6 @@ async def delete_group(
     cache_manager: CacheManagerDep,
     group_id: str = Path(..., description='Group id to delete'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     if not is_valid_uuid(group_id):
         return _invalid_group_id_response(group_id, response_formatter)
 
@@ -517,7 +549,20 @@ async def delete_group(
     )
 
 
-@group_router.post('/{group_id}/members')
+@group_router.post(
+    '/{group_id}/members',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateGroupMembers',
+                resource=from_path('group', 'group_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def add_group_members(
     request: Request,
@@ -527,10 +572,6 @@ async def add_group_members(
     cache_manager: CacheManagerDep,
     group_id: str = Path(..., description='Group id to add members to'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     if not is_valid_uuid(group_id):
         return _invalid_group_id_response(group_id, response_formatter)
 
@@ -581,7 +622,20 @@ async def add_group_members(
     )
 
 
-@group_router.delete('/{group_id}/members')
+@group_router.delete(
+    '/{group_id}/members',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateGroupMembers',
+                resource=from_path('group', 'group_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def remove_group_members(
     request: Request,
@@ -591,10 +645,6 @@ async def remove_group_members(
     cache_manager: CacheManagerDep,
     group_id: str = Path(..., description='Group id to remove members from'),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     if not is_valid_uuid(group_id):
         return _invalid_group_id_response(group_id, response_formatter)
 

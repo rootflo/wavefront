@@ -1,3 +1,4 @@
+from authz_module import Legacy, define_action, is_allowed, requires
 from auth_module.auth_container import AuthContainer
 from auth_module.services.superset_service import SupersetService
 from common_module.common_container import CommonContainer
@@ -7,7 +8,6 @@ from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.resource import ResourceScope
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
-from user_management_module.utils.user_utils import check_is_admin
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Depends
@@ -19,8 +19,19 @@ from fastapi.routing import APIRouter
 
 superset_controller = APIRouter()
 
+define_action(
+    'dashboards:AccessAllDashboards',
+    legacy=Legacy.ADMIN,
+    description='Every dashboard, with no row-level data filters',
+)
 
-@superset_controller.get('/v1/superset/authenticate')
+
+@superset_controller.get(
+    '/v1/superset/authenticate',
+    dependencies=[
+        Depends(requires('superset:CreateGuestToken', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def superset_authenticator(
     request: Request,
@@ -40,11 +51,11 @@ async def superset_authenticator(
             content=response_formatter.buildErrorResponse('Superset is not enabled'),
         )
 
-    user_id = request.state.session.user_id
-    role_id = request.state.session.role_id
+    user_id = request.state.principal.id
     dashboards = []
     data_filters = []
-    is_admin = await check_is_admin(role_id)
+    # Unrestricted callers see every dashboard and get no row filters.
+    is_admin = await is_allowed(request, 'dashboards:AccessAllDashboards')
 
     if is_admin:
         dashboards = await user_service.get_all_resources(scope=ResourceScope.DASHBOARD)

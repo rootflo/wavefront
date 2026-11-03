@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import base64
 import dataclasses
 import math
@@ -182,7 +183,18 @@ def _result_limit(top_k: Optional[int], limit: Optional[int]) -> int:
     return top_k if top_k is not None else DEFAULT_TOP_K
 
 
-@rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/retrieve')
+@rag_retrieval_router.post(
+    '/v1/knowledge-base/{kb_id}/retrieve',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:Query',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def retrieve_query(
     kb_id: uuid.UUID,
@@ -613,7 +625,18 @@ def _embedding_rows(embedding: EmbeddingSchema) -> List[KnowledgeBaseEmbeddings]
     return rows
 
 
-@rag_retrieval_router.post('/v1/store_embedding')
+@rag_retrieval_router.post(
+    '/v1/store_embedding',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:CreateEmbeddings',
+                resource=from_path('knowledge_base'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def store_embeddings(
     payload: DocWiseEmbeddingSchema,

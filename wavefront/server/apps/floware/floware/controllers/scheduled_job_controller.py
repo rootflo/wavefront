@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from typing import Annotated
 
 from common_module.common_container import CommonContainer
@@ -11,7 +12,6 @@ from floware.utils.scheduled_job_schema import (
     CreateScheduledJobRequest,
     UpdateScheduledJobRequest,
 )
-from user_management_module.utils.user_utils import check_is_admin, get_current_user
 
 scheduled_job_router = APIRouter(prefix='/v1/scheduled-jobs')
 
@@ -34,7 +34,20 @@ def _to_job_response(job):
     }
 
 
-@scheduled_job_router.post('')
+@scheduled_job_router.post(
+    '',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:CreateScheduledJob',
+                resource=from_path('scheduled_job'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def create_scheduled_job(
     request: Request,
@@ -47,10 +60,6 @@ async def create_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ],
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     job = await scheduled_job_service.create_job(
         job_type=payload.job_type,
         cron_expr=payload.cron_expr,
@@ -64,7 +73,20 @@ async def create_scheduled_job(
     )
 
 
-@scheduled_job_router.get('')
+@scheduled_job_router.get(
+    '',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:ListScheduledJobs',
+                resource=from_path('scheduled_job'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def list_scheduled_jobs(
     request: Request,
@@ -82,10 +104,6 @@ async def list_scheduled_jobs(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     payload_filters: dict[str, str] = {}
     if query_id:
         payload_filters['query_id'] = query_id
@@ -107,7 +125,20 @@ async def list_scheduled_jobs(
     )
 
 
-@scheduled_job_router.get('/{job_id}')
+@scheduled_job_router.get(
+    '/{job_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:GetScheduledJob',
+                resource=from_path('scheduled_job', 'job_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def get_scheduled_job(
     request: Request,
@@ -120,10 +151,6 @@ async def get_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     job = await scheduled_job_service.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail='Scheduled job not found')
@@ -134,7 +161,20 @@ async def get_scheduled_job(
     )
 
 
-@scheduled_job_router.patch('/{job_id}')
+@scheduled_job_router.patch(
+    '/{job_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:UpdateScheduledJob',
+                resource=from_path('scheduled_job', 'job_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def update_scheduled_job(
     request: Request,
@@ -148,10 +188,6 @@ async def update_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     job = await scheduled_job_service.update_job(
         job_id=job_id,
         cron_expr=payload.cron_expr,
@@ -169,7 +205,20 @@ async def update_scheduled_job(
     )
 
 
-@scheduled_job_router.post('/{job_id}/pause')
+@scheduled_job_router.post(
+    '/{job_id}/pause',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:PauseScheduledJob',
+                resource=from_path('scheduled_job', 'job_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def pause_scheduled_job(
     request: Request,
@@ -182,10 +231,6 @@ async def pause_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     job = await scheduled_job_service.pause_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail='Scheduled job not found')
@@ -195,7 +240,20 @@ async def pause_scheduled_job(
     )
 
 
-@scheduled_job_router.post('/{job_id}/resume')
+@scheduled_job_router.post(
+    '/{job_id}/resume',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:ResumeScheduledJob',
+                resource=from_path('scheduled_job', 'job_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def resume_scheduled_job(
     request: Request,
@@ -208,10 +266,6 @@ async def resume_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     job = await scheduled_job_service.resume_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail='Scheduled job not found')
@@ -221,7 +275,20 @@ async def resume_scheduled_job(
     )
 
 
-@scheduled_job_router.delete('/{job_id}')
+@scheduled_job_router.delete(
+    '/{job_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'scheduled_jobs:DeleteScheduledJob',
+                resource=from_path('scheduled_job', 'job_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def delete_scheduled_job(
     request: Request,
@@ -234,10 +301,6 @@ async def delete_scheduled_job(
         ResponseFormatter, Depends(Provide[CommonContainer.response_formatter])
     ] = None,
 ):
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     await scheduled_job_service.delete_job(job_id)
     return JSONResponse(
         status_code=status.HTTP_200_OK,

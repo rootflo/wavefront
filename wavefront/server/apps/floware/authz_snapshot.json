@@ -1,0 +1,7561 @@
+{
+  "access": {
+    "DELETE /floware/v1/access/resources/{resource_id}": {
+      "resolves_to": [
+        "users:DeleteResource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/access/roles/{role_id}": {
+      "resolves_to": [
+        "users:DeleteRole"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/agent-management/agents/{agent_id}": {
+      "resolves_to": [
+        "agents:DeleteAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/agent-management/agents/{agent_id}/versions/{version}": {
+      "resolves_to": [
+        "agents:DeleteAgentVersion"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/api-services/{id}": {
+      "resolves_to": [
+        "api_services:DeleteApiService"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/authenticators/{auth_id}": {
+      "resolves_to": [
+        "authenticators:DeleteAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/chat-sessions/{session_id}": {
+      "resolves_to": [
+        "chatbots:DeleteChatSession"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/chatbots/{chatbot_id}": {
+      "resolves_to": [
+        "chatbots:DeleteChatbot"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/configurations/{namespace}/{key}": {
+      "resolves_to": [
+        "configurations:DeleteConfiguration"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/datasources/{datasource_id}": {
+      "resolves_to": [
+        "datasources:DeleteDatasource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/datasources/{datasource_id}/files": {
+      "resolves_to": [
+        "datasources:DeleteFile"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/datasources/{datasource_id}/resources/{resource_id}": {
+      "resolves_to": [
+        "datasources:DeleteRows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/email-connections/{connection_id}": {
+      "resolves_to": [
+        "email:DeleteConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/groups/{group_id}": {
+      "resolves_to": [
+        "users:DeleteGroup"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/groups/{group_id}/members": {
+      "resolves_to": [
+        "users:UpdateGroupMembers"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/guardrails/policies/{namespace}": {
+      "resolves_to": [
+        "guardrails:DeletePolicy"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/knowledge-bases/{kb_id}": {
+      "resolves_to": [
+        "knowledge_bases:DeleteKnowledgeBase"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/knowledge-bases/{kb_id}/documents/{document_id}": {
+      "resolves_to": [
+        "knowledge_bases:DeleteDocument"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/llm-inference-configs/{config_id}": {
+      "resolves_to": [
+        "models:DeleteModelConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/message-processors/{processor_id}": {
+      "resolves_to": [
+        "message_processors:DeleteMessageProcessor"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/oauth-apps/{app_id}": {
+      "resolves_to": [
+        "oauth_apps:DeleteOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/scheduled-jobs/{job_id}": {
+      "resolves_to": [
+        "scheduled_jobs:DeleteScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/stt-configs/{config_id}": {
+      "resolves_to": [
+        "voice:DeleteSttConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/telephony-configs/{config_id}": {
+      "resolves_to": [
+        "voice:DeleteTelephonyConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/tools/{tool_id}": {
+      "resolves_to": [
+        "voice:DeleteTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/tts-configs/{config_id}": {
+      "resolves_to": [
+        "voice:DeleteTtsConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/users": {
+      "resolves_to": [
+        "users:DeleteUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/voice-agents/{agent_id}": {
+      "resolves_to": [
+        "voice:DeleteVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/voice-agents/{agent_id}/tools/{tool_id}": {
+      "resolves_to": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "DELETE /floware/v1/workflow-management/workflows/{workflow_id}": {
+      "resolves_to": [
+        "workflows:DeleteWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/workflow-management/workflows/{workflow_id}/versions/{version}": {
+      "resolves_to": [
+        "workflows:DeleteWorkflowVersion"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floware/v1/{datasource_id}/dynamic-queries/{query_id}": {
+      "resolves_to": [
+        "datasources:DeleteDynamicQuery"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/access/resources": {
+      "resolves_to": [
+        "users:ListResources"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/access/roles": {
+      "resolves_to": [
+        "users:ListRoles"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/agent-management/agents": {
+      "resolves_to": [
+        "agents:ListAgents"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/agent-management/agents/{agent_id}": {
+      "resolves_to": [
+        "agents:GetAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/agent-management/agents/{agent_id}/versions": {
+      "resolves_to": [
+        "agents:ListAgentVersions"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/agentic-executions": {
+      "resolves_to": [
+        "agents:ListExecutions"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/agentic-executions/{execution_id}": {
+      "resolves_to": [
+        "agents:GetExecution"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/api-services": {
+      "resolves_to": [
+        "api_services:ListApiServices"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/api-services/{service_id}": {
+      "resolves_to": [
+        "api_services:GetApiService"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/authenticators": {
+      "resolves_to": [
+        "authenticators:ListAuthenticators"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/authenticators/{auth_id}": {
+      "resolves_to": [
+        "authenticators:GetAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/chat-sessions": {
+      "resolves_to": [
+        "chatbots:ListChatSessions"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/chat-sessions/{session_id}": {
+      "resolves_to": [
+        "chatbots:GetChatSession"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/chat-sessions/{session_id}/messages": {
+      "resolves_to": [
+        "chatbots:GetChatSession"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/chatbots": {
+      "resolves_to": [
+        "chatbots:ListChatbots"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/chatbots/{chatbot_id}": {
+      "resolves_to": [
+        "chatbots:GetChatbot"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/configurations": {
+      "resolves_to": [
+        "configurations:ListConfigurations"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/configurations/{namespace}/{key}": {
+      "resolves_to": [
+        "configurations:GetConfiguration"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/datasource-audit-logs": {
+      "resolves_to": [
+        "datasources:ListAuditLogs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/datasource-audit-logs/{audit_log_id}": {
+      "resolves_to": [
+        "datasources:GetAuditLog"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/datasources": {
+      "resolves_to": [
+        "datasources:ListDatasources"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}": {
+      "resolves_to": [
+        "datasources:GetDatasource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}/files": {
+      "resolves_to": [
+        "datasources:GetFile"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}/files/browse": {
+      "resolves_to": [
+        "datasources:ListFiles"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}/files/list": {
+      "resolves_to": [
+        "datasources:ListFiles"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}/resources": {
+      "resolves_to": [
+        "datasources:ListTables"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/datasources/{datasource_id}/resources/{resource_id}": {
+      "resolves_to": [
+        "datasources:Query"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/email-connections": {
+      "resolves_to": [
+        "email:ListConnections"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/email-connections/oauth/callback": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/email-connections/{connection_id}": {
+      "resolves_to": [
+        "email:GetConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/groups": {
+      "resolves_to": [
+        "users:ListGroups"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/groups/{group_id}": {
+      "resolves_to": [
+        "users:GetGroup"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/guardrails/adapters": {
+      "resolves_to": [
+        "guardrails:ListAdapters"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/guardrails/pii/entities": {
+      "resolves_to": [
+        "guardrails:ListPiiEntities"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/guardrails/policies": {
+      "resolves_to": [
+        "guardrails:ListPolicies"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/guardrails/policies/{namespace}": {
+      "resolves_to": [
+        "guardrails:GetPolicy"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/health": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/knowledge-bases": {
+      "resolves_to": [
+        "knowledge_bases:ListKnowledgeBases"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/knowledge-bases/{kb_id}": {
+      "resolves_to": [
+        "knowledge_bases:GetKnowledgeBase"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/knowledge-bases/{kb_id}/document/{document_id}": {
+      "resolves_to": [
+        "knowledge_bases:GetDocument"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/knowledge-bases/{kb_id}/documents": {
+      "resolves_to": [
+        "knowledge_bases:ListDocuments"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/knowledge-bases/{kb_id}/index-status": {
+      "resolves_to": [
+        "knowledge_bases:GetIndexStatus"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/llm-inference-configs": {
+      "resolves_to": [
+        "models:ListModelConfigs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/llm-inference-configs/{config_id}": {
+      "resolves_to": [
+        "models:GetModelConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/message-processors": {
+      "resolves_to": [
+        "message_processors:ListMessageProcessors"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/message-processors/{processor_id}": {
+      "resolves_to": [
+        "message_processors:GetMessageProcessor"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/namespaces": {
+      "resolves_to": [
+        "agents:ListNamespaces"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/notifications": {
+      "resolves_to": [
+        "notifications:ListNotifications"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/oauth-apps": {
+      "resolves_to": [
+        "oauth_apps:ListOAuthApps"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/oauth-apps/{app_id}": {
+      "resolves_to": [
+        "oauth_apps:GetOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/oauth/adfs/callback": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/oauth/google/callback": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/oauth/microsoft/callback": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/product-analysis": {
+      "resolves_to": [
+        "analytics:ListEvents"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/product-analysis/stats/login": {
+      "resolves_to": [
+        "analytics:GetLoginStats"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 200,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/product-analysis/stats/login/summary": {
+      "resolves_to": [
+        "analytics:GetLoginStats"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 200,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/scheduled-jobs": {
+      "resolves_to": [
+        "scheduled_jobs:ListScheduledJobs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/scheduled-jobs/{job_id}": {
+      "resolves_to": [
+        "scheduled_jobs:GetScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/settings/config": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/storage/read": {
+      "resolves_to": [
+        "storage:ReadFile"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/storage/signed-url": {
+      "resolves_to": [
+        "storage:GetSignedUrl"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/stt-configs": {
+      "resolves_to": [
+        "voice:ListSttConfigs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/stt-configs/{config_id}": {
+      "resolves_to": [
+        "voice:GetSttConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/superset/authenticate": {
+      "resolves_to": [
+        "superset:CreateGuestToken"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/telephony-configs": {
+      "resolves_to": [
+        "voice:ListTelephonyConfigs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/telephony-configs/{config_id}": {
+      "resolves_to": [
+        "voice:GetTelephonyConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools": {
+      "resolves_to": [
+        "voice:ListTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools/": {
+      "resolves_to": [
+        "tools:ListTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools/by-name/{tool_name}": {
+      "resolves_to": [
+        "tools:GetTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools/names": {
+      "resolves_to": [
+        "tools:ListTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools/tool-details": {
+      "resolves_to": [
+        "tools:GetTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tools/{tool_id}": {
+      "resolves_to": [
+        "voice:GetTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tts-configs": {
+      "resolves_to": [
+        "voice:ListTtsConfigs"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/tts-configs/{config_id}": {
+      "resolves_to": [
+        "voice:GetTtsConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/users": {
+      "resolves_to": [
+        "users:ListUsers"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/users/{user_id}": {
+      "resolves_to": [
+        "users:GetUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/users/{user_id}/groups": {
+      "resolves_to": [
+        "users:ListUserGroups"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/voice-agents": {
+      "resolves_to": [
+        "voice:ListVoiceAgents"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/voice-agents/by-inbound-number/{phone_number}": {
+      "resolves_to": [
+        "voice:GetVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/voice-agents/{agent_id}": {
+      "resolves_to": [
+        "voice:GetVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/voice-agents/{agent_id}/details": {
+      "resolves_to": [
+        "voice:GetVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/voice-agents/{agent_id}/tools": {
+      "resolves_to": [
+        "voice:ListVoiceAgentTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/voice-agents/{agent_id}/welcome-audio-url": {
+      "resolves_to": [
+        "voice:GetVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/whoami": {
+      "resolves_to": [
+        "users:GetCurrentUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floware/v1/workflow-management/workflows": {
+      "resolves_to": [
+        "workflows:ListWorkflows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/workflow-management/workflows/{workflow_id}": {
+      "resolves_to": [
+        "workflows:GetWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/workflow-management/workflows/{workflow_id}/versions": {
+      "resolves_to": [
+        "workflows:ListWorkflowVersions"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/{datasource_id}/dynamic-queries": {
+      "resolves_to": [
+        "datasources:ListDynamicQueries"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "GET /floware/v1/{datasource_id}/dynamic-queries/{query_id}": {
+      "resolves_to": [
+        "datasources:GetDynamicQuery"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/access/resources/{resource_id}": {
+      "resolves_to": [
+        "users:UpdateResource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/access/roles/{role_id}": {
+      "resolves_to": [
+        "users:UpdateRole"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/agent-management/agents/{agent_id}/current-version": {
+      "resolves_to": [
+        "agents:UpdateAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/chat-sessions/{session_id}": {
+      "resolves_to": [
+        "chatbots:UpdateChatSession"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/chatbots/{chatbot_id}": {
+      "resolves_to": [
+        "chatbots:UpdateChatbot"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/datasources/{datasource_id}": {
+      "resolves_to": [
+        "datasources:UpdateDatasource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/datasources/{datasource_id}/resources/update": {
+      "resolves_to": [
+        "datasources:UpdateRows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/datasources/{datasource_id}/resources/{resource_id}": {
+      "resolves_to": [
+        "datasources:UpdateRows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/groups/{group_id}": {
+      "resolves_to": [
+        "users:UpdateGroup"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/knowledge-bases/{kb_id}": {
+      "resolves_to": [
+        "knowledge_bases:UpdateKnowledgeBase"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/llm-inference-configs/{config_id}": {
+      "resolves_to": [
+        "models:UpdateModelConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/notifications/{notification_id}": {
+      "resolves_to": [
+        "notifications:UpdateNotification"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/oauth-apps/{app_id}": {
+      "resolves_to": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floware/v1/scheduled-jobs/{job_id}": {
+      "resolves_to": [
+        "scheduled_jobs:UpdateScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/tools/{tool_id}": {
+      "resolves_to": [
+        "voice:UpdateTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/users": {
+      "resolves_to": [
+        "users:UpdateUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/users/{user_id}/unblock": {
+      "resolves_to": [
+        "users:UnblockUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PATCH /floware/v1/voice-agents/{agent_id}": {
+      "resolves_to": [
+        "voice:UpdateVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/voice-agents/{agent_id}/tools/{tool_id}": {
+      "resolves_to": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/webrtc/offer": {
+      "resolves_to": [
+        "voice:ConnectWebRtc"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /floware/v1/workflow-management/workflows/{workflow_id}/current-version": {
+      "resolves_to": [
+        "workflows:UpdateWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/access/resources": {
+      "resolves_to": [
+        "users:CreateResource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/access/roles": {
+      "resolves_to": [
+        "users:CreateRole"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/agent-management/agents/{name}": {
+      "resolves_to": [
+        "agents:CreateAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/agent-management/agents:validate": {
+      "resolves_to": [
+        "agents:ValidateAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/agentic-executions/{execution_id}/cancel": {
+      "resolves_to": [
+        "agents:CancelExecution"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/agents/{namespace}/{agent_id}/inference": {
+      "resolves_to": [
+        "agents:InvokeAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/api-services": {
+      "resolves_to": [
+        "api_services:CreateApiService"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}": {
+      "resolves_to": [
+        "api_services:InvokeApi"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/api-services/{service_id}/reload": {
+      "resolves_to": [
+        "api_services:UpdateApiService"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/authenticate": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/authenticators": {
+      "resolves_to": [
+        "authenticators:CreateAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/authenticators/{auth_id}/disable": {
+      "resolves_to": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/authenticators/{auth_id}/enable": {
+      "resolves_to": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/chat-sessions/{session_id}/messages": {
+      "resolves_to": [
+        "chatbots:SendChatMessage"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/chatbots": {
+      "resolves_to": [
+        "chatbots:CreateChatbot"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/chatbots/{chatbot_id}/sessions": {
+      "resolves_to": [
+        "chatbots:CreateChatSession"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/configurations": {
+      "resolves_to": [
+        "configurations:CreateConfiguration"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/datasources": {
+      "resolves_to": [
+        "datasources:CreateDatasource"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/files": {
+      "resolves_to": [
+        "datasources:UploadFile"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/files/batch": {
+      "resolves_to": [
+        "datasources:UploadFile"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/files/folders": {
+      "resolves_to": [
+        "datasources:CreateFolder"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/resources/insert": {
+      "resolves_to": [
+        "datasources:InsertRows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/resources/{resource_id}": {
+      "resolves_to": [
+        "datasources:InsertRows"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/datasources/{datasource_id}/test-connection": {
+      "resolves_to": [
+        "datasources:TestDatasourceConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/developer/secrets": {
+      "resolves_to": [
+        "developer:CreateHmacSecret"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/email-connections": {
+      "resolves_to": [
+        "email:CreateConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/email-connections/{connection_id}/authorize": {
+      "resolves_to": [
+        "email:AuthorizeConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/email-connections/{connection_id}/send": {
+      "resolves_to": [
+        "email:SendEmail"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/email-connections/{connection_id}/set-primary": {
+      "resolves_to": [
+        "email:UpdateConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/email-connections/{connection_id}/verify": {
+      "resolves_to": [
+        "email:VerifyConnection"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/groups": {
+      "resolves_to": [
+        "users:CreateGroup"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/groups/{group_id}/members": {
+      "resolves_to": [
+        "users:UpdateGroupMembers"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/guardrails/pii/preview": {
+      "resolves_to": [
+        "guardrails:PreviewPolicy"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/guardrails/policies/preview": {
+      "resolves_to": [
+        "guardrails:PreviewPolicy"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/image/analyse": {
+      "resolves_to": [
+        "images:AnalyzeImage"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/image/historical_images": {
+      "resolves_to": [
+        "images:UploadHistoricalImages"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/knowledge-base/{kb_id}/retrieve": {
+      "resolves_to": [
+        "knowledge_bases:Query"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/knowledge-bases": {
+      "resolves_to": [
+        "knowledge_bases:CreateKnowledgeBase"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/knowledge-bases/{kb_id}/documents": {
+      "resolves_to": [
+        "knowledge_bases:UploadDocument"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/llm-inference-configs": {
+      "resolves_to": [
+        "models:CreateModelConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/llm-inference/{model_id}/{model_call_path:path}": {
+      "resolves_to": [
+        "models:InvokeModel"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/logout": {
+      "resolves_to": [
+        "auth:Logout"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/message-processors": {
+      "resolves_to": [
+        "message_processors:CreateMessageProcessor"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/message-processors/{processor_id}/execute": {
+      "resolves_to": [
+        "message_processors:InvokeMessageProcessor"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/oauth-apps": {
+      "resolves_to": [
+        "oauth_apps:CreateOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/oauth-apps/{app_id}/disable": {
+      "resolves_to": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/oauth-apps/{app_id}/enable": {
+      "resolves_to": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/plugin-auth/authenticate": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/plugin-auth/oauth/init": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/product-analysis": {
+      "resolves_to": [
+        "analytics:CreateEvent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/scheduled-jobs": {
+      "resolves_to": [
+        "scheduled_jobs:CreateScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/scheduled-jobs/{job_id}/pause": {
+      "resolves_to": [
+        "scheduled_jobs:PauseScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/scheduled-jobs/{job_id}/resume": {
+      "resolves_to": [
+        "scheduled_jobs:ResumeScheduledJob"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/store_embedding": {
+      "resolves_to": [
+        "knowledge_bases:CreateEmbeddings"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/stt-configs": {
+      "resolves_to": [
+        "voice:CreateSttConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/telephony-configs": {
+      "resolves_to": [
+        "voice:CreateTelephonyConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/tools": {
+      "resolves_to": [
+        "voice:CreateTool"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/tools/validate": {
+      "resolves_to": [
+        "tools:ValidateTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/tts-configs": {
+      "resolves_to": [
+        "voice:CreateTtsConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/user/reset-password": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/user/send-reset-password-email": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/users": {
+      "resolves_to": [
+        "users:CreateUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/voice-agents": {
+      "resolves_to": [
+        "voice:CreateVoiceAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/voice-agents/{agent_id}/initiate": {
+      "resolves_to": [
+        "voice:InitiateCall"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/voice-agents/{agent_id}/rooms": {
+      "resolves_to": [
+        "voice:CreateWebRtcRoom"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/voice-agents/{agent_id}/tools": {
+      "resolves_to": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/webrtc/offer": {
+      "resolves_to": [
+        "voice:ConnectWebRtc"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/workflow-management/workflows/{name}": {
+      "resolves_to": [
+        "workflows:CreateWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/workflow-management/workflows:validate": {
+      "resolves_to": [
+        "workflows:ValidateWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floware/v1/workflows/{namespace}/{workflow_id}/inference": {
+      "resolves_to": [
+        "workflows:InvokeWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/{datasource_id}/dynamic-queries/{query_id}/execute": {
+      "resolves_to": [
+        "datasources:RunDynamicQuery"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/{datasource_id}/dynamic-queries/{query_id}/export": {
+      "resolves_to": [
+        "datasources:ExportDynamicQuery"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v2/agents/{agent_id}/inference": {
+      "resolves_to": [
+        "agents:InvokeAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v2/workflows/{workflow_id}/inference": {
+      "resolves_to": [
+        "workflows:InvokeWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v3/agents/{agent_id}/inference": {
+      "resolves_to": [
+        "agents:InvokeAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v3/workflows/{workflow_id}/inference": {
+      "resolves_to": [
+        "workflows:InvokeWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/agent-management/agents/{agent_id}": {
+      "resolves_to": [
+        "agents:UpdateAgent"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PUT /floware/v1/api-services/{id}": {
+      "resolves_to": [
+        "api_services:UpdateApiService"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/authenticators/{auth_id}": {
+      "resolves_to": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PUT /floware/v1/configurations/{namespace}/{key}": {
+      "resolves_to": [
+        "configurations:UpdateConfiguration"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/guardrails/policies/{namespace}": {
+      "resolves_to": [
+        "guardrails:UpdatePolicy"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PUT /floware/v1/message-processors/{processor_id}": {
+      "resolves_to": [
+        "message_processors:UpdateMessageProcessor"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/settings/config/app-icon": {
+      "resolves_to": [
+        "settings:UpdateAppConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    },
+    "PUT /floware/v1/stt-configs/{config_id}": {
+      "resolves_to": [
+        "voice:UpdateSttConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/telephony-configs/{config_id}": {
+      "resolves_to": [
+        "voice:UpdateTelephonyConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/tts-configs/{config_id}": {
+      "resolves_to": [
+        "voice:UpdateTtsConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PUT /floware/v1/workflow-management/workflows/{workflow_id}": {
+      "resolves_to": [
+        "workflows:UpdateWorkflow"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PUT /floware/v1/{datasource_id}/dynamic-queries": {
+      "resolves_to": [
+        "datasources:CreateDynamicQuery"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 401,
+        "manager": 401,
+        "user": 401,
+        "user_with_flags": 401
+      }
+    }
+  },
+  "actions": [
+    {
+      "action": "agents:CancelExecution",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent_execution",
+      "service": "agents"
+    },
+    {
+      "action": "agents:CreateAgent",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:DeleteAgent",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:DeleteAgentVersion",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:GetAgent",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:GetExecution",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "agent_execution",
+      "service": "agents"
+    },
+    {
+      "action": "agents:GetExecutionError",
+      "description": "Read an execution's stored error text (show_error=true)",
+      "legacy": "ADMIN",
+      "resource_type": "agent_execution",
+      "service": "agents"
+    },
+    {
+      "action": "agents:InvokeAgent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:ListAgentVersions",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:ListAgents",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:ListExecutions",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "agent_execution",
+      "service": "agents"
+    },
+    {
+      "action": "agents:ListNamespaces",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "agents"
+    },
+    {
+      "action": "agents:UpdateAgent",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "agents:ValidateAgent",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "agent",
+      "service": "agents"
+    },
+    {
+      "action": "analytics:CreateEvent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "analytics"
+    },
+    {
+      "action": "analytics:GetAllLoginStats",
+      "description": "Login stats for every user, not only the caller's groups",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "analytics"
+    },
+    {
+      "action": "analytics:GetLoginStats",
+      "description": "",
+      "legacy": "MANAGER_OR_ADMIN",
+      "resource_type": null,
+      "service": "analytics"
+    },
+    {
+      "action": "analytics:ListEvents",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "analytics"
+    },
+    {
+      "action": "api_services:CreateApiService",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "api_services:DeleteApiService",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "api_services:GetApiService",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "api_services:InvokeApi",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "api_services:ListApiServices",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "api_services:UpdateApiService",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "api_service",
+      "service": "api_services"
+    },
+    {
+      "action": "auth:Logout",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "auth"
+    },
+    {
+      "action": "authenticators:CreateAuthenticator",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "authenticator",
+      "service": "authenticators"
+    },
+    {
+      "action": "authenticators:DeleteAuthenticator",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "authenticator",
+      "service": "authenticators"
+    },
+    {
+      "action": "authenticators:GetAuthenticator",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "authenticator",
+      "service": "authenticators"
+    },
+    {
+      "action": "authenticators:ListAuthenticators",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "authenticator",
+      "service": "authenticators"
+    },
+    {
+      "action": "authenticators:UpdateAuthenticator",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "authenticator",
+      "service": "authenticators"
+    },
+    {
+      "action": "chatbots:CreateChatSession",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:CreateChatbot",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:DeleteChatSession",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chat_session",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:DeleteChatbot",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:GetChatSession",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chat_session",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:GetChatbot",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:ListChatSessions",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chat_session",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:ListChatbots",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:SendChatMessage",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chat_session",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:UpdateChatSession",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "chat_session",
+      "service": "chatbots"
+    },
+    {
+      "action": "chatbots:UpdateChatbot",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "chatbot",
+      "service": "chatbots"
+    },
+    {
+      "action": "configurations:CreateConfiguration",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "configuration",
+      "service": "configurations"
+    },
+    {
+      "action": "configurations:DeleteConfiguration",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "configuration",
+      "service": "configurations"
+    },
+    {
+      "action": "configurations:GetConfiguration",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "configuration",
+      "service": "configurations"
+    },
+    {
+      "action": "configurations:ListConfigurations",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "configuration",
+      "service": "configurations"
+    },
+    {
+      "action": "configurations:UpdateConfiguration",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "configuration",
+      "service": "configurations"
+    },
+    {
+      "action": "dashboards:AccessAllDashboards",
+      "description": "Every dashboard, with no row-level data filters",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "dashboards"
+    },
+    {
+      "action": "datasources:CreateDatasource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:CreateDynamicQuery",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:CreateFolder",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:DeleteDatasource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:DeleteDynamicQuery",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:DeleteFile",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:DeleteRows",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ExportDynamicQuery",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:GetAuditLog",
+      "description": "",
+      "legacy": "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)",
+      "resource_type": "datasource_audit_log",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:GetDatasource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:GetDynamicQuery",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:GetFile",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:InsertRows",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ListAuditLogs",
+      "description": "",
+      "legacy": "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)",
+      "resource_type": "datasource_audit_log",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ListDatasources",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ListDynamicQueries",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ListFiles",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:ListTables",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:Query",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:QueryWithoutRowFilters",
+      "description": "Query or export a datasource without row-level filters",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:RunDynamicQuery",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:RunDynamicQueryWithoutRowFilters",
+      "description": "Run a dynamic query without row-level filters",
+      "legacy": "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:TestDatasourceConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:UpdateDatasource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:UpdateRows",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "datasources:UploadFile",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "datasource",
+      "service": "datasources"
+    },
+    {
+      "action": "developer:CreateHmacSecret",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "hmac_secret",
+      "service": "developer"
+    },
+    {
+      "action": "email:AuthorizeConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:CreateConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:DeleteConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:GetConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:ListConnections",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:SendEmail",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:UpdateConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "email:VerifyConnection",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "email_connection",
+      "service": "email"
+    },
+    {
+      "action": "guardrails:DeletePolicy",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "guardrail_policy",
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:GetPolicy",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "guardrail_policy",
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:ListAdapters",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:ListPiiEntities",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:ListPolicies",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "guardrail_policy",
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:PreviewPolicy",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "guardrail_policy",
+      "service": "guardrails"
+    },
+    {
+      "action": "guardrails:UpdatePolicy",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "guardrail_policy",
+      "service": "guardrails"
+    },
+    {
+      "action": "images:AnalyzeImage",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "images"
+    },
+    {
+      "action": "images:UploadHistoricalImages",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "images"
+    },
+    {
+      "action": "knowledge_bases:CreateEmbeddings",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:CreateKnowledgeBase",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:DeleteDocument",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:DeleteKnowledgeBase",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:GetDocument",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:GetIndexStatus",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:GetKnowledgeBase",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:ListDocuments",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:ListKnowledgeBases",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:Query",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:UpdateKnowledgeBase",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "knowledge_bases:UploadDocument",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "knowledge_base",
+      "service": "knowledge_bases"
+    },
+    {
+      "action": "message_processors:CreateMessageProcessor",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "message_processors:DeleteMessageProcessor",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "message_processors:GetMessageProcessor",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "message_processors:InvokeMessageProcessor",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "message_processors:ListMessageProcessors",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "message_processors:UpdateMessageProcessor",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "message_processor",
+      "service": "message_processors"
+    },
+    {
+      "action": "models:CreateModelConfig",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "models:DeleteModelConfig",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "models:GetModelConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "models:InvokeModel",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "models:ListModelConfigs",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "models:UpdateModelConfig",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "llm_inference_config",
+      "service": "models"
+    },
+    {
+      "action": "notifications:ListNotifications",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "notifications"
+    },
+    {
+      "action": "notifications:UpdateNotification",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "notification",
+      "service": "notifications"
+    },
+    {
+      "action": "oauth_apps:CreateOAuthApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "oauth_app",
+      "service": "oauth_apps"
+    },
+    {
+      "action": "oauth_apps:DeleteOAuthApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "oauth_app",
+      "service": "oauth_apps"
+    },
+    {
+      "action": "oauth_apps:GetOAuthApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "oauth_app",
+      "service": "oauth_apps"
+    },
+    {
+      "action": "oauth_apps:ListOAuthApps",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "oauth_app",
+      "service": "oauth_apps"
+    },
+    {
+      "action": "oauth_apps:UpdateOAuthApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "oauth_app",
+      "service": "oauth_apps"
+    },
+    {
+      "action": "scheduled_jobs:CreateScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:DeleteScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:GetScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:ListScheduledJobs",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:PauseScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:ResumeScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "scheduled_jobs:UpdateScheduledJob",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "scheduled_job",
+      "service": "scheduled_jobs"
+    },
+    {
+      "action": "settings:UpdateAppConfig",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": null,
+      "service": "settings"
+    },
+    {
+      "action": "storage:GetSignedUrl",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "storage"
+    },
+    {
+      "action": "storage:ReadFile",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "storage"
+    },
+    {
+      "action": "superset:CreateGuestToken",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "superset"
+    },
+    {
+      "action": "tools:GetTool",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "tools"
+    },
+    {
+      "action": "tools:ListTools",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "tools"
+    },
+    {
+      "action": "tools:ValidateTools",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "tools"
+    },
+    {
+      "action": "users:CreateGroup",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:CreateResource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "resource",
+      "service": "users"
+    },
+    {
+      "action": "users:CreateRole",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "role",
+      "service": "users"
+    },
+    {
+      "action": "users:CreateUser",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:DeleteGroup",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:DeleteResource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "resource",
+      "service": "users"
+    },
+    {
+      "action": "users:DeleteRole",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "role",
+      "service": "users"
+    },
+    {
+      "action": "users:DeleteUser",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:GetCurrentUser",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "users"
+    },
+    {
+      "action": "users:GetGroup",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:GetUser",
+      "description": "",
+      "legacy": "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:ListGroups",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:ListResources",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "resource",
+      "service": "users"
+    },
+    {
+      "action": "users:ListRoles",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "role",
+      "service": "users"
+    },
+    {
+      "action": "users:ListUserDetails",
+      "description": "List users with roles, groups and usernames, and filter by role",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:ListUserGroups",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:ListUsers",
+      "description": "",
+      "legacy": "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:UnblockUser",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "users:UpdateGroup",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:UpdateGroupMembers",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "group",
+      "service": "users"
+    },
+    {
+      "action": "users:UpdateResource",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "resource",
+      "service": "users"
+    },
+    {
+      "action": "users:UpdateRole",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "role",
+      "service": "users"
+    },
+    {
+      "action": "users:UpdateUser",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "user",
+      "service": "users"
+    },
+    {
+      "action": "voice:ConnectWebRtc",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateSttConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "stt_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateTelephonyConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "telephony_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateTool",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_tool",
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateTtsConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "tts_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateVoiceAgent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:CreateWebRtcRoom",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:DeleteSttConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "stt_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:DeleteTelephonyConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "telephony_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:DeleteTool",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_tool",
+      "service": "voice"
+    },
+    {
+      "action": "voice:DeleteTtsConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "tts_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:DeleteVoiceAgent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:GetSttConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "stt_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:GetTelephonyConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "telephony_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:GetTool",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_tool",
+      "service": "voice"
+    },
+    {
+      "action": "voice:GetTtsConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "tts_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:GetVoiceAgent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:InitiateCall",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListSttConfigs",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "stt_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListTelephonyConfigs",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "telephony_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListTools",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_tool",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListTtsConfigs",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "tts_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListVoiceAgentTools",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:ListVoiceAgents",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateSttConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "stt_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateTelephonyConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "telephony_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateTool",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_tool",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateTtsConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "tts_config",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateVoiceAgent",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "voice:UpdateVoiceAgentTools",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "voice"
+    },
+    {
+      "action": "workflows:CreateWorkflow",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:DeleteWorkflow",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:DeleteWorkflowVersion",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:GetWorkflow",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:InvokeWorkflow",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:ListWorkflowVersions",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:ListWorkflows",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:UpdateWorkflow",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    },
+    {
+      "action": "workflows:ValidateWorkflow",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "workflow",
+      "service": "workflows"
+    }
+  ],
+  "routes": [
+    {
+      "actions": [
+        "users:ListResources"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.get_resource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/access/resources",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:CreateResource"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.create_resource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/access/resources",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:DeleteResource"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.delete_resources",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/access/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateResource"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.patch_resources",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/access/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:ListRoles"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.get_role",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/access/roles",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:CreateRole"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.create_role",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/access/roles",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:DeleteRole"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.delete_role",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/access/roles/{role_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateRole"
+      ],
+      "endpoint": "user_management_module.controllers.access_controller.patch_role_resources",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/access/roles/{role_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:ListAgents"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.list_agents",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/agent-management/agents",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:DeleteAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.delete_agent",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:GetAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.get_agent",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:UpdateAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.update_agent",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:UpdateAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.promote_agent_version",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}/current-version",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:ListAgentVersions"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.list_agent_versions",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}/versions",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:DeleteAgentVersion"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.delete_agent_version",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/agent-management/agents/{agent_id}/versions/{version}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:CreateAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.create_agent",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/agent-management/agents/{name}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:ValidateAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.validate_agent",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/agent-management/agents:validate",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:ListExecutions"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.list_executions",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/agentic-executions",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:GetExecution"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.get_execution_status",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/agentic-executions/{execution_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:CancelExecution"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.cancel_execution",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/agentic-executions/{execution_id}/cancel",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:InvokeAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.agent_inference",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/agents/{namespace}/{agent_id}/inference",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:ListApiServices"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.get_all_services",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/api-services",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:CreateApiService"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.create_api_services",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/api-services",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:DeleteApiService"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.delete_api_services",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/api-services/{id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:UpdateApiService"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.update_api_services",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/api-services/{id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:GetApiService"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.get_service_info",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/api-services/{service_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:InvokeApi"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.authenticate_direct",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:UpdateApiService"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.reload_service",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/api-services/{service_id}/reload",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_controller.authenticate",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/authenticate",
+      "public": true
+    },
+    {
+      "actions": [
+        "authenticators:ListAuthenticators"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.get_all_authenticators_endpoint",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/authenticators",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:CreateAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.create_authenticator",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/authenticators",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:DeleteAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.delete_authenticator",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/authenticators/{auth_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:GetAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.get_authenticator",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/authenticators/{auth_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.update_authenticator",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/authenticators/{auth_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.disable_authenticator_endpoint",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/authenticators/{auth_id}/disable",
+      "public": false
+    },
+    {
+      "actions": [
+        "authenticators:UpdateAuthenticator"
+      ],
+      "endpoint": "plugins_module.controllers.authenticator_controller.enable_authenticator_endpoint",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/authenticators/{auth_id}/enable",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:ListChatSessions"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.list_chat_sessions",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/chat-sessions",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:DeleteChatSession"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.delete_chat_session",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/chat-sessions/{session_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:GetChatSession"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.get_chat_session",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/chat-sessions/{session_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:UpdateChatSession"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.rename_chat_session",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/chat-sessions/{session_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:GetChatSession"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.list_chat_messages",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/chat-sessions/{session_id}/messages",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:SendChatMessage"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.send_message",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/chat-sessions/{session_id}/messages",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:ListChatbots"
+      ],
+      "endpoint": "chatbots_module.controllers.chatbot_controller.list_chatbots",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/chatbots",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:CreateChatbot"
+      ],
+      "endpoint": "chatbots_module.controllers.chatbot_controller.create_chatbot",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/chatbots",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:DeleteChatbot"
+      ],
+      "endpoint": "chatbots_module.controllers.chatbot_controller.delete_chatbot",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/chatbots/{chatbot_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:GetChatbot"
+      ],
+      "endpoint": "chatbots_module.controllers.chatbot_controller.get_chatbot",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/chatbots/{chatbot_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:UpdateChatbot"
+      ],
+      "endpoint": "chatbots_module.controllers.chatbot_controller.update_chatbot",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/chatbots/{chatbot_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "chatbots:CreateChatSession"
+      ],
+      "endpoint": "chatbots_module.controllers.chat_session_controller.create_chat_session",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/chatbots/{chatbot_id}/sessions",
+      "public": false
+    },
+    {
+      "actions": [
+        "configurations:ListConfigurations"
+      ],
+      "endpoint": "plugins_module.controllers.configuration_controller.list_configurations",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/configurations",
+      "public": false
+    },
+    {
+      "actions": [
+        "configurations:CreateConfiguration"
+      ],
+      "endpoint": "plugins_module.controllers.configuration_controller.create_configuration",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/configurations",
+      "public": false
+    },
+    {
+      "actions": [
+        "configurations:DeleteConfiguration"
+      ],
+      "endpoint": "plugins_module.controllers.configuration_controller.delete_configuration",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/configurations/{namespace}/{key}",
+      "public": false
+    },
+    {
+      "actions": [
+        "configurations:GetConfiguration"
+      ],
+      "endpoint": "plugins_module.controllers.configuration_controller.get_configuration",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/configurations/{namespace}/{key}",
+      "public": false
+    },
+    {
+      "actions": [
+        "configurations:UpdateConfiguration"
+      ],
+      "endpoint": "plugins_module.controllers.configuration_controller.upsert_configuration",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/configurations/{namespace}/{key}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListAuditLogs"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_audit_controller.list_datasource_audit_logs",
+      "legacy": [
+        "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasource-audit-logs",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:GetAuditLog"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_audit_controller.get_datasource_audit_log",
+      "legacy": [
+        "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasource-audit-logs/{audit_log_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListDatasources"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.get_datasources",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:CreateDatasource"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.add_datasource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:DeleteDatasource"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.delete_datasource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:GetDatasource"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.get_datasource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:UpdateDatasource"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.update_datasource",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:DeleteFile"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.delete_datasource_file",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:GetFile"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.download_datasource_file",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:UploadFile"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.upload_datasource_file",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:UploadFile"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.upload_datasource_files_batch",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files/batch",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListFiles"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.browse_datasource_files",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files/browse",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:CreateFolder"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.create_datasource_folder",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files/folders",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListFiles"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.list_datasource_files",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/files/list",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListTables"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.get_tables",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:InsertRows"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.insert_rows_json_multi",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/insert",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:UpdateRows"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.update_rows_json_multi",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/update",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:DeleteRows"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.delete_rows_json",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:Query"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.query_datasource",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:UpdateRows"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.update_rows_json",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:InsertRows"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.insert_rows_json",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/resources/{resource_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:TestDatasourceConnection"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.test_datasource_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/datasources/{datasource_id}/test-connection",
+      "public": false
+    },
+    {
+      "actions": [
+        "developer:CreateHmacSecret"
+      ],
+      "endpoint": "auth_module.controllers.hmac_controller.generate_hmac_secret",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/developer/secrets",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:ListConnections"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.list_email_connections",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/email-connections",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:CreateConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.create_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/email-connections",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "plugins_module.controllers.email_connection_controller.email_oauth_callback",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/email-connections/oauth/callback",
+      "public": true
+    },
+    {
+      "actions": [
+        "email:DeleteConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.delete_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:GetConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.get_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:AuthorizeConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.authorize_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}/authorize",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:SendEmail"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.send_from_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}/send",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:UpdateConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.set_primary_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}/set-primary",
+      "public": false
+    },
+    {
+      "actions": [
+        "email:VerifyConnection"
+      ],
+      "endpoint": "plugins_module.controllers.email_connection_controller.verify_email_connection",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/email-connections/{connection_id}/verify",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:ListGroups"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.list_groups",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/groups",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:CreateGroup"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.create_group",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/groups",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:DeleteGroup"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.delete_group",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/groups/{group_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:GetGroup"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.get_group",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/groups/{group_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateGroup"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.update_group",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/groups/{group_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateGroupMembers"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.remove_group_members",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/groups/{group_id}/members",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateGroupMembers"
+      ],
+      "endpoint": "user_management_module.controllers.group_controller.add_group_members",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/groups/{group_id}/members",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:ListAdapters"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.list_supported_adapters",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/guardrails/adapters",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:ListPiiEntities"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.list_pii_entities",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/guardrails/pii/entities",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:PreviewPolicy"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.preview_pii_policy",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/guardrails/pii/preview",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:ListPolicies"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.list_guardrail_policies",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/guardrails/policies",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:PreviewPolicy"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.preview_guardrail_policy",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/guardrails/policies/preview",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:DeletePolicy"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.delete_guardrail_policy",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/guardrails/policies/{namespace}",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:GetPolicy"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.get_guardrail_policy",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/guardrails/policies/{namespace}",
+      "public": false
+    },
+    {
+      "actions": [
+        "guardrails:UpdatePolicy"
+      ],
+      "endpoint": "guardrails_module.controllers.guardrails_controller.update_guardrail_policy",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/guardrails/policies/{namespace}",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "floware.controllers.health_controller.health_check",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/health",
+      "public": true
+    },
+    {
+      "actions": [
+        "images:AnalyzeImage"
+      ],
+      "endpoint": "gold_module.controllers.image_controller.process_image",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/image/analyse",
+      "public": false
+    },
+    {
+      "actions": [
+        "images:UploadHistoricalImages"
+      ],
+      "endpoint": "gold_module.controllers.image_controller.upload_historical_images",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/image/historical_images",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:Query"
+      ],
+      "endpoint": "knowledge_base_module.controllers.rag_retreival_controller.retrieve_query",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/knowledge-base/{kb_id}/retrieve",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:ListKnowledgeBases"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_controller.get_knowledge_bases",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/knowledge-bases",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:CreateKnowledgeBase"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_controller.create_knowledge_base",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/knowledge-bases",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:DeleteKnowledgeBase"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_controller.delete_knowledge_base",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:GetKnowledgeBase"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_controller.get_knowledge_bases_id",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:UpdateKnowledgeBase"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_controller.update_knowledge_bases",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:GetDocument"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_document_controller.get_document_with_id",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}/document/{document_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:ListDocuments"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_document_controller.get_documents",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}/documents",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:UploadDocument"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_document_controller.upload_document",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}/documents",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:DeleteDocument"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_document_controller.delete_documents",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}/documents/{document_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:GetIndexStatus"
+      ],
+      "endpoint": "knowledge_base_module.controllers.knowledge_base_document_controller.get_index_status",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/knowledge-bases/{kb_id}/index-status",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:ListModelConfigs"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.llm_inference_config_controller.get_llm_inference_configs",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/llm-inference-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:CreateModelConfig"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.llm_inference_config_controller.create_llm_inference_config",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/llm-inference-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:DeleteModelConfig"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.llm_inference_config_controller.delete_llm_inference_config",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/llm-inference-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:GetModelConfig"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.llm_inference_config_controller.get_llm_inference_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/llm-inference-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:UpdateModelConfig"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.llm_inference_config_controller.update_llm_inference_config",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/llm-inference-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "models:InvokeModel"
+      ],
+      "endpoint": "llm_inference_config_module.controllers.inference_proxy_controller.proxy_inference_request",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/llm-inference/{model_id}/{model_call_path:path}",
+      "public": false
+    },
+    {
+      "actions": [
+        "auth:Logout"
+      ],
+      "endpoint": "user_management_module.controllers.auth_controller.logout",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/logout",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:ListMessageProcessors"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.list_message_processors",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/message-processors",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:CreateMessageProcessor"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.create_message_processor",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/message-processors",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:DeleteMessageProcessor"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.delete_message_processor",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/message-processors/{processor_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:GetMessageProcessor"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.get_message_processor",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/message-processors/{processor_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:UpdateMessageProcessor"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.update_message_processor",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/message-processors/{processor_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "message_processors:InvokeMessageProcessor"
+      ],
+      "endpoint": "plugins_module.controllers.message_processor_controller.execute_message_processor",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/message-processors/{processor_id}/execute",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:ListNamespaces"
+      ],
+      "endpoint": "agents_module.controllers.namespace_controller.list_namespaces",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/namespaces",
+      "public": false
+    },
+    {
+      "actions": [
+        "notifications:ListNotifications"
+      ],
+      "endpoint": "floware.controllers.notification_controller.get_notifications",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/notifications",
+      "public": false
+    },
+    {
+      "actions": [
+        "notifications:UpdateNotification"
+      ],
+      "endpoint": "floware.controllers.notification_controller.updateNotification",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/notifications/{notification_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:ListOAuthApps"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.get_oauth_apps",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/oauth-apps",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:CreateOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.create_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/oauth-apps",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:DeleteOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.delete_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/oauth-apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:GetOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.get_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/oauth-apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.update_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/oauth-apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.disable_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/oauth-apps/{app_id}/disable",
+      "public": false
+    },
+    {
+      "actions": [
+        "oauth_apps:UpdateOAuthApp"
+      ],
+      "endpoint": "plugins_module.controllers.oauth_app_controller.enable_oauth_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/oauth-apps/{app_id}/enable",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_plugin_controller.microsoft_adfs_oauth_callback",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/oauth/adfs/callback",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_plugin_controller.google_oauth_callback",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/oauth/google/callback",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_plugin_controller.microsoft_oauth_callback",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/oauth/microsoft/callback",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_plugin_controller.unified_authenticate",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/plugin-auth/authenticate",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.auth_plugin_controller.init_oauth_flow",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/plugin-auth/oauth/init",
+      "public": true
+    },
+    {
+      "actions": [
+        "analytics:ListEvents"
+      ],
+      "endpoint": "product_analysis_module.controllers.product_anaysis_controllers.get_product_analysis",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/product-analysis",
+      "public": false
+    },
+    {
+      "actions": [
+        "analytics:CreateEvent"
+      ],
+      "endpoint": "product_analysis_module.controllers.product_anaysis_controllers.create_product_analysis",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/product-analysis",
+      "public": false
+    },
+    {
+      "actions": [
+        "analytics:GetLoginStats"
+      ],
+      "endpoint": "product_analysis_module.controllers.product_anaysis_controllers.get_product_login_stats",
+      "legacy": [
+        "MANAGER_OR_ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/product-analysis/stats/login",
+      "public": false
+    },
+    {
+      "actions": [
+        "analytics:GetLoginStats"
+      ],
+      "endpoint": "product_analysis_module.controllers.product_anaysis_controllers.get_product_login_stats_summary",
+      "legacy": [
+        "MANAGER_OR_ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/product-analysis/stats/login/summary",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:ListScheduledJobs"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.list_scheduled_jobs",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/scheduled-jobs",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:CreateScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.create_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/scheduled-jobs",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:DeleteScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.delete_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/scheduled-jobs/{job_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:GetScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.get_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/scheduled-jobs/{job_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:UpdateScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.update_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/scheduled-jobs/{job_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:PauseScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.pause_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/scheduled-jobs/{job_id}/pause",
+      "public": false
+    },
+    {
+      "actions": [
+        "scheduled_jobs:ResumeScheduledJob"
+      ],
+      "endpoint": "floware.controllers.scheduled_job_controller.resume_scheduled_job",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/scheduled-jobs/{job_id}/resume",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "floware.controllers.config_controller.get_config",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/settings/config",
+      "public": true
+    },
+    {
+      "actions": [
+        "settings:UpdateAppConfig"
+      ],
+      "endpoint": "floware.controllers.config_controller.set_config",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/settings/config/app-icon",
+      "public": false
+    },
+    {
+      "actions": [
+        "storage:ReadFile"
+      ],
+      "endpoint": "plugins_module.controllers.cloud_storage_controller.read_storage_file",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/storage/read",
+      "public": false
+    },
+    {
+      "actions": [
+        "storage:GetSignedUrl"
+      ],
+      "endpoint": "plugins_module.controllers.cloud_storage_controller.get_resource_presigned_url",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/storage/signed-url",
+      "public": false
+    },
+    {
+      "actions": [
+        "knowledge_bases:CreateEmbeddings"
+      ],
+      "endpoint": "knowledge_base_module.controllers.rag_retreival_controller.store_embeddings",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/store_embedding",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListSttConfigs"
+      ],
+      "endpoint": "voice_agents_module.controllers.stt_config_controller.list_stt_configs",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/stt-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateSttConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.stt_config_controller.create_stt_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/stt-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:DeleteSttConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.stt_config_controller.delete_stt_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/stt-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetSttConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.stt_config_controller.get_stt_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/stt-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateSttConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.stt_config_controller.update_stt_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/stt-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "superset:CreateGuestToken"
+      ],
+      "endpoint": "auth_module.controllers.superset_controller.superset_authenticator",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/superset/authenticate",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListTelephonyConfigs"
+      ],
+      "endpoint": "voice_agents_module.controllers.telephony_config_controller.list_telephony_configs",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/telephony-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateTelephonyConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.telephony_config_controller.create_telephony_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/telephony-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:DeleteTelephonyConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.telephony_config_controller.delete_telephony_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/telephony-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetTelephonyConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.telephony_config_controller.get_telephony_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/telephony-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateTelephonyConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.telephony_config_controller.update_telephony_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/telephony-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListTools"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.list_tools",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateTool"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.create_tool",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/tools",
+      "public": false
+    },
+    {
+      "actions": [
+        "tools:ListTools"
+      ],
+      "endpoint": "tools_module.controllers.tools_controller.get_all_tools",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools/",
+      "public": false
+    },
+    {
+      "actions": [
+        "tools:GetTool"
+      ],
+      "endpoint": "tools_module.controllers.tools_controller.get_tool_by_name",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools/by-name/{tool_name}",
+      "public": false
+    },
+    {
+      "actions": [
+        "tools:ListTools"
+      ],
+      "endpoint": "tools_module.controllers.tools_controller.get_tool_names",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools/names",
+      "public": false
+    },
+    {
+      "actions": [
+        "tools:GetTool"
+      ],
+      "endpoint": "tools_module.controllers.tools_controller.get_tool_details",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools/tool-details",
+      "public": false
+    },
+    {
+      "actions": [
+        "tools:ValidateTools"
+      ],
+      "endpoint": "tools_module.controllers.tools_controller.validate_tools",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/tools/validate",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:DeleteTool"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.delete_tool",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/tools/{tool_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetTool"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.get_tool",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tools/{tool_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateTool"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.update_tool",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/tools/{tool_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListTtsConfigs"
+      ],
+      "endpoint": "voice_agents_module.controllers.tts_config_controller.list_tts_configs",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tts-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateTtsConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.tts_config_controller.create_tts_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/tts-configs",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:DeleteTtsConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.tts_config_controller.delete_tts_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/tts-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetTtsConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.tts_config_controller.get_tts_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/tts-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateTtsConfig"
+      ],
+      "endpoint": "voice_agents_module.controllers.tts_config_controller.update_tts_config",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/tts-configs/{config_id}",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.user_controller.reset_password",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/user/reset-password",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "user_management_module.controllers.user_controller.send_reset_url",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/user/send-reset-password-email",
+      "public": true
+    },
+    {
+      "actions": [
+        "users:DeleteUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.delete_user",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:ListUsers"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.get_all_user",
+      "legacy": [
+        "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UpdateUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.update_user",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:CreateUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.create_user",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:GetUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.get_user",
+      "legacy": [
+        "ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG)"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/users/{user_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:ListUserGroups"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.get_user_groups",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/users/{user_id}/groups",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:UnblockUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.unblock_user",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/users/{user_id}/unblock",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListVoiceAgents"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.list_voice_agents",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.create_voice_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/voice-agents",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.get_voice_agent_by_inbound_number",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents/by-inbound-number/{phone_number}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:DeleteVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.delete_voice_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.get_voice_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.update_voice_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.get_voice_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/details",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:InitiateCall"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.initiate_call",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/initiate",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:CreateWebRtcRoom"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.create_webrtc_room",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/rooms",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ListVoiceAgentTools"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.get_agent_tools",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/tools",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.attach_tool_to_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/tools",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.detach_tool_from_agent",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/tools/{tool_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:UpdateVoiceAgentTools"
+      ],
+      "endpoint": "voice_agents_module.controllers.tool_controller.update_agent_tool",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/tools/{tool_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:GetVoiceAgent"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.get_welcome_audio_url",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/voice-agents/{agent_id}/welcome-audio-url",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ConnectWebRtc"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.proxy_webrtc_ice_candidates",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/webrtc/offer",
+      "public": false
+    },
+    {
+      "actions": [
+        "voice:ConnectWebRtc"
+      ],
+      "endpoint": "voice_agents_module.controllers.voice_agent_controller.proxy_webrtc_offer",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/webrtc/offer",
+      "public": false
+    },
+    {
+      "actions": [
+        "users:GetCurrentUser"
+      ],
+      "endpoint": "user_management_module.controllers.user_controller.get_resources",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/whoami",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:ListWorkflows"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.list_workflows",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/workflow-management/workflows",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:CreateWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.create_workflow",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{name}",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:DeleteWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.delete_workflow",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:GetWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.get_workflow",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:UpdateWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.update_workflow",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:UpdateWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.promote_workflow_version",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}/current-version",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:ListWorkflowVersions"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.list_workflow_versions",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}/versions",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:DeleteWorkflowVersion"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.delete_workflow_version",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/workflow-management/workflows/{workflow_id}/versions/{version}",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:ValidateWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.validate_workflow",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/workflow-management/workflows:validate",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:InvokeWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.workflow_inference",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/workflows/{namespace}/{workflow_id}/inference",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ListDynamicQueries"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.get_all_dynamic_query_yaml",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:CreateDynamicQuery"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.create_dynamic_query",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:DeleteDynamicQuery"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.delete_dynamic_query",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries/{query_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:GetDynamicQuery"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.get_dynamic_query",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries/{query_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:RunDynamicQuery"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.execute_dynamic_query",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries/{query_id}/execute",
+      "public": false
+    },
+    {
+      "actions": [
+        "datasources:ExportDynamicQuery"
+      ],
+      "endpoint": "plugins_module.controllers.datasource_controller.export_dynamic_query_csv",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/{datasource_id}/dynamic-queries/{query_id}/export",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:InvokeAgent"
+      ],
+      "endpoint": "agents_module.controllers.agent_controller.agent_inference_v2",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v2/agents/{agent_id}/inference",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:InvokeWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.workflow_controller.workflow_inference_v2",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v2/workflows/{workflow_id}/inference",
+      "public": false
+    },
+    {
+      "actions": [
+        "agents:InvokeAgent"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.async_agent_inference",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v3/agents/{agent_id}/inference",
+      "public": false
+    },
+    {
+      "actions": [
+        "workflows:InvokeWorkflow"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.async_workflow_inference",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v3/workflows/{workflow_id}/inference",
+      "public": false
+    }
+  ],
+  "unannotated": []
+}

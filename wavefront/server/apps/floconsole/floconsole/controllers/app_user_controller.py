@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from uuid import UUID
 
 from common_module.common_container import CommonContainer
@@ -7,19 +8,29 @@ from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 
-from floconsole.constants.user import UserRole
 from floconsole.db.models.app import App
 from floconsole.db.models.user import User
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from floconsole.di.application_container import ApplicationContainer
 from floconsole.services.app_user_service import AppUserService
-from floconsole.utils.user_utils import get_current_user
 
 
 app_user_router = APIRouter(prefix='/v1')
 
 
-@app_user_router.post('/apps/{app_id}/users/{user_id}')
+@app_user_router.post(
+    '/apps/{app_id}/users/{user_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:GrantAppAccess',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only owners can grant app access',
+            )
+        )
+    ],
+)
 @inject
 async def grant_app_access(
     app_id: UUID,
@@ -39,18 +50,6 @@ async def grant_app_access(
     ),
 ):
     """Grant user access to app (owners only)"""
-    # Check authorization
-    _, current_user_id, _ = get_current_user(request)
-    current_user = await user_repository.find_one(id=current_user_id)
-
-    if not current_user or current_user.role != UserRole.OWNER.value:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only owners can grant app access'
-            ),
-        )
-
     # Verify app exists
     app = await app_repository.find_one(id=app_id, deleted=False)
     if not app:
@@ -86,7 +85,19 @@ async def grant_app_access(
         )
 
 
-@app_user_router.delete('/apps/{app_id}/users/{user_id}')
+@app_user_router.delete(
+    '/apps/{app_id}/users/{user_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:RevokeAppAccess',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only owners can revoke app access',
+            )
+        )
+    ],
+)
 @inject
 async def revoke_app_access(
     app_id: UUID,
@@ -106,18 +117,6 @@ async def revoke_app_access(
     ),
 ):
     """Revoke user access to app (owners only)"""
-    # Check authorization
-    _, current_user_id, _ = get_current_user(request)
-    current_user = await user_repository.find_one(id=current_user_id)
-
-    if not current_user or current_user.role != UserRole.OWNER.value:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only owners can revoke app access'
-            ),
-        )
-
     # Verify app exists
     app = await app_repository.find_one(id=app_id, deleted=False)
     if not app:
@@ -155,7 +154,19 @@ async def revoke_app_access(
         )
 
 
-@app_user_router.get('/apps/{app_id}/users')
+@app_user_router.get(
+    '/apps/{app_id}/users',
+    dependencies=[
+        Depends(
+            requires(
+                'console:ListAppUsers',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only owners can view app users',
+            )
+        )
+    ],
+)
 @inject
 async def list_app_users(
     app_id: UUID,
@@ -174,18 +185,6 @@ async def list_app_users(
     ),
 ):
     """List users with access to app (owners only)"""
-    # Check authorization
-    _, current_user_id, _ = get_current_user(request)
-    current_user = await user_repository.find_one(id=current_user_id)
-
-    if not current_user or current_user.role != UserRole.OWNER.value:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only owners can view app users'
-            ),
-        )
-
     # Verify app exists
     app = await app_repository.find_one(id=app_id, deleted=False)
     if not app:
@@ -220,7 +219,19 @@ async def list_app_users(
         )
 
 
-@app_user_router.get('/users/{user_id}/apps')
+@app_user_router.get(
+    '/users/{user_id}/apps',
+    dependencies=[
+        Depends(
+            requires(
+                'console:ListUserApps',
+                resource=from_path('console_user', 'user_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only owners can view user apps',
+            )
+        )
+    ],
+)
 @inject
 async def list_user_apps(
     user_id: UUID,
@@ -236,17 +247,6 @@ async def list_user_apps(
     ),
 ):
     """List apps accessible to user (owners only)"""
-    # Check authorization
-    _, current_user_id, _ = get_current_user(request)
-    current_user = await user_repository.find_one(id=current_user_id)
-
-    if not current_user or current_user.role != UserRole.OWNER.value:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only owners can view user apps'
-            ),
-        )
     # Verify user exists
     user = await user_repository.find_one(id=user_id, deleted=False)
     if not user:

@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from typing import Optional
 from uuid import UUID
 
@@ -8,7 +9,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from flo_cloud.exceptions import KmsError
-from user_management_module.utils.user_utils import check_is_admin
 
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services.oauth_app_service import (
@@ -23,22 +23,19 @@ from plugins_module.utils.email_helper import (
 oauth_app_router = APIRouter()
 
 
-async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
-    """None when the caller is an admin, otherwise the 403 to return.
-
-    OAuth apps hold the platform's client credentials, so every route here is
-    admin-only.
-    """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if is_admin:
-        return None
-    return JSONResponse(
-        status_code=status.HTTP_403_FORBIDDEN,
-        content=response_formatter.buildErrorResponse('Admin access required'),
-    )
-
-
-@oauth_app_router.post('/v1/oauth-apps')
+@oauth_app_router.post(
+    '/v1/oauth-apps',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:CreateOAuthApp',
+                resource=from_path('oauth_app'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_oauth_app(
     request: Request,
@@ -51,10 +48,6 @@ async def create_oauth_app(
     ),
 ):
     """Register an OAuth application that features can connect through."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         app = await oauth_app_service.create_app(
             name=payload.name,
@@ -89,7 +82,19 @@ async def create_oauth_app(
         )
 
 
-@oauth_app_router.get('/v1/oauth-apps')
+@oauth_app_router.get(
+    '/v1/oauth-apps',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:ListOAuthApps',
+                resource=from_path('oauth_app'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_oauth_apps(
     request: Request,
@@ -102,10 +107,6 @@ async def get_oauth_apps(
     ),
 ):
     """List OAuth applications. Secrets and config are omitted."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         apps = await oauth_app_service.list_apps(provider=provider)
         return JSONResponse(
@@ -120,7 +121,19 @@ async def get_oauth_apps(
         )
 
 
-@oauth_app_router.get('/v1/oauth-apps/{app_id}')
+@oauth_app_router.get(
+    '/v1/oauth-apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:GetOAuthApp',
+                resource=from_path('oauth_app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_oauth_app(
     request: Request,
@@ -133,10 +146,6 @@ async def get_oauth_app(
     ),
 ):
     """One OAuth app including its config, but never its client secret."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         app = await oauth_app_service.get_app(app_id)
         return JSONResponse(
@@ -156,7 +165,19 @@ async def get_oauth_app(
         )
 
 
-@oauth_app_router.patch('/v1/oauth-apps/{app_id}')
+@oauth_app_router.patch(
+    '/v1/oauth-apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:UpdateOAuthApp',
+                resource=from_path('oauth_app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def update_oauth_app(
     request: Request,
@@ -170,10 +191,6 @@ async def update_oauth_app(
     ),
 ):
     """Update an OAuth app. Omitting `client_secret` keeps the stored one."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         app = await oauth_app_service.update_app(
             app_id=app_id,
@@ -213,7 +230,19 @@ async def update_oauth_app(
         )
 
 
-@oauth_app_router.post('/v1/oauth-apps/{app_id}/enable')
+@oauth_app_router.post(
+    '/v1/oauth-apps/{app_id}/enable',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:UpdateOAuthApp',
+                resource=from_path('oauth_app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def enable_oauth_app(
     request: Request,
@@ -230,7 +259,19 @@ async def enable_oauth_app(
     )
 
 
-@oauth_app_router.post('/v1/oauth-apps/{app_id}/disable')
+@oauth_app_router.post(
+    '/v1/oauth-apps/{app_id}/disable',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:UpdateOAuthApp',
+                resource=from_path('oauth_app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def disable_oauth_app(
     request: Request,
@@ -247,7 +288,19 @@ async def disable_oauth_app(
     )
 
 
-@oauth_app_router.delete('/v1/oauth-apps/{app_id}')
+@oauth_app_router.delete(
+    '/v1/oauth-apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'oauth_apps:DeleteOAuthApp',
+                resource=from_path('oauth_app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_oauth_app(
     request: Request,
@@ -261,10 +314,6 @@ async def delete_oauth_app(
 ):
     """Soft delete an OAuth app. Connections through it stop working until
     another app is attached."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         await oauth_app_service.delete_app(app_id)
         return JSONResponse(
@@ -293,10 +342,6 @@ async def _set_enabled(
     oauth_app_service: OAuthAppService,
     request: Request,
 ):
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     action = 'enabled' if is_enabled else 'disabled'
     try:
         app = await oauth_app_service.set_enabled(app_id, is_enabled)

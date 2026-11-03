@@ -5,6 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
+from call_processing.authorization import (
+    CallProcessingAuthMiddleware,
+    build_provider,
+)
 from common_module.middleware.security_headers import SecurityHeadersMiddleware
 
 
@@ -13,8 +17,19 @@ def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
 
 
 def add_middlewares(
-    app: FastAPI, allowed_origins: Sequence[str], environment: str
+    app: FastAPI,
+    allowed_origins: Sequence[str],
+    environment: str,
+    *,
+    passthrough_secret: str | None = None,
 ) -> None:
+    # Innermost: authorization runs after CORS and the security headers.
+    app.add_middleware(
+        _middleware(CallProcessingAuthMiddleware),
+        provider=build_provider(
+            app_env=environment, passthrough_secret=passthrough_secret
+        ),
+    )
     # Strict default-src 'none' CSP plus the rest of the security headers; /docs
     # and /redoc get their own relaxed policy when APP_ENV=dev.
     app.add_middleware(_middleware(SecurityHeadersMiddleware), environment=environment)

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from uuid import UUID
 
 # from floconsole.constants.app import AppDeploymentType
@@ -10,13 +9,6 @@ from fastapi.responses import Response, StreamingResponse
 from floconsole.services.token_service import TokenService
 from floconsole.services.app_service import AppService
 from floconsole.services.user_service import UserService
-
-
-@dataclass
-class UserSession:
-    role_id: str
-    user_id: str
-    session_id: str
 
 
 class FlowareProxyService:
@@ -67,14 +59,14 @@ class FlowareProxyService:
         5. Forward request to floware with app-specific key + Authorization headers
         6. Return floware response directly
         """
-        # Step 1: Get user session from middleware (already validated)
-        session = request.state.session
+        # Step 1: Get the caller from middleware (already authenticated)
+        principal = request.state.principal
         # Parse user_id with explicit error handling
         try:
-            user_id = UUID(session.user_id)
+            user_id = UUID(principal.id)
         except (ValueError, AttributeError) as e:
             raise ValueError(
-                f'Invalid user_id format in session: {session.user_id}'
+                f'Invalid user_id format in session: {principal.id}'
             ) from e
 
         # Step 2: Check if user has access to app (RBAC)

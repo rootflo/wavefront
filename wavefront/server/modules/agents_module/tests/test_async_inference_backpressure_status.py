@@ -21,7 +21,8 @@ def formatter():
 def request_obj():
     req = MagicMock()
     req.headers = {}
-    req.state.session = None
+    req.state.principal = None
+    req.state.authz_provider = None
     return req
 
 

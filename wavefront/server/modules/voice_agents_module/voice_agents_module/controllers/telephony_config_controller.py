@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import json
 from uuid import UUID
 
@@ -20,7 +21,18 @@ from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 telephony_config_router = APIRouter()
 
 
-@telephony_config_router.post('/v1/telephony-configs')
+@telephony_config_router.post(
+    '/v1/telephony-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:CreateTelephonyConfig',
+                resource=from_path('telephony_config'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_telephony_config(
     request: Request,
@@ -66,7 +78,18 @@ async def create_telephony_config(
     )
 
 
-@telephony_config_router.get('/v1/telephony-configs')
+@telephony_config_router.get(
+    '/v1/telephony-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:ListTelephonyConfigs',
+                resource=from_path('telephony_config'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_telephony_configs(
     response_formatter: ResponseFormatter = Depends(
@@ -92,7 +115,18 @@ async def list_telephony_configs(
     )
 
 
-@telephony_config_router.get('/v1/telephony-configs/{config_id}')
+@telephony_config_router.get(
+    '/v1/telephony-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetTelephonyConfig',
+                resource=from_path('telephony_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_telephony_config(
     config_id: UUID = Path(..., description='The ID of the telephony configuration'),
@@ -128,7 +162,18 @@ async def get_telephony_config(
     )
 
 
-@telephony_config_router.put('/v1/telephony-configs/{config_id}')
+@telephony_config_router.put(
+    '/v1/telephony-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateTelephonyConfig',
+                resource=from_path('telephony_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_telephony_config(
     config_id: UUID = Path(..., description='The ID of the telephony configuration'),
@@ -237,7 +282,18 @@ async def update_telephony_config(
     )
 
 
-@telephony_config_router.delete('/v1/telephony-configs/{config_id}')
+@telephony_config_router.delete(
+    '/v1/telephony-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:DeleteTelephonyConfig',
+                resource=from_path('telephony_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_telephony_config(
     config_id: UUID = Path(..., description='The ID of the telephony configuration'),

@@ -10,7 +10,7 @@ class NotAUserError(Exception):
 def current_user_id(request: Request) -> uuid.UUID:
     """Resolve the caller's user id as a UUID.
 
-    `request.state.session.user_id` is a raw JWT claim, so it arrives as a
+    The principal's id is a raw JWT claim, so it arrives as a
     `str` -- comparing it directly against the uuid `chat_sessions.user_id`
     column would never match and every owned-session lookup would 404.
 
@@ -19,7 +19,7 @@ def current_user_id(request: Request) -> uuid.UUID:
     session belongs to a person, so those callers are rejected instead of being
     coerced into a fabricated owner.
     """
-    raw = getattr(request.state.session, 'user_id', None)
+    raw = getattr(getattr(request.state, 'principal', None), 'id', None)
     if isinstance(raw, uuid.UUID):
         return raw
     try:

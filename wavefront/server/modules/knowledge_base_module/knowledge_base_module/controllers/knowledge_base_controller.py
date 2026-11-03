@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from datetime import datetime
 import uuid
 
@@ -38,7 +39,18 @@ class KnowledgeBaseResponse(BaseModel):
     updated_at: datetime
 
 
-@knowledge_base_router.post('/v1/knowledge-bases')
+@knowledge_base_router.post(
+    '/v1/knowledge-bases',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:CreateKnowledgeBase',
+                resource=from_path('knowledge_base'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_knowledge_base(
     new_base: NewKnowledge,
@@ -93,7 +105,18 @@ async def create_knowledge_base(
     )
 
 
-@knowledge_base_router.get('/v1/knowledge-bases/{kb_id}')
+@knowledge_base_router.get(
+    '/v1/knowledge-bases/{kb_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:GetKnowledgeBase',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_knowledge_bases_id(
     kb_id: uuid.UUID,
@@ -120,7 +143,18 @@ async def get_knowledge_bases_id(
     )
 
 
-@knowledge_base_router.get('/v1/knowledge-bases')
+@knowledge_base_router.get(
+    '/v1/knowledge-bases',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:ListKnowledgeBases',
+                resource=from_path('knowledge_base'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_knowledge_bases(
     offset: int = Query(0, ge=0, description='The number of items to skip'),
@@ -147,7 +181,18 @@ async def get_knowledge_bases(
         )
 
 
-@knowledge_base_router.patch('/v1/knowledge-bases/{kb_id}')
+@knowledge_base_router.patch(
+    '/v1/knowledge-bases/{kb_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:UpdateKnowledgeBase',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_knowledge_bases(
     kb_id: uuid.UUID,
@@ -221,7 +266,18 @@ async def update_knowledge_bases(
     )
 
 
-@knowledge_base_router.delete('/v1/knowledge-bases/{kb_id}')
+@knowledge_base_router.delete(
+    '/v1/knowledge-bases/{kb_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:DeleteKnowledgeBase',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_knowledge_base(
     kb_id: uuid.UUID,

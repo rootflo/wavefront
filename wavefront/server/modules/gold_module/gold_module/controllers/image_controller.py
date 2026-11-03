@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 import base64
 import re
 
@@ -20,7 +21,12 @@ from gold_module.models.gold_image_request import (
 image_controller = APIRouter()
 
 
-@image_controller.post('/analyse')
+@image_controller.post(
+    '/analyse',
+    dependencies=[
+        Depends(requires('images:AnalyzeImage', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def process_image(
     request: ImageAnalysisRequest,
@@ -72,7 +78,12 @@ async def process_image(
     )
 
 
-@image_controller.post('/historical_images')
+@image_controller.post(
+    '/historical_images',
+    dependencies=[
+        Depends(requires('images:UploadHistoricalImages', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def upload_historical_images(
     request: AdhocImageUploadRequest,
@@ -102,7 +113,7 @@ async def upload_historical_images(
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                 'Image must be a data URL (data:image/<type>;base64,<data>)'
+                'Image must be a data URL (data:image/<type>;base64,<data>)'
             ),
         )
     if not gold_image:

@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.11"
 
 dependencies = [
+    "authz-module",
     "auth-module",
     "common-module",
     "db-repo-module",
@@ -42,6 +43,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+authz-module = { workspace = true }
 flo-testing = { workspace = true }
 auth-module = { workspace = true }
 common-module = { workspace = true }

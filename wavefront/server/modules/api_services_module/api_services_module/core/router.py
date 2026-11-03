@@ -1,5 +1,7 @@
 """FastAPI router for handling proxy requests."""
 
+from authz_module import Legacy, ResourceRef, from_path, requires
+from fastapi import Depends
 from fastapi import APIRouter, Request, HTTPException, Response
 import json
 from typing import Dict, List, Optional
@@ -58,19 +60,52 @@ class ProxyRouter:
         """Setup service management and health check routes."""
 
         # Service management endpoints
-        @self.router.get('/v1/api-services/{service_id}')
+        @self.router.get(
+            '/v1/api-services/{service_id}',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:GetApiService',
+                        resource=from_path('api_service', 'service_id'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def get_service_info(service_id: str):
             """Get information about a specific service."""
             service = self.proxy.get_service_info(service_id)
             return self.response_formatter.buildSuccessResponse(service)
 
-        @self.router.get('/v1/api-services')
+        @self.router.get(
+            '/v1/api-services',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:ListApiServices',
+                        resource=from_path('api_service'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def get_all_services():
             """Get information about all registered services."""
             services = self.proxy.get_all_services_info()
             return self.response_formatter.buildSuccessResponse(services)
 
-        @self.router.post('/v1/api-services/{service_id}/reload')
+        @self.router.post(
+            '/v1/api-services/{service_id}/reload',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:UpdateApiService',
+                        resource=from_path('api_service', 'service_id'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def reload_service(service_id: str):
             """Reload a service configuration."""
             await self.proxy.reload_service(service_id)
@@ -81,7 +116,16 @@ class ProxyRouter:
 
         # Authentication endpoint (for direct auth API calls)
         @self.router.post(
-            '/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}'
+            '/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:InvokeApi',
+                        resource=from_path('api_service', 'service_id'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
         )
         async def authenticate_direct(
             service_id: str, auth_version: str, auth_id: str, request: Request
@@ -98,7 +142,18 @@ class ProxyRouter:
                 detail='Direct authentication calls not implemented in Phase 1',
             )
 
-        @self.router.post('/v1/api-services')
+        @self.router.post(
+            '/v1/api-services',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:CreateApiService',
+                        resource=from_path('api_service'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def create_api_services(request: Request):
             yaml_content = (await request.body()).decode('utf-8')
             # Parse to get service_id before creating
@@ -115,7 +170,18 @@ class ProxyRouter:
                 ),
             )
 
-        @self.router.put('/v1/api-services/{id}')
+        @self.router.put(
+            '/v1/api-services/{id}',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:UpdateApiService',
+                        resource=from_path('api_service', 'id'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def update_api_services(request: Request, id: str):
             yaml_content = (await request.body()).decode('utf-8')
             await self.proxy.update_api_services(id, yaml_content)
@@ -128,7 +194,18 @@ class ProxyRouter:
                 ),
             )
 
-        @self.router.delete('/v1/api-services/{id}')
+        @self.router.delete(
+            '/v1/api-services/{id}',
+            dependencies=[
+                Depends(
+                    requires(
+                        'api_services:DeleteApiService',
+                        resource=from_path('api_service', 'id'),
+                        legacy=Legacy.AUTHENTICATED,
+                    )
+                )
+            ],
+        )
         async def delete_api_services(request: Request, id: str):
             await self.proxy.delete_api_services(id)
             # Remove routes for the deleted service
@@ -317,6 +394,17 @@ class ProxyRouter:
                 logger.error(f'Failed to process request: {str(e)}', exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
 
+        # Every proxied API is one action on its service.
+        authorization = [
+            Depends(
+                requires(
+                    'api_services:InvokeApi',
+                    resource=ResourceRef('api_service', service_id),
+                    legacy=Legacy.AUTHENTICATED,
+                )
+            )
+        ]
+
         # Register the route with FastAPI
         # Clients always use POST to the proxy, backend uses api_method from config
         logger.info(
@@ -329,6 +417,7 @@ class ProxyRouter:
                 dynamic_proxy_handler,
                 methods=['POST'],
                 name=f'proxy_{service_id}_{api_id}_{api_version}',
+                dependencies=authorization,
             )
 
             # Also add directly to app router if app is set (for dynamic route addition)
@@ -339,6 +428,7 @@ class ProxyRouter:
                     dynamic_proxy_handler,
                     methods=['POST'],
                     name=f'proxy_{service_id}_{api_id}_{api_version}_app',
+                    dependencies=authorization,
                 )
                 logger.info(f'Also registered route in app router: {full_pattern}')
 

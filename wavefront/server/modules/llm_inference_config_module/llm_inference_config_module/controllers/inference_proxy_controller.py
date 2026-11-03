@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import Response
 from dependency_injector.wiring import Provide, inject
@@ -13,7 +14,18 @@ from llm_inference_config_module.services.inference_proxy_service import (
 inference_proxy_router = APIRouter(prefix='/v1/llm-inference')
 
 
-@inference_proxy_router.post('/{model_id}/{model_call_path:path}')
+@inference_proxy_router.post(
+    '/{model_id}/{model_call_path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'models:InvokeModel',
+                resource=from_path('llm_inference_config', 'model_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_inference_request(
     model_id: str,

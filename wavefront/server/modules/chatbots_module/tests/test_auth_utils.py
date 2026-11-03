@@ -1,4 +1,4 @@
-"""`request.state.session.user_id` arrives as a raw JWT claim -- a str.
+"""The principal's id arrives as a raw JWT claim -- a str.
 
 chat_sessions.user_id is a uuid column, so a str would never compare equal to a
 loaded session's user_id and every owned-session lookup would 404. Service
@@ -15,9 +15,7 @@ from chatbots_module.utils.auth_utils import NotAUserError, current_user_id
 
 
 def _request(user_id):
-    return SimpleNamespace(
-        state=SimpleNamespace(session=SimpleNamespace(user_id=user_id))
-    )
+    return SimpleNamespace(state=SimpleNamespace(principal=SimpleNamespace(id=user_id)))
 
 
 def test_string_claim_is_parsed_to_uuid():

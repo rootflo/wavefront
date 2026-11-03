@@ -7,6 +7,7 @@ addressed by (namespace, key); the row's `id` is a surrogate and no route uses
 it, which also keeps `/{namespace}` unambiguous.
 """
 
+from authz_module import Legacy, from_path, requires
 from typing import Any, Optional
 
 from dependency_injector.wiring import inject, Provide
@@ -41,7 +42,18 @@ class UpsertConfigurationPayload(BaseModel):
     description: Optional[str] = None
 
 
-@configuration_router.post('/v1/configurations')
+@configuration_router.post(
+    '/v1/configurations',
+    dependencies=[
+        Depends(
+            requires(
+                'configurations:CreateConfiguration',
+                resource=from_path('configuration'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_configuration(
     payload: CreateConfigurationPayload,
@@ -80,7 +92,18 @@ async def create_configuration(
     )
 
 
-@configuration_router.get('/v1/configurations')
+@configuration_router.get(
+    '/v1/configurations',
+    dependencies=[
+        Depends(
+            requires(
+                'configurations:ListConfigurations',
+                resource=from_path('configuration'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_configurations(
     namespace: Optional[str] = Query(None),
@@ -102,7 +125,18 @@ async def list_configurations(
     )
 
 
-@configuration_router.get('/v1/configurations/{namespace}/{key}')
+@configuration_router.get(
+    '/v1/configurations/{namespace}/{key}',
+    dependencies=[
+        Depends(
+            requires(
+                'configurations:GetConfiguration',
+                resource=from_path('configuration', 'key'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_configuration(
     namespace: str,
@@ -137,7 +171,18 @@ async def get_configuration(
     )
 
 
-@configuration_router.put('/v1/configurations/{namespace}/{key}')
+@configuration_router.put(
+    '/v1/configurations/{namespace}/{key}',
+    dependencies=[
+        Depends(
+            requires(
+                'configurations:UpdateConfiguration',
+                resource=from_path('configuration', 'key'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def upsert_configuration(
     namespace: str,
@@ -178,7 +223,18 @@ async def upsert_configuration(
     )
 
 
-@configuration_router.delete('/v1/configurations/{namespace}/{key}')
+@configuration_router.delete(
+    '/v1/configurations/{namespace}/{key}',
+    dependencies=[
+        Depends(
+            requires(
+                'configurations:DeleteConfiguration',
+                resource=from_path('configuration', 'key'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_configuration(
     namespace: str,

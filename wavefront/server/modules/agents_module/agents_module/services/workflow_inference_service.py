@@ -32,6 +32,8 @@ from agents_module.utils.workflow_reference_utils import (
 from flo_ai.arium import AriumEventType, AriumEvent, MessageMemoryItem
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.agent_inference_service import AgentInferenceService
+from agents_module.utils.tool_authorization import guard_function_nodes
+from authz_module import ResourceRef
 from agents_module.utils.trace_utils import serialize_memory_trace
 from tools_module.registry.tool_loader import ToolLoader
 
@@ -374,7 +376,11 @@ class WorkflowInferenceService:
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
-            function_registry=self.tool_loader.function_node_registry,
+            function_registry=guard_function_nodes(
+                ResourceRef('workflow', workflow_name),
+                self.tool_loader.function_node_registry,
+                self._function_node_kinds(),
+            ),
             access_token=access_token,
             app_key=app_key,
             guardrail_provider=guardrail_llm_provider(
@@ -385,6 +391,16 @@ class WorkflowInferenceService:
 
         logger.info(f'Successfully created workflow for workflow: {workflow_name}')
         return workflow
+
+    def _function_node_kinds(self) -> Dict[str, str]:
+        tools = self.tool_loader.get_available_tools()
+        if not isinstance(tools, dict):
+            return {}
+        return {
+            name: metadata.get('category') or 'tool'
+            for name, metadata in tools.items()
+            if isinstance(metadata, dict)
+        }
 
     async def run_workflow_inference(
         self,

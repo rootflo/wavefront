@@ -14,6 +14,7 @@ import jwt
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.constants.cache import password_reset_latest_key
 from flo_testing import seed_user_session as create_session
@@ -2106,6 +2107,64 @@ async def test_admin_user_creat_non_admin_user(
         )
         user_role = user_role.scalars().all()
         assert len(user_role) == 1
+
+
+# Admin status of the new user comes from the admin role itself, never from the
+# caller's own role. The token's role here is 'test_role_id'.
+_NEW_USER = {
+    'email': 'test2@example.com',
+    'password': 'Test@123',
+    'confirm_password': 'Test@123',
+    'first_name': 'Test',
+    'last_name': 'User',
+}
+
+
+@pytest.mark.asyncio
+async def test_create_admin_needs_no_console_resource_whatever_the_callers_role(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mocking_user_controller_is_admin,
+):
+    """A service identity (whose role is not the admin role) can create an admin."""
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        session.add(Role(id='admin_role_id', name=ADMIN_ROLE_NAME))
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/users',
+        json={**_NEW_USER, 'role_id': ['admin_role_id']},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_giving_the_callers_own_role_still_needs_a_console_resource(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mocking_user_controller_is_admin,
+):
+    """Sharing the caller's role does not make the new user an admin."""
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        session.add(Role(id='test_role_id', name='Test Role'))
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/users',
+        json={**_NEW_USER, 'role_id': ['test_role_id']},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert 'console resource' in response.text
 
 
 @pytest.mark.asyncio

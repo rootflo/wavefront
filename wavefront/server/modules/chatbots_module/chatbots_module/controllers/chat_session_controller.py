@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import asyncio
 import contextlib
 import json
@@ -98,7 +99,18 @@ async def _require_chattable_chatbot(
     return chatbot
 
 
-@chat_session_router.post('/v1/chatbots/{chatbot_id}/sessions')
+@chat_session_router.post(
+    '/v1/chatbots/{chatbot_id}/sessions',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:CreateChatSession',
+                resource=from_path('chatbot', 'chatbot_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_chat_session(
     request: Request,
@@ -158,7 +170,18 @@ async def create_chat_session(
     )
 
 
-@chat_session_router.get('/v1/chat-sessions')
+@chat_session_router.get(
+    '/v1/chat-sessions',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:ListChatSessions',
+                resource=from_path('chat_session'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_chat_sessions(
     request: Request,
@@ -198,7 +221,18 @@ async def list_chat_sessions(
     )
 
 
-@chat_session_router.get('/v1/chat-sessions/{session_id}')
+@chat_session_router.get(
+    '/v1/chat-sessions/{session_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:GetChatSession',
+                resource=from_path('chat_session', 'session_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_chat_session(
     request: Request,
@@ -237,7 +271,18 @@ async def get_chat_session(
     )
 
 
-@chat_session_router.get('/v1/chat-sessions/{session_id}/messages')
+@chat_session_router.get(
+    '/v1/chat-sessions/{session_id}/messages',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:GetChatSession',
+                resource=from_path('chat_session', 'session_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_chat_messages(
     request: Request,
@@ -278,7 +323,18 @@ async def list_chat_messages(
     )
 
 
-@chat_session_router.patch('/v1/chat-sessions/{session_id}')
+@chat_session_router.patch(
+    '/v1/chat-sessions/{session_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:UpdateChatSession',
+                resource=from_path('chat_session', 'session_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def rename_chat_session(
     request: Request,
@@ -317,7 +373,18 @@ async def rename_chat_session(
     )
 
 
-@chat_session_router.delete('/v1/chat-sessions/{session_id}')
+@chat_session_router.delete(
+    '/v1/chat-sessions/{session_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:DeleteChatSession',
+                resource=from_path('chat_session', 'session_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_chat_session(
     request: Request,
@@ -350,7 +417,18 @@ async def delete_chat_session(
     )
 
 
-@chat_session_router.post('/v1/chat-sessions/{session_id}/messages')
+@chat_session_router.post(
+    '/v1/chat-sessions/{session_id}/messages',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:SendChatMessage',
+                resource=from_path('chat_session', 'session_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def send_message(
     request: Request,

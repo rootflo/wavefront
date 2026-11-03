@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from uuid import UUID
 
 from common_module.common_container import CommonContainer
@@ -6,7 +7,6 @@ from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
-from user_management_module.utils.user_utils import check_is_admin
 
 from chatbots_module.chatbots_container import ChatbotsContainer
 from chatbots_module.models.chatbot_schemas import (
@@ -29,7 +29,19 @@ chatbot_router = APIRouter()
 NON_ADMIN_ERROR = 'Only admins can manage chatbots'
 
 
-@chatbot_router.post('/v1/chatbots')
+@chatbot_router.post(
+    '/v1/chatbots',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:CreateChatbot',
+                resource=from_path('chatbot'),
+                legacy=Legacy.ADMIN,
+                deny_message=NON_ADMIN_ERROR,
+            )
+        )
+    ],
+)
 @inject
 async def create_chatbot(
     request: Request,
@@ -42,14 +54,6 @@ async def create_chatbot(
     ),
 ):
     """Create a chatbot. Starts disabled unless `enabled` is passed."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(NON_ADMIN_ERROR),
-        )
 
     try:
         chatbot = await chatbot_service.create_chatbot(
@@ -76,7 +80,19 @@ async def create_chatbot(
     )
 
 
-@chatbot_router.get('/v1/chatbots')
+@chatbot_router.get(
+    '/v1/chatbots',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:ListChatbots',
+                resource=from_path('chatbot'),
+                legacy=Legacy.ADMIN,
+                deny_message=NON_ADMIN_ERROR,
+            )
+        )
+    ],
+)
 @inject
 async def list_chatbots(
     request: Request,
@@ -91,14 +107,6 @@ async def list_chatbots(
     ),
 ):
     """List chatbots, including their system prompts. Admin only."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(NON_ADMIN_ERROR),
-        )
 
     chatbots = await chatbot_service.list_chatbots(
         namespace=namespace, enabled=enabled, limit=limit
@@ -109,7 +117,19 @@ async def list_chatbots(
     )
 
 
-@chatbot_router.get('/v1/chatbots/{chatbot_id}')
+@chatbot_router.get(
+    '/v1/chatbots/{chatbot_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:GetChatbot',
+                resource=from_path('chatbot', 'chatbot_id'),
+                legacy=Legacy.ADMIN,
+                deny_message=NON_ADMIN_ERROR,
+            )
+        )
+    ],
+)
 @inject
 async def get_chatbot(
     request: Request,
@@ -122,14 +142,6 @@ async def get_chatbot(
     ),
 ):
     """Read one chatbot, including its system prompt. Admin only."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(NON_ADMIN_ERROR),
-        )
 
     try:
         chatbot = await chatbot_service.get_chatbot(chatbot_id)
@@ -145,7 +157,19 @@ async def get_chatbot(
     )
 
 
-@chatbot_router.patch('/v1/chatbots/{chatbot_id}')
+@chatbot_router.patch(
+    '/v1/chatbots/{chatbot_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:UpdateChatbot',
+                resource=from_path('chatbot', 'chatbot_id'),
+                legacy=Legacy.ADMIN,
+                deny_message=NON_ADMIN_ERROR,
+            )
+        )
+    ],
+)
 @inject
 async def update_chatbot(
     request: Request,
@@ -163,14 +187,6 @@ async def update_chatbot(
     Editing `system_prompt` affects new sessions only -- existing ones keep the
     snapshot taken when they were opened.
     """
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(NON_ADMIN_ERROR),
-        )
 
     try:
         chatbot = await chatbot_service.update_chatbot(
@@ -202,7 +218,19 @@ async def update_chatbot(
     )
 
 
-@chatbot_router.delete('/v1/chatbots/{chatbot_id}')
+@chatbot_router.delete(
+    '/v1/chatbots/{chatbot_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'chatbots:DeleteChatbot',
+                resource=from_path('chatbot', 'chatbot_id'),
+                legacy=Legacy.ADMIN,
+                deny_message=NON_ADMIN_ERROR,
+            )
+        )
+    ],
+)
 @inject
 async def delete_chatbot(
     request: Request,
@@ -215,14 +243,6 @@ async def delete_chatbot(
     ),
 ):
     """Soft delete. Existing sessions stay readable but accept no new messages."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(NON_ADMIN_ERROR),
-        )
 
     try:
         await chatbot_service.delete_chatbot(chatbot_id)

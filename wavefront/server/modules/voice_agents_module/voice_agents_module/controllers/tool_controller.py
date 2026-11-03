@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
@@ -18,7 +19,18 @@ from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 tool_router = APIRouter()
 
 
-@tool_router.post('/v1/tools')
+@tool_router.post(
+    '/v1/tools',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:CreateTool',
+                resource=from_path('voice_tool'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_tool(
     request: Request,
@@ -50,7 +62,18 @@ async def create_tool(
     )
 
 
-@tool_router.get('/v1/tools')
+@tool_router.get(
+    '/v1/tools',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:ListTools',
+                resource=from_path('voice_tool'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_tools(
     tool_type: str = Query(None, description='Filter by tool type (api, python)'),
@@ -77,7 +100,18 @@ async def list_tools(
     )
 
 
-@tool_router.get('/v1/tools/{tool_id}')
+@tool_router.get(
+    '/v1/tools/{tool_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetTool',
+                resource=from_path('voice_tool', 'tool_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_tool(
     tool_id: UUID = Path(..., description='The ID of the tool'),
@@ -111,7 +145,18 @@ async def get_tool(
     )
 
 
-@tool_router.patch('/v1/tools/{tool_id}')
+@tool_router.patch(
+    '/v1/tools/{tool_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateTool',
+                resource=from_path('voice_tool', 'tool_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_tool(
     tool_id: UUID,
@@ -142,7 +187,18 @@ async def update_tool(
     )
 
 
-@tool_router.delete('/v1/tools/{tool_id}')
+@tool_router.delete(
+    '/v1/tools/{tool_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:DeleteTool',
+                resource=from_path('voice_tool', 'tool_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_tool(
     tool_id: UUID,
@@ -173,7 +229,18 @@ async def delete_tool(
 # Voice Agent Tool Association Endpoints
 
 
-@tool_router.post('/v1/voice-agents/{agent_id}/tools')
+@tool_router.post(
+    '/v1/voice-agents/{agent_id}/tools',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateVoiceAgentTools',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def attach_tool_to_agent(
     agent_id: UUID,
@@ -207,7 +274,18 @@ async def attach_tool_to_agent(
     )
 
 
-@tool_router.get('/v1/voice-agents/{agent_id}/tools')
+@tool_router.get(
+    '/v1/voice-agents/{agent_id}/tools',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:ListVoiceAgentTools',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_agent_tools(
     agent_id: UUID,
@@ -248,7 +326,18 @@ async def get_agent_tools(
     )
 
 
-@tool_router.patch('/v1/voice-agents/{agent_id}/tools/{tool_id}')
+@tool_router.patch(
+    '/v1/voice-agents/{agent_id}/tools/{tool_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateVoiceAgentTools',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_agent_tool(
     agent_id: UUID,
@@ -284,7 +373,18 @@ async def update_agent_tool(
     )
 
 
-@tool_router.delete('/v1/voice-agents/{agent_id}/tools/{tool_id}')
+@tool_router.delete(
+    '/v1/voice-agents/{agent_id}/tools/{tool_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateVoiceAgentTools',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def detach_tool_from_agent(
     agent_id: UUID,

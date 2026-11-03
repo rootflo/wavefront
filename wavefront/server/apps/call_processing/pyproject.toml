@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.11"
 
 dependencies = [
+    "authz-module",
     # Shared middleware (security headers)
     "common-module",
     # FastAPI stack
@@ -39,6 +40,7 @@ dependencies = [
 dev = ["flo-testing"]
 
 [tool.uv.sources]
+authz-module = { workspace = true }
 common-module = { workspace = true }
 flo-lib = { workspace = true }
 flo-testing = { workspace = true }

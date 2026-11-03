@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Path, Request, Query
@@ -32,7 +33,17 @@ agents_router = APIRouter()
 
 
 @agents_router.post(
-    '/v1/agents/{namespace}/{agent_id}/inference', response_model=AgentInferenceResponse
+    '/v1/agents/{namespace}/{agent_id}/inference',
+    response_model=AgentInferenceResponse,
+    dependencies=[
+        Depends(
+            requires(
+                'agents:InvokeAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def agent_inference(
@@ -132,7 +143,17 @@ async def agent_inference(
 
 
 @agents_router.post(
-    '/v2/agents/{agent_id}/inference', response_model=AgentInferenceResponse
+    '/v2/agents/{agent_id}/inference',
+    response_model=AgentInferenceResponse,
+    dependencies=[
+        Depends(
+            requires(
+                'agents:InvokeAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def agent_inference_v2(
@@ -295,7 +316,19 @@ async def agent_inference_v2(
     )
 
 
-@agents_router.post('/v1/agent-management/agents/{name}')
+@agents_router.post(
+    '/v1/agent-management/agents/{name}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:CreateAgent',
+                resource=from_path('agent'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_agent(
     request: Request,
@@ -358,7 +391,19 @@ async def create_agent(
 # A ':validate' custom method rather than '/agents/validate', which the
 # '/agents/{name}' create route above would shadow and which would reserve the
 # agent name 'validate'
-@agents_router.post('/v1/agent-management/agents:validate')
+@agents_router.post(
+    '/v1/agent-management/agents:validate',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:ValidateAgent',
+                resource=from_path('agent'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def validate_agent(
     request: Request,
@@ -404,7 +449,19 @@ async def validate_agent(
     )
 
 
-@agents_router.get('/v1/agent-management/agents/{agent_id}')
+@agents_router.get(
+    '/v1/agent-management/agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:GetAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_agent(
     agent_id: UUID = Path(..., description='The UUID of the agent to retrieve'),
@@ -444,7 +501,19 @@ async def get_agent(
     )
 
 
-@agents_router.get('/v1/agent-management/agents/{agent_id}/versions')
+@agents_router.get(
+    '/v1/agent-management/agents/{agent_id}/versions',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:ListAgentVersions',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_agent_versions(
     agent_id: UUID = Path(..., description='The UUID of the agent'),
@@ -482,7 +551,19 @@ async def list_agent_versions(
     )
 
 
-@agents_router.patch('/v1/agent-management/agents/{agent_id}/current-version')
+@agents_router.patch(
+    '/v1/agent-management/agents/{agent_id}/current-version',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:UpdateAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def promote_agent_version(
     agent_id: UUID = Path(..., description='The UUID of the agent'),
@@ -520,7 +601,19 @@ async def promote_agent_version(
     )
 
 
-@agents_router.delete('/v1/agent-management/agents/{agent_id}/versions/{version}')
+@agents_router.delete(
+    '/v1/agent-management/agents/{agent_id}/versions/{version}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:DeleteAgentVersion',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_agent_version(
     agent_id: UUID = Path(..., description='The UUID of the agent'),
@@ -561,7 +654,19 @@ async def delete_agent_version(
     )
 
 
-@agents_router.put('/v1/agent-management/agents/{agent_id}')
+@agents_router.put(
+    '/v1/agent-management/agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:UpdateAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def update_agent(
     request: Request,
@@ -631,7 +736,19 @@ async def update_agent(
     )
 
 
-@agents_router.get('/v1/agent-management/agents')
+@agents_router.get(
+    '/v1/agent-management/agents',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:ListAgents',
+                resource=from_path('agent'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_agents(
     namespace: str | None = Query(
@@ -669,7 +786,19 @@ async def list_agents(
     )
 
 
-@agents_router.delete('/v1/agent-management/agents/{agent_id}')
+@agents_router.delete(
+    '/v1/agent-management/agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:DeleteAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_agent(
     agent_id: UUID = Path(..., description='The UUID of the agent to delete'),

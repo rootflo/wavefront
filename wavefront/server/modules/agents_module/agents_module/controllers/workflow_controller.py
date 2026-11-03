@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from typing import Optional
 from uuid import UUID
 from agents_module.utils.input_processing_utils import process_inference_inputs
@@ -36,6 +37,15 @@ workflows_router = APIRouter()
 @workflows_router.post(
     '/v1/workflows/{namespace}/{workflow_id}/inference',
     response_model=WorkflowInferenceResponse,
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:InvokeWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def workflow_inference(
@@ -244,6 +254,15 @@ async def workflow_inference(
 @workflows_router.post(
     '/v2/workflows/{workflow_id}/inference',
     response_model=WorkflowInferenceResponse,
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:InvokeWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def workflow_inference_v2(
@@ -456,7 +475,19 @@ async def workflow_inference_v2(
         )
 
 
-@workflows_router.post('/v1/workflow-management/workflows/{name}')
+@workflows_router.post(
+    '/v1/workflow-management/workflows/{name}',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:CreateWorkflow',
+                resource=from_path('workflow'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_workflow(
     request: Request,
@@ -517,7 +548,19 @@ async def create_workflow(
 # A ':validate' custom method rather than '/workflows/validate', which the
 # '/workflows/{name}' create route above would shadow and which would reserve the
 # workflow name 'validate'
-@workflows_router.post('/v1/workflow-management/workflows:validate')
+@workflows_router.post(
+    '/v1/workflow-management/workflows:validate',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:ValidateWorkflow',
+                resource=from_path('workflow'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def validate_workflow(
     request: Request,
@@ -565,7 +608,19 @@ async def validate_workflow(
     )
 
 
-@workflows_router.get('/v1/workflow-management/workflows/{workflow_id}')
+@workflows_router.get(
+    '/v1/workflow-management/workflows/{workflow_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:GetWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_workflow(
     workflow_id: UUID = Path(..., description='The UUID of the workflow to retrieve'),
@@ -605,7 +660,19 @@ async def get_workflow(
     )
 
 
-@workflows_router.get('/v1/workflow-management/workflows/{workflow_id}/versions')
+@workflows_router.get(
+    '/v1/workflow-management/workflows/{workflow_id}/versions',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:ListWorkflowVersions',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_workflow_versions(
     workflow_id: UUID = Path(..., description='The UUID of the workflow'),
@@ -644,7 +711,17 @@ async def list_workflow_versions(
 
 
 @workflows_router.patch(
-    '/v1/workflow-management/workflows/{workflow_id}/current-version'
+    '/v1/workflow-management/workflows/{workflow_id}/current-version',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:UpdateWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
 )
 @inject
 async def promote_workflow_version(
@@ -686,7 +763,17 @@ async def promote_workflow_version(
 
 
 @workflows_router.delete(
-    '/v1/workflow-management/workflows/{workflow_id}/versions/{version}'
+    '/v1/workflow-management/workflows/{workflow_id}/versions/{version}',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:DeleteWorkflowVersion',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
 )
 @inject
 async def delete_workflow_version(
@@ -728,7 +815,19 @@ async def delete_workflow_version(
     )
 
 
-@workflows_router.put('/v1/workflow-management/workflows/{workflow_id}')
+@workflows_router.put(
+    '/v1/workflow-management/workflows/{workflow_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:UpdateWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def update_workflow(
     request: Request,
@@ -796,7 +895,19 @@ async def update_workflow(
     )
 
 
-@workflows_router.get('/v1/workflow-management/workflows')
+@workflows_router.get(
+    '/v1/workflow-management/workflows',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:ListWorkflows',
+                resource=from_path('workflow'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_workflows(
     namespace: str | None = Query(
@@ -834,7 +945,19 @@ async def list_workflows(
     )
 
 
-@workflows_router.delete('/v1/workflow-management/workflows/{workflow_id}')
+@workflows_router.delete(
+    '/v1/workflow-management/workflows/{workflow_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:DeleteWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_workflow(
     workflow_id: UUID = Path(..., description='The UUID of the workflow to delete'),

@@ -4,6 +4,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.utils.tool_authorization import authorize_tools
+from authz_module import ResourceRef
 from agents_module.services.agent_stream_events import (
     AgentEventType,
     StreamingTapLLM,
@@ -146,20 +148,31 @@ class AgentInferenceService:
         yaml_data = yaml.safe_load(yaml_content)
         tool_names = yaml_data.get('agent', {}).get('tools', [])
         tool_register = {}
+        # What each tool is (datasource, email, message_processor, ...), for
+        # the authorization hooks.
+        tool_kinds: Dict[str, str] = {}
         if tool_names:
             logger.info(f'Loading tools for agent {agent_name}: {tool_names}')
             for tool in tool_names:
                 tool_name = tool.get('name')
                 # First try to load from static registry
                 tools = self.tool_loader.load_tool_with_name(tool_name)
+                if tools is not None:
+                    metadata = self.tool_loader.get_tool_metadata(tool_name)
+                    category = (
+                        metadata.get('category') if isinstance(metadata, dict) else None
+                    )
+                    tool_kinds[tool_name] = category or 'tool'
 
                 # If not found, try loading as message processor
                 if tools is None:
                     tools = await self._try_load_message_processor_tool(tool_name)
+                    tool_kinds[tool_name] = 'message_processor'
 
                 # If still not found, try loading as API service
                 if tools is None:
                     tools = await self._try_load_api_service_tool(tool_name)
+                    tool_kinds[tool_name] = 'api_service'
 
                 if tools:
                     tool_register[tool_name] = tools
@@ -169,6 +182,13 @@ class AgentInferenceService:
                     )
         else:
             logger.warning(f'No tools were loaded for agent {agent_name}')
+
+        if tool_register:
+            tool_register = await authorize_tools(
+                ResourceRef('agent', principal_agent_id or agent_name),
+                tool_register,
+                tool_kinds,
+            )
 
         agent_builder = AgentBuilder.from_yaml(
             yaml_str=yaml_content,

@@ -1,10 +1,14 @@
 """Patching the caller's identity for controller tests.
 
-``get_current_user`` and ``check_is_admin`` are imported into each controller's
-own namespace, so they have to be patched there rather than at their definition
-site -- often in two namespaces at once, because the read paths reach
-``check_is_admin`` through ``user_utils.can_read_users`` instead. That detail is
-why every conftest grew its own pile of near-identical monkeypatch fixtures.
+``get_current_user`` is imported into each controller's own namespace, so it has
+to be patched there rather than at its definition site.
+
+``check_is_admin`` is no longer called by controllers: routes declare an action
+and the default authorizer's legacy resolver asks
+``user_utils.check_is_admin``, looked up on the module at call time. Patching it
+in ``user_utils`` (which ``include_user_utils`` does by default) decides every
+admin rule; the per-controller patches are kept for callers that still pass
+controller namespaces and are harmless no-ops.
 
 The two are patched separately because tests compose them: a test may want a
 real-looking admin check but a deliberately wrong ``role_id``. ``patch_auth``
@@ -68,7 +72,10 @@ def patch_is_admin(monkeypatch):
         async def fake_check_is_admin(role_id, role_repository=None):
             return is_admin
 
-        for namespace in _targets(namespaces, include_user_utils):
+        # user_utils always: it is where the default authorizer asks, so it is
+        # what decides every admin rule. include_user_utils is ignored here.
+        del include_user_utils
+        for namespace in _targets(namespaces, True):
             monkeypatch.setattr(
                 f'{namespace}.check_is_admin',
                 fake_check_is_admin,

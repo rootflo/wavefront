@@ -5,6 +5,7 @@ TwiML generation for Twilio and the media stream WebSockets of every telephony
 provider (the calls themselves are handled by ``TelephonySessionService``).
 """
 
+from authz_module import Legacy, requires
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, WebSocket, Query, Depends, Form
 from fastapi.responses import Response
@@ -61,7 +62,12 @@ def _stream_twiml(
     return Response(content=twiml_xml, media_type='application/xml')
 
 
-@webhook_router.post('/inbound')
+@webhook_router.post(
+    '/inbound',
+    dependencies=[
+        Depends(requires('calls:HandleTelephonyWebhook', legacy=Legacy.PUBLIC))
+    ],
+)
 @inject
 async def inbound_webhook(
     From: str = Form(...),
@@ -114,7 +120,12 @@ async def inbound_webhook(
     )
 
 
-@webhook_router.post('/twiml')
+@webhook_router.post(
+    '/twiml',
+    dependencies=[
+        Depends(requires('calls:HandleTelephonyWebhook', legacy=Legacy.PUBLIC))
+    ],
+)
 @inject
 async def twiml_endpoint(
     From: str = Form(...),
@@ -143,7 +154,10 @@ async def twiml_endpoint(
     )
 
 
-@webhook_router.websocket('/ws')
+@webhook_router.websocket(
+    '/ws',
+    dependencies=[Depends(requires('calls:StreamCallAudio', legacy=Legacy.PUBLIC))],
+)
 @inject
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -161,7 +175,10 @@ async def websocket_endpoint(
     await telephony_session_service.handle_stream(websocket)
 
 
-@webhook_router.websocket('/exotel/inbound/ws')
+@webhook_router.websocket(
+    '/exotel/inbound/ws',
+    dependencies=[Depends(requires('calls:StreamCallAudio', legacy=Legacy.PUBLIC))],
+)
 @inject
 async def exotel_inbound_websocket(
     websocket: WebSocket,

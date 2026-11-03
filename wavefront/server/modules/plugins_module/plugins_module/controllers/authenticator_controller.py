@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from dependency_injector.wiring import inject, Provide
 from fastapi import Depends, Request, status, APIRouter
 from fastapi.responses import JSONResponse
@@ -19,7 +20,6 @@ from plugins_module.services.authenticator_services import (
     enable_authenticator,
     disable_authenticator,
 )
-from user_management_module.utils.user_utils import check_is_admin
 
 
 authenticator_router = APIRouter()
@@ -37,7 +37,19 @@ class UpdateAuthenticatorPayload(BaseModel):
     config: Dict[str, Any]
 
 
-@authenticator_router.post('/v1/authenticators')
+@authenticator_router.post(
+    '/v1/authenticators',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:CreateAuthenticator',
+                resource=from_path('authenticator'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_authenticator(
     request: Request,
@@ -50,14 +62,6 @@ async def create_authenticator(
     ),
 ):
     """Create a new authenticator configuration."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         authenticator = await create_authenticator_config(
@@ -91,7 +95,19 @@ async def create_authenticator(
         )
 
 
-@authenticator_router.get('/v1/authenticators')
+@authenticator_router.get(
+    '/v1/authenticators',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:ListAuthenticators',
+                resource=from_path('authenticator'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_all_authenticators_endpoint(
     request: Request,
@@ -103,14 +119,6 @@ async def get_all_authenticators_endpoint(
     ),
 ):
     """Get all authenticator configurations."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         authenticators = await get_all_authenticators(authenticator_repository)
@@ -130,7 +138,19 @@ async def get_all_authenticators_endpoint(
         )
 
 
-@authenticator_router.get('/v1/authenticators/{auth_id}')
+@authenticator_router.get(
+    '/v1/authenticators/{auth_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:GetAuthenticator',
+                resource=from_path('authenticator', 'auth_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_authenticator(
     request: Request,
@@ -143,14 +163,6 @@ async def get_authenticator(
     ),
 ):
     """Get authenticator configuration by ID."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         auth_uuid = UUID(auth_id)
@@ -186,7 +198,19 @@ async def get_authenticator(
         )
 
 
-@authenticator_router.put('/v1/authenticators/{auth_id}')
+@authenticator_router.put(
+    '/v1/authenticators/{auth_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:UpdateAuthenticator',
+                resource=from_path('authenticator', 'auth_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def update_authenticator(
     request: Request,
@@ -200,14 +224,6 @@ async def update_authenticator(
     ),
 ):
     """Update authenticator configuration."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         auth_uuid = UUID(auth_id)
@@ -249,7 +265,19 @@ async def update_authenticator(
         )
 
 
-@authenticator_router.delete('/v1/authenticators/{auth_id}')
+@authenticator_router.delete(
+    '/v1/authenticators/{auth_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:DeleteAuthenticator',
+                resource=from_path('authenticator', 'auth_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_authenticator(
     request: Request,
@@ -262,14 +290,6 @@ async def delete_authenticator(
     ),
 ):
     """Delete authenticator configuration."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         auth_uuid = UUID(auth_id)
@@ -290,7 +310,19 @@ async def delete_authenticator(
         )
 
 
-@authenticator_router.post('/v1/authenticators/{auth_id}/enable')
+@authenticator_router.post(
+    '/v1/authenticators/{auth_id}/enable',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:UpdateAuthenticator',
+                resource=from_path('authenticator', 'auth_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def enable_authenticator_endpoint(
     request: Request,
@@ -303,14 +335,6 @@ async def enable_authenticator_endpoint(
     ),
 ):
     """Enable an authenticator."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         auth_uuid = UUID(auth_id)
@@ -331,7 +355,19 @@ async def enable_authenticator_endpoint(
         )
 
 
-@authenticator_router.post('/v1/authenticators/{auth_id}/disable')
+@authenticator_router.post(
+    '/v1/authenticators/{auth_id}/disable',
+    dependencies=[
+        Depends(
+            requires(
+                'authenticators:UpdateAuthenticator',
+                resource=from_path('authenticator', 'auth_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def disable_authenticator_endpoint(
     request: Request,
@@ -344,14 +380,6 @@ async def disable_authenticator_endpoint(
     ),
 ):
     """Disable an authenticator."""
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
 
     try:
         auth_uuid = UUID(auth_id)

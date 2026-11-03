@@ -1,3 +1,15 @@
+from authz_module import (
+    DataQuery,
+    Legacy,
+    RequestContext,
+    ResourceRef,
+    principal_of,
+    define_action,
+    from_path,
+    is_allowed,
+    requires,
+)
+from authz_module import hooks as authz_hooks
 import logging
 from typing import Any, Dict, List, Optional
 import io
@@ -26,7 +38,6 @@ from fastapi.routing import APIRouter
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
@@ -75,7 +86,6 @@ from user_management_module.services.user_service import UserService
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 from fastapi import HTTPException
-from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from ..utils.helper import (
@@ -92,6 +102,20 @@ from datetime import datetime
 EXPORT_RATE_LIMIT_SECONDS = 5  # 5 seconds between exports per user
 
 datasource_router = APIRouter()
+
+# Callers without these are narrowed to the rows their DATA resources allow.
+define_action(
+    'datasources:QueryWithoutRowFilters',
+    legacy=Legacy.ADMIN,
+    resource_type='datasource',
+    description='Query or export a datasource without row-level filters',
+)
+define_action(
+    'datasources:RunDynamicQueryWithoutRowFilters',
+    legacy=Legacy.ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG),
+    resource_type='datasource',
+    description='Run a dynamic query without row-level filters',
+)
 
 
 def _build_datasource_config(datasource_type: str, config_json: dict):
@@ -125,7 +149,50 @@ def _file_storage_unsupported(response_formatter: ResponseFormatter) -> JSONResp
     )
 
 
-@datasource_router.post('/v1/datasources')
+async def _before_query(
+    request: Request,
+    datasource_id: str,
+    datasource_type,
+    *,
+    operation: str,
+    resource: str | None,
+    filter: str | None,
+    row_filter: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Run the query hook; returns the (filter, row_filter) to actually use.
+
+    The default provider returns both unchanged. Another may narrow them, or
+    refuse the query with AccessDenied.
+    """
+    query = await authz_hooks.before_query(
+        DataQuery(
+            datasource=ResourceRef(
+                'datasource', str(datasource_id), {'type': str(datasource_type)}
+            ),
+            operation=operation,
+            resource=resource,
+            filter=filter,
+            params={'row_filter': row_filter},
+        ),
+        principal=principal_of(request),
+        ctx=RequestContext.from_connection(request),
+    )
+    return query.filter, query.params.get('row_filter')
+
+
+@datasource_router.post(
+    '/v1/datasources',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:CreateDatasource',
+                resource=from_path('datasource'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def add_datasource(
     request: Request,
@@ -138,17 +205,6 @@ async def add_datasource(
     ),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     if not validate_datasource_payload(add_datasource_payload):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -196,7 +252,19 @@ async def add_datasource(
     )
 
 
-@datasource_router.patch('/v1/datasources/{datasource_id}')
+@datasource_router.patch(
+    '/v1/datasources/{datasource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:UpdateDatasource',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def update_datasource(
     request: Request,
@@ -210,17 +278,6 @@ async def update_datasource(
     ),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     # Check if datasource exists
     existing_datasource = await datasource_repository.find_one(id=datasource_id)
     if not existing_datasource:
@@ -328,7 +385,19 @@ async def update_datasource(
     )
 
 
-@datasource_router.delete('/v1/datasources/{datasource_id}')
+@datasource_router.delete(
+    '/v1/datasources/{datasource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:DeleteDatasource',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def delete_datasource(
     request: Request,
@@ -341,17 +410,6 @@ async def delete_datasource(
     ),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     # Check if datasource exists
     existing_datasource = await datasource_repository.find_one(id=datasource_id)
     if not existing_datasource:
@@ -377,7 +435,19 @@ async def delete_datasource(
     )
 
 
-@datasource_router.get('/v1/datasources')
+@datasource_router.get(
+    '/v1/datasources',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListDatasources',
+                resource=from_path('datasource'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def get_datasources(
     request: Request,
@@ -388,15 +458,6 @@ async def get_datasources(
         Provide[PluginsContainer.datasource_repository]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
     datasources = await datasource_repository.find()
     datasources = [Datasource.to_dict(datasource) for datasource in datasources]
     return JSONResponse(
@@ -405,7 +466,19 @@ async def get_datasources(
     )
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:GetDatasource',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def get_datasource(
     request: Request,
@@ -417,15 +490,6 @@ async def get_datasource(
         Provide[PluginsContainer.datasource_repository]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
     datasource = await datasource_repository.find_one(id=datasource_id)
 
     if not datasource:
@@ -439,7 +503,19 @@ async def get_datasource(
     )
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/test-connection')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/test-connection',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:TestDatasourceConnection',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def test_datasource_connection(
     request: Request,
@@ -448,15 +524,6 @@ async def test_datasource_connection(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -474,7 +541,19 @@ async def test_datasource_connection(
     )
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}/resources')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}/resources',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListTables',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def get_tables(
     request: Request,
@@ -483,17 +562,6 @@ async def get_tables(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    role_id = request.state.session.role_id
-
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -514,7 +582,18 @@ async def get_tables(
     )
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:Query',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def query_datasource(
     request: Request,
@@ -533,13 +612,15 @@ async def query_datasource(
     offset: int | None = 0,
     limit: int | None = 10,
 ):
-    user_id = request.state.session.user_id
-    role_id = request.state.session.role_id
+    user_id = request.state.principal.id
 
     rls_filters = []
     filter = query_filter
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
+    if not await is_allowed(
+        request,
+        'datasources:QueryWithoutRowFilters',
+        ResourceRef('datasource', str(datasource_id)),
+    ):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )
@@ -573,6 +654,15 @@ async def query_datasource(
     join_query = None
     if join and expand:
         join_query = f'$expand={expand}&$join={join}'
+
+    filter, _ = await _before_query(
+        request,
+        datasource_id,
+        datasource_type,
+        operation='query',
+        resource=resource_id,
+        filter=filter,
+    )
 
     try:
         result: QueryResult = datasource_plugin.fetch_data(
@@ -656,7 +746,18 @@ def _update_entries(results, payload) -> list[AuditEntry]:
     ]
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/resources/insert')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/resources/insert',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:InsertRows',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def insert_rows_json_multi(
     request: Request,
@@ -730,7 +831,18 @@ async def insert_rows_json_multi(
     )
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:InsertRows',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def insert_rows_json(
     request: Request,
@@ -804,7 +916,19 @@ async def insert_rows_json(
 # resource_id='update'. (Same reason '/resources/insert' precedes its own
 # catch-all. It does mean a table literally named 'update' cannot be reached by
 # the single-table endpoint — as is already true for one named 'insert'.)
-@datasource_router.patch('/v1/datasources/{datasource_id}/resources/update')
+@datasource_router.patch(
+    '/v1/datasources/{datasource_id}/resources/update',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:UpdateRows',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only admin users can update rows',
+            )
+        )
+    ],
+)
 @inject
 async def update_rows_json_multi(
     request: Request,
@@ -826,15 +950,6 @@ async def update_rows_json_multi(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only admin users can update rows'
-            ),
-        )
-
     if not update_rows_json_multi_payload.updates:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -930,7 +1045,19 @@ async def update_rows_json_multi(
     )
 
 
-@datasource_router.patch('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@datasource_router.patch(
+    '/v1/datasources/{datasource_id}/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:UpdateRows',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only admin users can update rows',
+            )
+        )
+    ],
+)
 @inject
 async def update_rows_json(
     request: Request,
@@ -954,15 +1081,6 @@ async def update_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only admin users can update rows'
-            ),
-        )
-
     if not update_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1044,7 +1162,19 @@ async def update_rows_json(
     )
 
 
-@datasource_router.delete('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@datasource_router.delete(
+    '/v1/datasources/{datasource_id}/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:DeleteRows',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Only admin users can delete rows',
+            )
+        )
+    ],
+)
 @inject
 async def delete_rows_json(
     request: Request,
@@ -1074,15 +1204,6 @@ async def delete_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Only admin users can delete rows'
-            ),
-        )
-
     if not delete_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1157,7 +1278,20 @@ async def delete_rows_json(
     )
 
 
-@datasource_router.put('/v1/{datasource_id}/dynamic-queries')
+@datasource_router.put(
+    '/v1/{datasource_id}/dynamic-queries',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:CreateDynamicQuery',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def create_dynamic_query(
     request: Request,
@@ -1170,11 +1304,6 @@ async def create_dynamic_query(
         Provide[PluginsContainer.dynamic_query_service]
     ),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     # validating the yaml string
     yaml_content = yaml.safe_load(dynamic_query.dynamic_query)
 
@@ -1193,7 +1322,20 @@ async def create_dynamic_query(
     )
 
 
-@datasource_router.get('/v1/{datasource_id}/dynamic-queries')
+@datasource_router.get(
+    '/v1/{datasource_id}/dynamic-queries',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListDynamicQueries',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def get_all_dynamic_query_yaml(
     request: Request,
@@ -1207,11 +1349,6 @@ async def get_all_dynamic_query_yaml(
         Provide[PluginsContainer.dynamic_query_service]
     ),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     result = await dynamic_query_yaml_service.retrive_dynamic_query_yaml(
         page_number, page_size
     )
@@ -1228,7 +1365,20 @@ async def get_all_dynamic_query_yaml(
     )
 
 
-@datasource_router.get('/v1/{datasource_id}/dynamic-queries/{query_id}')
+@datasource_router.get(
+    '/v1/{datasource_id}/dynamic-queries/{query_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:GetDynamicQuery',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def get_dynamic_query(
     request: Request,
@@ -1240,11 +1390,6 @@ async def get_dynamic_query(
         Provide[PluginsContainer.dynamic_query_service]
     ),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     yaml_query, yaml_name = await dynamic_query_service.get_dynamic_yaml_query(query_id)
 
     if not yaml_query:
@@ -1266,7 +1411,18 @@ async def get_dynamic_query(
     )
 
 
-@datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/execute')
+@datasource_router.post(
+    '/v1/{datasource_id}/dynamic-queries/{query_id}/execute',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:RunDynamicQuery',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def execute_dynamic_query(
     request: Request,
@@ -1284,10 +1440,9 @@ async def execute_dynamic_query(
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
-    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
     force_fetch: int = Query(0),
 ):
-    role_id, user_id, _ = get_current_user(request)
+    _, user_id, _ = get_current_user(request)
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -1318,11 +1473,14 @@ async def execute_dynamic_query(
         )
 
     rls_filter_str = None
-    is_admin = await check_is_admin(role_id)
     # With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG on, non-admins are not narrowed
     # down to their DATA resources: the row-level filter stays unset, so the
     # query runs over the whole datasource exactly as it does for an admin.
-    if not is_admin and not feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+    if not await is_allowed(
+        request,
+        'datasources:RunDynamicQueryWithoutRowFilters',
+        ResourceRef('datasource', str(datasource_id)),
+    ):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )
@@ -1338,6 +1496,15 @@ async def execute_dynamic_query(
     if is_file_storage_type(datasource_type):
         return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    filter, rls_filter_str = await _before_query(
+        request,
+        datasource_id,
+        datasource_type,
+        operation='run_dynamic_query',
+        resource=query_id,
+        filter=filter,
+        row_filter=rls_filter_str,
+    )
     # checking if the given query is already in cache
     cache_key = generate_cache_key(
         query_id,
@@ -1375,7 +1542,18 @@ async def execute_dynamic_query(
     )
 
 
-@datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/export')
+@datasource_router.post(
+    '/v1/{datasource_id}/dynamic-queries/{query_id}/export',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ExportDynamicQuery',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def export_dynamic_query_csv(
     request: Request,
@@ -1400,7 +1578,7 @@ async def export_dynamic_query_csv(
     force_fetch: int = Query(0),
 ):
     """Execute the dynamic query and return results as a downloadable CSV file."""
-    role_id, user_id, _ = get_current_user(request)
+    _, user_id, _ = get_current_user(request)
 
     # Block multiple exports per user within a 2-minute window (Redis)
     export_rate_key = f'dynamic_query_export_rate:{user_id}'
@@ -1431,8 +1609,11 @@ async def export_dynamic_query_csv(
         )
 
     rls_filter_str = None
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
+    if not await is_allowed(
+        request,
+        'datasources:QueryWithoutRowFilters',
+        ResourceRef('datasource', str(datasource_id)),
+    ):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )
@@ -1445,6 +1626,16 @@ async def export_dynamic_query_csv(
             )
         rls_filters = fetch_data_filters(rls_filters)
         rls_filter_str = f"{ ' $and '.join(rls_filters)}"
+
+    filter, rls_filter_str = await _before_query(
+        request,
+        datasource_id,
+        datasource_type,
+        operation='export_dynamic_query',
+        resource=query_id,
+        filter=filter,
+        row_filter=rls_filter_str,
+    )
 
     # Bucket and filename: hash of $filter, limit, offset, dynamic_query_params
     bucket_name = config['storage']['application_bucket']
@@ -1551,7 +1742,20 @@ async def export_dynamic_query_csv(
     )
 
 
-@datasource_router.delete('/v1/{datasource_id}/dynamic-queries/{query_id}')
+@datasource_router.delete(
+    '/v1/{datasource_id}/dynamic-queries/{query_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:DeleteDynamicQuery',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def delete_dynamic_query(
     request: Request,
@@ -1564,10 +1768,6 @@ async def delete_dynamic_query(
         Provide[PluginsContainer.dynamic_query_service]
     ),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        raise HTTPException(status_code=401, detail='Unauthorized')
     await dynamic_query_yaml_service.delete_dynamic_query(datasource_id, query_id)
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -1686,7 +1886,19 @@ def _upload_target_path(path: str | None, filename: str | None) -> str:
     return f'{path or ""}{base_name}'
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}/files/list')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}/files/list',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListFiles',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def list_datasource_files(
     request: Request,
@@ -1702,16 +1914,6 @@ async def list_datasource_files(
     ),
 ):
     """List files under the datasource base path (paginated)."""
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -1760,7 +1962,19 @@ async def list_datasource_files(
     )
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}/files/browse')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}/files/browse',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListFiles',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def browse_datasource_files(
     request: Request,
@@ -1783,16 +1997,6 @@ async def browse_datasource_files(
     into sub-folders and pages with the provider's own token, so a folder browser can load
     one level at a time and every page costs a single list call.
     """
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -1851,7 +2055,19 @@ async def browse_datasource_files(
     )
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/files')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/files',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:UploadFile',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def upload_datasource_file(
     request: Request,
@@ -1865,16 +2081,6 @@ async def upload_datasource_file(
         Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -1936,7 +2142,19 @@ MAX_BATCH_UPLOAD_FILES = 100
 logger = logging.getLogger(__name__)
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/files/batch')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/files/batch',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:UploadFile',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def upload_datasource_files_batch(
     request: Request,
@@ -1959,16 +2177,6 @@ async def upload_datasource_files_batch(
     Each file stands alone: one that fails (a bad path, a storage error) is reported in its
     result and the rest still upload. The response lists a result per file, in request order.
     """
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     if len(files) != len(paths):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2053,7 +2261,19 @@ async def upload_datasource_files_batch(
     )
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/files/folders')
+@datasource_router.post(
+    '/v1/datasources/{datasource_id}/files/folders',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:CreateFolder',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def create_datasource_folder(
     request: Request,
@@ -2067,16 +2287,6 @@ async def create_datasource_folder(
     ),
 ):
     """Create an empty folder (an empty ``<folder>/`` placeholder object, as cloud consoles do)."""
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -2129,7 +2339,19 @@ async def create_datasource_folder(
     )
 
 
-@datasource_router.delete('/v1/datasources/{datasource_id}/files')
+@datasource_router.delete(
+    '/v1/datasources/{datasource_id}/files',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:DeleteFile',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def delete_datasource_file(
     request: Request,
@@ -2145,16 +2367,6 @@ async def delete_datasource_file(
         Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -2210,7 +2422,19 @@ async def delete_datasource_file(
     )
 
 
-@datasource_router.get('/v1/datasources/{datasource_id}/files')
+@datasource_router.get(
+    '/v1/datasources/{datasource_id}/files',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:GetFile',
+                resource=from_path('datasource', 'datasource_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Data access not set for non-admin user',
+            )
+        )
+    ],
+)
 @inject
 async def download_datasource_file(
     request: Request,
@@ -2226,16 +2450,6 @@ async def download_datasource_file(
         Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for non-admin user'
-            ),
-        )
-
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(

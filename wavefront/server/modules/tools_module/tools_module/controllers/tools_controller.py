@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from typing import Optional
 from common_module.security import bearer_auth
 from fastapi import APIRouter, HTTPException, Query, Depends, Security, status
@@ -23,7 +24,10 @@ tools_router = APIRouter(prefix='/v1/tools', tags=['Tools'])
 @tools_router.get(
     '/',
     response_model=GenericResponseModel[DataWrapper[ToolsListData]],
-    dependencies=[Security(bearer_auth)],
+    dependencies=[
+        Depends(requires('tools:ListTools', legacy=Legacy.AUTHENTICATED)),
+        Security(bearer_auth),
+    ],
 )
 @inject
 async def get_all_tools(
@@ -55,7 +59,10 @@ async def get_all_tools(
 @tools_router.get(
     '/names',
     response_model=GenericResponseModel[DataWrapper[ToolNamesData]],
-    dependencies=[Security(bearer_auth)],
+    dependencies=[
+        Depends(requires('tools:ListTools', legacy=Legacy.AUTHENTICATED)),
+        Security(bearer_auth),
+    ],
 )
 @inject
 async def get_tool_names(
@@ -83,7 +90,10 @@ async def get_tool_names(
 @tools_router.get(
     '/tool-details',
     response_model=GenericResponseModel[DataWrapper[ToolDetailsData]],
-    dependencies=[Security(bearer_auth)],
+    dependencies=[
+        Depends(requires('tools:GetTool', legacy=Legacy.AUTHENTICATED)),
+        Security(bearer_auth),
+    ],
 )
 @inject
 async def get_tool_details(
@@ -112,7 +122,16 @@ async def get_tool_details(
 @tools_router.get(
     '/by-name/{tool_name}',
     response_model=GenericResponseModel[DataWrapper[ToolMetadataData]],
-    dependencies=[Security(bearer_auth)],
+    dependencies=[
+        Depends(
+            requires(
+                'tools:GetTool',
+                resource=from_path('tool', 'tool_name'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        ),
+        Security(bearer_auth),
+    ],
 )
 @inject
 async def get_tool_by_name(
@@ -144,7 +163,10 @@ async def get_tool_by_name(
 @tools_router.post(
     '/validate',
     response_model=GenericResponseModel[DataWrapper[ValidationResultData]],
-    dependencies=[Security(bearer_auth)],
+    dependencies=[
+        Depends(requires('tools:ValidateTools', legacy=Legacy.AUTHENTICATED)),
+        Security(bearer_auth),
+    ],
 )
 @inject
 async def validate_tools(

@@ -9,6 +9,7 @@ Errors the browser acts on carry a stable code:
 ``room_expired`` (410), ``room_already_joined`` (409) or ``sticky_required`` (409).
 """
 
+from authz_module import Legacy, from_path, requires
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -19,7 +20,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pipecat.transports.smallwebrtc.request_handler import IceCandidate
 
 from call_processing.app_settings import CallProcessingAppSettings
-from call_processing.controllers.cache_controller import verify_passthrough_auth
 from call_processing.di.application_container import ApplicationContainer
 from call_processing.log.logger import logger
 from call_processing.services.webrtc.room_service import (
@@ -102,7 +102,19 @@ def _set_affinity_cookie(response: Response, instance_id: str, app_env: str) -> 
     )
 
 
-@webrtc_router.post('/rooms', status_code=status.HTTP_201_CREATED)
+@webrtc_router.post(
+    '/rooms',
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(
+            requires(
+                'calls:CreateWebRtcRoom',
+                resource=from_path('voice_agent'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_room(
     body: CreateRoomRequest,
@@ -112,7 +124,6 @@ async def create_room(
     app_settings: CallProcessingAppSettings = Depends(
         Provide[ApplicationContainer.app_settings]
     ),
-    _auth: None = Depends(verify_passthrough_auth),
 ):
     """Create a room for a voice agent. The ``join_token`` is returned once."""
     room = room_service.create_room(
@@ -129,7 +140,10 @@ async def create_room(
     }
 
 
-@webrtc_router.post('/offer')
+@webrtc_router.post(
+    '/offer',
+    dependencies=[Depends(requires('calls:ConnectWebRtc', legacy=Legacy.PUBLIC))],
+)
 @inject
 async def offer(
     body: OfferBody,
@@ -161,7 +175,11 @@ async def offer(
     return answer
 
 
-@webrtc_router.patch('/offer', status_code=status.HTTP_200_OK)
+@webrtc_router.patch(
+    '/offer',
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(requires('calls:ConnectWebRtc', legacy=Legacy.PUBLIC))],
+)
 @inject
 async def ice_candidates(
     body: IcePatchBody,

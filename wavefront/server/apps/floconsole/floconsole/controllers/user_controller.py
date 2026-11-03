@@ -1,3 +1,11 @@
+from authz_module import (
+    Legacy,
+    ResourceRef,
+    define_action,
+    from_path,
+    is_allowed,
+    requires,
+)
 from typing import Optional
 from uuid import UUID
 
@@ -18,11 +26,30 @@ from floconsole.db.models.user import User
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from floconsole.di.application_container import ApplicationContainer
 from floconsole.services.user_service import UserService
+from floconsole.authorization.require_auth import same_user
 from floconsole.utils.user_utils import get_current_user
 from floconsole.utils.password_utils import hash_password
 
 
 user_router = APIRouter(prefix='/v1')
+
+
+async def _self_or_owner(principal, resource, ctx, resolver) -> bool:
+    """A console user may edit themselves; an owner may edit anyone."""
+    if resource is not None and same_user(resource.id, principal.id):
+        return True
+    return await resolver.is_admin(principal)
+
+
+SELF_OR_OWNER = Legacy.CUSTOM('self_or_owner', _self_or_owner)
+
+# Deleting a user is open to every console user; deleting an owner is not.
+define_action(
+    'console:DeleteOwnerUser',
+    legacy=Legacy.ADMIN,
+    resource_type='console_user',
+    description='Delete a user who is an owner',
+)
 
 
 class CreateUserRequest(BaseModel):
@@ -39,7 +66,19 @@ class UpdateUserRequest(BaseModel):
     last_name: Optional[str] = None
 
 
-@user_router.post('/users')
+@user_router.post(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'console:CreateUser',
+                resource=from_path('console_user'),
+                legacy=Legacy.ADMIN,
+                deny_message='You are not authorized to create users',
+            )
+        )
+    ],
+)
 @inject
 async def create_user(
     user_data: CreateUserRequest,
@@ -51,24 +90,6 @@ async def create_user(
         Provide[ApplicationContainer.user_repository]
     ),
 ):
-    # Get current user
-    _, current_user_id, _ = get_current_user(request)
-
-    current_user = await user_repository.find_one(id=current_user_id)
-    is_owner = current_user and current_user.role == UserRole.OWNER.value
-
-    # Only owners can create users
-    if not is_owner:
-        logger.warning(
-            f'User {current_user_id} attempted to create user without permission'
-        )
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'You are not authorized to create users'
-            ),
-        )
-
     existing_user = await user_repository.find_one(email=user_data.email)
 
     if existing_user:
@@ -100,7 +121,12 @@ async def create_user(
     )
 
 
-@user_router.get('/whoami')
+@user_router.get(
+    '/whoami',
+    dependencies=[
+        Depends(requires('console:GetCurrentUser', legacy=Legacy.CONSOLE_USER))
+    ],
+)
 @inject
 async def get_resources(
     request: Request,
@@ -129,7 +155,18 @@ async def get_resources(
     )
 
 
-@user_router.get('/users')
+@user_router.get(
+    '/users',
+    dependencies=[
+        Depends(
+            requires(
+                'console:ListUsers',
+                resource=from_path('console_user'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def list_users(
     response_formatter: ResponseFormatter = Depends(
@@ -148,7 +185,19 @@ async def list_users(
     )
 
 
-@user_router.patch('/users/{user_id}')
+@user_router.patch(
+    '/users/{user_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:UpdateUser',
+                resource=from_path('console_user', 'user_id'),
+                legacy=SELF_OR_OWNER,
+                deny_message='You are not authorized to edit this user',
+            )
+        )
+    ],
+)
 @inject
 async def update_user(
     user_id: UUID,
@@ -162,24 +211,6 @@ async def update_user(
         Provide[ApplicationContainer.user_repository]
     ),
 ):
-    # Get current user
-    _, current_user_id, _ = get_current_user(request)
-
-    current_user = await user_repository.find_one(id=current_user_id)
-    is_owner = current_user and current_user.role == UserRole.OWNER.value
-
-    # Authorization: users can only edit themselves, owners can edit anyone
-    if str(user_id) != str(current_user_id) and not is_owner:
-        logger.warning(
-            f'User {current_user_id} attempted to edit user {user_id} without permission'
-        )
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'You are not authorized to edit this user'
-            ),
-        )
-
     # Filter out None values
     update_data = {k: v for k, v in user_data.model_dump().items() if v is not None}
 
@@ -216,7 +247,18 @@ async def update_user(
         )
 
 
-@user_router.delete('/users/{user_id}')
+@user_router.delete(
+    '/users/{user_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:DeleteUser',
+                resource=from_path('console_user', 'user_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def delete_user(
     user_id: UUID,
@@ -231,9 +273,6 @@ async def delete_user(
 ):
     # Get current user
     _, current_user_id, _ = get_current_user(request)
-
-    current_user = await user_repository.find_one(id=current_user_id)
-    is_owner = current_user and current_user.role == UserRole.OWNER.value
 
     # Get target user
     target_user = await user_repository.find_one(id=user_id, deleted=False)
@@ -257,7 +296,9 @@ async def delete_user(
     target_is_owner = target_user.role == UserRole.OWNER.value
 
     # Authorization: normal users cannot delete owners
-    if target_is_owner and not is_owner:
+    if target_is_owner and not await is_allowed(
+        request, 'console:DeleteOwnerUser', ResourceRef('console_user', str(user_id))
+    ):
         logger.warning(f'User {current_user_id} attempted to delete owner {user_id}')
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,

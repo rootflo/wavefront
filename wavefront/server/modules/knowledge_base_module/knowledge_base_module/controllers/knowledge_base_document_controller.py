@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import asyncio
 from datetime import datetime
 import os
@@ -72,7 +73,18 @@ class DocumentMetadataRequest(BaseModel):
     metadata: Optional[dict] = None
 
 
-@kb_document_router.post('/v1/knowledge-bases/{kb_id}/documents')
+@kb_document_router.post(
+    '/v1/knowledge-bases/{kb_id}/documents',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:UploadDocument',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def upload_document(
     kb_id: uuid.UUID,
@@ -253,7 +265,18 @@ def _document_row_to_dict(row: dict) -> dict:
     return result
 
 
-@kb_document_router.get('/v1/knowledge-bases/{kb_id}/documents')
+@kb_document_router.get(
+    '/v1/knowledge-bases/{kb_id}/documents',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:ListDocuments',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_documents(
     kb_id: uuid.UUID,
@@ -299,7 +322,18 @@ async def get_documents(
 NOT_TRACKED = 'NOT_TRACKED'
 
 
-@kb_document_router.get('/v1/knowledge-bases/{kb_id}/index-status')
+@kb_document_router.get(
+    '/v1/knowledge-bases/{kb_id}/index-status',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:GetIndexStatus',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_index_status(
     kb_id: uuid.UUID,
@@ -383,7 +417,18 @@ async def get_index_status(
     )
 
 
-@kb_document_router.delete('/v1/knowledge-bases/{kb_id}/documents/{document_id}')
+@kb_document_router.delete(
+    '/v1/knowledge-bases/{kb_id}/documents/{document_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:DeleteDocument',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_documents(
     kb_id: uuid.UUID,
@@ -428,7 +473,18 @@ async def delete_documents(
     )
 
 
-@kb_document_router.get('/v1/knowledge-bases/{kb_id}/document/{document_id}')
+@kb_document_router.get(
+    '/v1/knowledge-bases/{kb_id}/document/{document_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'knowledge_bases:GetDocument',
+                resource=from_path('knowledge_base', 'kb_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_document_with_id(
     kb_id: uuid.UUID,

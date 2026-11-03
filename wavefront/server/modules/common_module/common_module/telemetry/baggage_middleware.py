@@ -23,8 +23,8 @@ _SESSION_FIELDS = (
 class BaggageMiddleware:
     """Puts multi-tenant / business context into OpenTelemetry Baggage.
 
-    Values are read from the authenticated ``UserSession`` that
-    ``RequireAuthMiddleware`` places on the request, plus the request ID, so no
+    Values are read from the authenticated ``Principal`` that the
+    authorization middleware places on the request, plus the request ID, so no
     caller has to send additional headers for this to work.
 
     This is deliberately raw ASGI middleware rather than ``BaseHTTPMiddleware``:
@@ -85,12 +85,13 @@ class BaggageMiddleware:
     def _collect(scope: Dict[str, Any]) -> Dict[str, str]:
         entries: Dict[str, str] = {}
 
-        # `request.state` is backed by `scope['state']`, so the session that
-        # RequireAuthMiddleware assigned is readable here without a Request.
-        session = (scope.get('state') or {}).get('session')
-        if session is not None:
+        # `request.state` is backed by `scope['state']`, so the principal that
+        # the authorization middleware assigned is readable here without a
+        # Request. An anonymous caller (a public route) carries nothing.
+        principal = (scope.get('state') or {}).get('principal')
+        if principal is not None and not getattr(principal, 'is_anonymous', False):
             for attribute, key in _SESSION_FIELDS:
-                value = getattr(session, attribute, None)
+                value = getattr(principal, attribute, None)
                 if value:
                     entries[key] = str(value)
 

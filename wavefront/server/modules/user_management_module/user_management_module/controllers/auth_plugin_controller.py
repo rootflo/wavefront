@@ -1,3 +1,4 @@
+from authz_module import public_route
 import json
 import logging
 import secrets
@@ -98,7 +99,9 @@ class OAuthInitRequest(BaseModel):
     auth_id: str
 
 
-@auth_plugin_router.post('/v1/plugin-auth/authenticate')
+@auth_plugin_router.post(
+    '/v1/plugin-auth/authenticate', dependencies=[Depends(public_route)]
+)
 @inject
 async def unified_authenticate(
     request: Request,
@@ -249,7 +252,9 @@ async def unified_authenticate(
 
 
 # For google and microsoft oauth
-@auth_plugin_router.post('/v1/plugin-auth/oauth/init')
+@auth_plugin_router.post(
+    '/v1/plugin-auth/oauth/init', dependencies=[Depends(public_route)]
+)
 @inject
 async def init_oauth_flow(
     request: Request,
@@ -320,7 +325,9 @@ async def init_oauth_flow(
         )
 
 
-@auth_plugin_router.get('/v1/oauth/google/callback')
+@auth_plugin_router.get(
+    '/v1/oauth/google/callback', dependencies=[Depends(public_route)]
+)
 @inject
 async def google_oauth_callback(
     request: Request,
@@ -373,7 +380,9 @@ async def google_oauth_callback(
     )
 
 
-@auth_plugin_router.get('/v1/oauth/microsoft/callback')
+@auth_plugin_router.get(
+    '/v1/oauth/microsoft/callback', dependencies=[Depends(public_route)]
+)
 @inject
 async def microsoft_oauth_callback(
     request: Request,
@@ -428,7 +437,7 @@ async def microsoft_oauth_callback(
     )
 
 
-@auth_plugin_router.get('/v1/oauth/adfs/callback')
+@auth_plugin_router.get('/v1/oauth/adfs/callback', dependencies=[Depends(public_route)])
 @inject
 async def microsoft_adfs_oauth_callback(
     request: Request,

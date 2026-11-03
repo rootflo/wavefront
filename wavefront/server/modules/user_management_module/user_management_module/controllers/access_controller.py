@@ -1,3 +1,5 @@
+from authz_module import Legacy, from_path, requires
+from fastapi import Depends
 from typing import Optional
 import uuid
 
@@ -30,13 +32,24 @@ from user_management_module.models.resource import CreateRolePayload
 from user_management_module.models.resource import ResourcePayload
 from user_management_module.models.resource import UpdateResourcePayload
 from user_management_module.models.resource import UpdateRolePayload
-from user_management_module.utils.user_utils import check_is_admin
-from user_management_module.utils.user_utils import get_current_user
 
 access_router = APIRouter(prefix='/v1/access')
 
 
-@access_router.post('/resources')
+@access_router.post(
+    '/resources',
+    dependencies=[
+        Depends(
+            requires(
+                'users:CreateResource',
+                resource=from_path('resource'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def create_resource(
     request: Request,
@@ -46,14 +59,6 @@ async def create_resource(
     role_repository: RoleRepositoryDep,
     role_resource_repository: RoleResourceRepositoryDep,
 ):
-    user_role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(user_role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     seen_pairs: set[tuple[str, str]] = set()
     payload_duplicates: set[str] = set()
     for res in payload.resources:
@@ -154,7 +159,20 @@ async def create_resource(
             )
 
 
-@access_router.post('/roles')
+@access_router.post(
+    '/roles',
+    dependencies=[
+        Depends(
+            requires(
+                'users:CreateRole',
+                resource=from_path('role'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def create_role(
     request: Request,
@@ -164,15 +182,6 @@ async def create_role(
     role_repository: RoleRepositoryDep,
     role_resource_repository: RoleResourceRepositoryDep,
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     # Enforce the role 'name' unique constraint with a clear error.
     existing_role = await role_repository.find_one(name=payload.name)
     if existing_role:
@@ -251,7 +260,20 @@ async def create_role(
         )
 
 
-@access_router.get('/resources')
+@access_router.get(
+    '/resources',
+    dependencies=[
+        Depends(
+            requires(
+                'users:ListResources',
+                resource=from_path('resource'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_resource(
     request: Request,
@@ -272,15 +294,6 @@ async def get_resource(
     ),
     offset: int = Query(0, ge=0, description='Number of resources to skip'),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     if not scopes:
         parsed_scopes = [
             ResourceScope.CONSOLE,
@@ -314,7 +327,20 @@ async def get_resource(
     )
 
 
-@access_router.get('/roles')
+@access_router.get(
+    '/roles',
+    dependencies=[
+        Depends(
+            requires(
+                'users:ListRoles',
+                resource=from_path('role'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_role(
     request: Request,
@@ -346,14 +372,6 @@ async def get_role(
     ),
     offset: int = Query(0, ge=0, description='Number of roles to skip'),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
     item_to_select = select_item.split(',') if select_item else []
     for item in item_to_select:
         if not hasattr(Role, item):
@@ -480,7 +498,20 @@ async def get_role(
     )
 
 
-@access_router.patch('/resources/{resource_id}')
+@access_router.patch(
+    '/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateResource',
+                resource=from_path('resource', 'resource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def patch_resources(
     request: Request,
@@ -489,14 +520,6 @@ async def patch_resources(
     response_formatter: ResponseFormatterDep,
     resource_repository: ResourceRepositoryDep,
 ):
-    user_role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(user_role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     # Explicitly extract fields that can be updated
     update_fields = {}
     if payload.key is not None:
@@ -526,7 +549,20 @@ async def patch_resources(
     )
 
 
-@access_router.delete('/resources/{resource_id}')
+@access_router.delete(
+    '/resources/{resource_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:DeleteResource',
+                resource=from_path('resource', 'resource_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def delete_resources(
     request: Request,
@@ -534,13 +570,6 @@ async def delete_resources(
     response_formatter: ResponseFormatterDep,
     resource_repository: ResourceRepositoryDep,
 ):
-    user_role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(user_role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
     delete_resource = await resource_repository.find(id=resource_id)
     if not delete_resource:
         return JSONResponse(
@@ -591,7 +620,20 @@ async def delete_resources(
     )
 
 
-@access_router.patch('/roles/{role_id}')
+@access_router.patch(
+    '/roles/{role_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:UpdateRole',
+                resource=from_path('role', 'role_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def patch_role_resources(
     request: Request,
@@ -602,14 +644,6 @@ async def patch_role_resources(
     role_repository: RoleRepositoryDep,
     role_resource_repository: RoleResourceRepositoryDep,
 ):
-    user_role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(user_role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     role = await role_repository.find_one(id=role_id)
     if not role:
         return JSONResponse(
@@ -721,7 +755,20 @@ async def patch_role_resources(
     )
 
 
-@access_router.delete('/roles/{role_id}')
+@access_router.delete(
+    '/roles/{role_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'users:DeleteRole',
+                resource=from_path('role', 'role_id'),
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def delete_role(
     request: Request,
@@ -730,14 +777,6 @@ async def delete_role(
     role_repository: RoleRepositoryDep,
     role_resource_repository: RoleResourceRepositoryDep,
 ):
-    user_role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(user_role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
-
     role = await role_repository.find_one(id=role_id)
     if not role:
         return JSONResponse(

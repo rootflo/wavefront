@@ -1,10 +1,10 @@
+from authz_module import Legacy, public_route, requires
 import json
 from typing import Optional
 from uuid import uuid4
 
 from auth_module.auth_container import AuthContainer
 from auth_module.services.token_service import TokenService
-from authlib.integrations.starlette_client import OAuth
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     INACTIVE_ACCOUNT_DISABLE_FLAG,
@@ -27,7 +27,6 @@ from pydantic import BaseModel
 from pydantic import EmailStr
 from pydantic import Field
 from pydantic import field_validator
-from user_management_module.models.oauth_provider import OAuthProviderConfig
 from user_management_module.models.user_schema import (
     EMAIL_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
@@ -51,7 +50,6 @@ from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
 
 auth_router = APIRouter(prefix='/v1')
-oauth = OAuth()
 
 
 class AuthRequest(BaseModel):
@@ -65,7 +63,7 @@ class AuthRequest(BaseModel):
         return normalize_email(v)
 
 
-@auth_router.post('/authenticate')
+@auth_router.post('/authenticate', dependencies=[Depends(public_route)])
 @inject
 async def authenticate(
     request: Request,
@@ -212,87 +210,10 @@ async def authenticate(
     )
 
 
-@auth_router.post('/authenticate/config')
-@inject
-def config_oauth(
-    config: OAuthProviderConfig,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-):
-    oauth.register(
-        name=config.name,
-        client_id=config.client_id,
-        client_secret=config.client_secret,
-        redirect_uri=config.redirect_uri,
-        client_kwargs=config.client_kwargs,
-        server_metadata_url=config.server_metadata_url,
-    )
-    response_data = f'{config.name} OAuth provider registered successfully.'
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'message': response_data}),
-    )
-
-
-@auth_router.get('/google/login')
-async def google_login(request: Request):
-    redirect_uri = str(request.url_for('google_callback'))
-    return await oauth.google.authorize_redirect(request, redirect_uri)
-
-
-@auth_router.get('/google/login/callback')
-@inject
-async def google_callback(
-    request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-):
-    token = await oauth.google.authorize_access_token(request)
-    user = token['userinfo']
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'user': dict(user)}),
-    )
-
-
-# @auth_router.get('/azure/login')
-# @inject
-# async def azure_login(
-#     request: Request,
-#     azure_connector: AzureConnector = Depends(Provide[AuthContainer.azure_connector]),
-# ):
-#     try:
-#         url = azure_connector.get_authorization_url()
-#         return RedirectResponse(url=url)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-# @auth_router.get('/oauth/azure/callback')
-# @inject
-# async def azure_callback(
-#     request: Request,
-#     code: str,
-#     azure_connector: AzureConnector = Depends(Provide[AuthContainer.azure_connector]),
-#     response_formatter: ResponseFormatter = Depends(
-#         Provide[CommonContainer.response_formatter]
-#     ),
-# ):
-#     try:
-#         token = azure_connector.get_credentials_after_auth(code)
-#         creds = azure_connector.get_credentials(token)
-#         user = await azure_connector.get_user(creds)
-#         return JSONResponse(
-#             status_code=status.HTTP_200_OK,
-#             content=response_formatter.buildSuccessResponse({'user': user.mail}),
-#         )
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-@auth_router.post('/logout')
+@auth_router.post(
+    '/logout',
+    dependencies=[Depends(requires('auth:Logout', legacy=Legacy.AUTHENTICATED))],
+)
 @inject
 async def logout(
     request: Request,
@@ -304,8 +225,8 @@ async def logout(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    # Get the current session from request state
-    current_session = request.state.session
+    # The caller's session, as the authentication middleware found it
+    current_session = request.state.principal
 
     # Delete the session from database
     await session_repository.delete_all(id=current_session.session_id)
