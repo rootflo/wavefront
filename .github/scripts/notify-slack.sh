@@ -43,7 +43,7 @@ if [ -f "$SUMMARY_FILE" ]; then
     | . + " " + $name
   ' "$SUMMARY_FILE")
   DETAILS=$(jq -r '
-    "*\(.total) vulnerabilities* on `\(.ref)` (`\(.sha)`), \(.scanned) of \(.images) images scanned\n"
+    "*\(.total) vulnerabilities* at commit \(.commits | map("`\(.)`") | join(", ")), \(.scanned) of \(.images) images scanned\n"
     + (.severities | to_entries | map("\(.key): \(.value)") | join("  ·  "))
     + "\nAccepted in .trivyignore: \(.accepted)"
     + (if (.failed | length) > 0
