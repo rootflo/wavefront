@@ -8,6 +8,7 @@ from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.common.agent_stack_builder import StackOptions
 from call_processing.services.common.audio_config import TELEPHONY_SAMPLE_RATE
+from call_processing.services.common.context.subject import CallSubject
 from call_processing.services.common.conversation import BaseConversation
 from call_processing.services.telephony.prompts import call_context
 
@@ -39,9 +40,16 @@ class TelephonyConversation(BaseConversation):
         self.provider = provider
         self.customer_number = customer_number
         self.agent_number = agent_number
+        # Tools get the normalised number; the prompt keeps the raw one
+        self.call_subject = CallSubject.for_call(
+            call_ref=call_id, direction=call_direction, raw_phone=customer_number
+        )
 
     def stack_options(self) -> StackOptions:
-        return StackOptions(prompt_suffix=call_context(self.customer_number))
+        return StackOptions(
+            prompt_suffix=call_context(self.customer_number),
+            call_subject=self.call_subject,
+        )
 
     def build_pipeline(
         self, transport: BaseTransport, stack: AgentStack, shared: SharedSession

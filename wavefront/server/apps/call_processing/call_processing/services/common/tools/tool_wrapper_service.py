@@ -10,6 +10,11 @@ from typing import Dict, Any, List, Tuple, Callable, Optional
 import flo_lib.http as httpx
 
 from call_processing.log.logger import logger
+from call_processing.services.common.context.bindings import (
+    resolve_bindings,
+    tool_bindings,
+)
+from call_processing.services.common.context.subject import CallSubject
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import FunctionCallResultProperties
 
@@ -294,7 +299,9 @@ class ToolWrapperFactory:
 
     @staticmethod
     def create_pipecat_function(
-        tool: Dict[str, Any], wrapper
+        tool: Dict[str, Any],
+        wrapper,
+        bound_values: Optional[Dict[str, str]] = None,
     ) -> Tuple[FunctionSchema, Callable]:
         """
         Create a Pipecat FunctionSchema and callable function for a tool
@@ -302,6 +309,8 @@ class ToolWrapperFactory:
         Args:
             tool: Tool configuration dictionary
             wrapper: Tool wrapper instance (ApiToolWrapper or PythonToolWrapper)
+            bound_values: Arguments the server fills in (context/bindings.py);
+                hidden from the AI's schema and merged in before the tool runs
 
         Returns:
             Tuple of (FunctionSchema, callable_function)
@@ -315,6 +324,10 @@ class ToolWrapperFactory:
         # Extract properties and required fields from parameter_schema
         properties = parameter_schema.get('properties', {})
         required = parameter_schema.get('required', [])
+        bound_values = bound_values or {}
+        if bound_values:
+            properties = {k: v for k, v in properties.items() if k not in bound_values}
+            required = [r for r in required if r not in bound_values]
 
         # Create FunctionSchema object (Pipecat's official way)
         function_schema = FunctionSchema(
@@ -347,6 +360,10 @@ class ToolWrapperFactory:
                     # Direct dict parameters
                     tool_params = params
                     result_callback = None
+
+                if bound_values:
+                    # The server's values win over anything the AI sent
+                    tool_params = {**(tool_params or {}), **bound_values}
 
                 # Execute the tool wrapper
                 result = await wrapper.execute(tool_params)
@@ -393,12 +410,16 @@ class ToolWrapperFactory:
     def create_all_tool_functions(
         agent_tools: List[Dict[str, Any]],
         messenger_getter: Optional[Callable[[], Any]] = None,
+        call_subject: Optional[CallSubject] = None,
+        agent_id: Optional[str] = None,
     ) -> Tuple[List[FunctionSchema], List[Tuple[str, Callable]]]:
         """
         Create wrapper functions for all tools attached to an agent
 
         Args:
             messenger_getter: Returns the live browser messenger, for app tools
+            call_subject: The phone call's identity, for server-filled arguments
+            agent_id: The agent the tools belong to (the ``agent.id`` binding)
             agent_tools: List of tool configurations from get_agent_tools()
                         Each dict contains: {id, name, description, tool_type,
                                             config, parameter_schema, is_enabled, association}
@@ -460,9 +481,19 @@ class ToolWrapperFactory:
                             f"Applied config overrides for tool '{tool['name']}': {config_overrides}"
                         )
 
+                bound_values = resolve_bindings(
+                    tool_bindings(tool), call_subject, agent_id
+                )
+                if bound_values:
+                    logger.info(
+                        f"Server fills arguments {sorted(bound_values)} for tool '{tool['name']}'"
+                    )
+
                 # Create Pipecat FunctionSchema and callable function
                 function_schema, callable_func = (
-                    ToolWrapperFactory.create_pipecat_function(tool, wrapper)
+                    ToolWrapperFactory.create_pipecat_function(
+                        tool, wrapper, bound_values
+                    )
                 )
 
                 # Add to both lists

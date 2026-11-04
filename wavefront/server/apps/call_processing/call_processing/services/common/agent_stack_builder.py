@@ -26,6 +26,7 @@ from call_processing.constants.language_config import LANGUAGE_DISPLAY_NAMES
 from call_processing.log.logger import logger
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.common.audio_config import with_sample_rate
+from call_processing.services.common.context.subject import CallSubject
 from call_processing.services.common.direct_language_switch import (
     DirectLanguageSwitchProcessor,
     LanguageSwitchConfig,
@@ -87,6 +88,9 @@ class StackOptions:
     # LANGUAGE SWITCHING RULES and no ``detect_and_switch_language`` tool.
     # STT/TTS are still multi-language.
     room_context_language: bool = False
+    # Phone calls: who the call is about, for server-filled tool arguments
+    # (``config_overrides.context.bind``). None on browser calls.
+    call_subject: Optional[CallSubject] = None
 
 
 def build_agent_stack(
@@ -255,6 +259,8 @@ def build_agent_stack(
                 # App tools talk to the browser; it only exists once the pipeline
                 # is built, so they look the messenger up when called.
                 messenger_getter=lambda: shared.messenger,
+                call_subject=options.call_subject,
+                agent_id=str(agent_id) if agent_id else None,
             )
 
             # Register each tool with LLM
