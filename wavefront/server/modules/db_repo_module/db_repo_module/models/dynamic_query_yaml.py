@@ -10,7 +10,7 @@ class DynamicQueryYaml(Base):
     name = Column(String(255), primary_key=True)
     file_path = Column(String(255), nullable=False)
     datasource_id = Column(
-        UUID, ForeignKey('datasource.id', ondelete='CASCADE'), nullable=False
+        UUID, ForeignKey('datasource.id', ondelete='CASCADE'), primary_key=True
     )
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(

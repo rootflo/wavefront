@@ -84,6 +84,7 @@ class DynamicQueryExecuteRequest(BaseModel):
 
 def generate_cache_key(
     query_id: str,
+    datasource_id: str = None,
     filter: str = None,
     rls_filter_str: str = None,
     limit: int = None,
@@ -93,6 +94,7 @@ def generate_cache_key(
     """Generate a unique cache key based on query parameters."""
     key_dict = {
         'query_id': query_id,
+        'datasource_id': datasource_id,
         'filter': filter,
         'rls_filter': rls_filter_str,
         'limit': limit,
