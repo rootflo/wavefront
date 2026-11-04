@@ -328,6 +328,7 @@ class PresidioAdapter(BaseAdapter):
 
                 if self._load_optional_recognizers:
                     self._augment_registry(analyzer)
+                    self._register_custom_recognizers(analyzer)
 
             anonymizer = self._anonymizer or AnonymizerEngine()
             return analyzer, anonymizer
@@ -435,6 +436,48 @@ class PresidioAdapter(BaseAdapter):
             f'{len(covered)} entity types available'
             + (f'; unavailable: {", ".join(skipped)}' if skipped else '')
         )
+
+    def _register_custom_recognizers(self, analyzer: Any) -> None:
+        """Load recognisers for identifiers Presidio does not ship at all.
+
+        Separate from :meth:`_augment_registry` because that returns early when
+        Presidio's YAML cannot be read, which must not take these down with it.
+        Inert for existing policies for the same reason: a recogniser is only
+        consulted when its entity is selected.
+        """
+        try:
+            from .custom_recognizers import CUSTOM_RECOGNIZERS
+        except Exception as exc:  # pragma: no cover - env dependent
+            logger.warning(f'Presidio: custom recognisers unavailable ({exc})')
+            return
+
+        registry = analyzer.registry
+        covered = {
+            entity
+            for recognizer in registry.recognizers
+            if recognizer.supported_language == self._language
+            for entity in recognizer.supported_entities
+        }
+
+        for recognizer_cls in CUSTOM_RECOGNIZERS:
+            try:
+                instance = recognizer_cls()
+            except Exception as exc:
+                logger.warning(
+                    f'Presidio: custom recogniser {recognizer_cls.__name__} '
+                    f'failed to load ({type(exc).__name__}: {exc})'
+                )
+                continue
+
+            if instance.supported_language != self._language:
+                continue
+            # Never shadow: if Presidio grows its own recogniser for this
+            # entity, the upstream one wins.
+            if set(instance.supported_entities) & covered:
+                continue
+
+            registry.add_recognizer(instance)
+            covered.update(instance.supported_entities)
 
     # -- policy translation ----------------------------------------------
 
