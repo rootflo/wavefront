@@ -41,6 +41,7 @@ from call_processing.services.common.agent_stack_builder import (
 from call_processing.services.common.call_evaluation_service import (
     CallEvaluationService,
 )
+from call_processing.services.common.turn_latency import TurnLatencyObserver
 
 # 5 minutes without speaking activity ends the conversation
 DEFAULT_IDLE_TIMEOUT_SECS = 300
@@ -144,6 +145,8 @@ class BaseConversation(ABC):
             'language_switch_count': 0,
             'agent_switch_count': 0,
             '_bot_speaking': False,
+            # Answered turns, timed to the first non-filler audio (turn_latency.py)
+            'turn_latencies': [],
         }
         shared = SharedSession(call_stats=call_stats, transcript_log=transcript_log)
 
@@ -179,6 +182,9 @@ class BaseConversation(ABC):
                 UserStartedSpeakingFrame,
             ),
             idle_timeout_secs=self.idle_timeout_secs,
+            observers=[
+                TurnLatencyObserver(on_turn=call_stats['turn_latencies'].append)
+            ],
             enable_tracing=pipecat_settings.enable_tracing,
             enable_turn_tracking=pipecat_settings.enable_turn_tracking,
             conversation_id=None,

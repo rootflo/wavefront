@@ -20,6 +20,25 @@ _DEFAULT_API_TIMEOUT_S = 4.0
 _DEFAULT_APP_ACK_TIMEOUT_S = 3.0
 
 
+def log_safe_keys(params: Any) -> Any:
+    """Argument names only: values can be the caller's phone number or account ids."""
+    if isinstance(params, dict):
+        return sorted(params)
+    return type(params).__name__
+
+
+def log_safe_result(result: Any) -> str:
+    """Outcome and the shape of a tool result, without customer data."""
+    if not isinstance(result, dict):
+        return type(result).__name__
+    data = result.get('data')
+    data_keys = sorted(data) if isinstance(data, dict) else type(data).__name__
+    return (
+        f"success={result.get('success')} status_code={result.get('status_code')} "
+        f'data_keys={data_keys}'
+    )
+
+
 def _shared_http_client() -> httpx.AsyncClient:
     global _SHARED_HTTP_CLIENT
     if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
@@ -315,7 +334,8 @@ class ToolWrapperFactory:
             result_callback = None
             try:
                 logger.info(
-                    f"Executing tool '{tool_name}' with params: {params.arguments if hasattr(params, 'arguments') else params}"
+                    f"Executing tool '{tool_name}' with params: "
+                    f"{log_safe_keys(params.arguments if hasattr(params, 'arguments') else params)}"
                 )
 
                 # Handle different parameter formats from Pipecat
@@ -331,7 +351,9 @@ class ToolWrapperFactory:
                 # Execute the tool wrapper
                 result = await wrapper.execute(tool_params)
 
-                logger.info(f"Tool '{tool_name}' execution result: {result}")
+                logger.info(
+                    f"Tool '{tool_name}' execution result: {log_safe_result(result)}"
+                )
 
                 # Return result via callback if available
                 if result_callback:
