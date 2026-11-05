@@ -104,7 +104,7 @@ constraint-dependencies = [
     # protobuf 5.x has CVE-2026-0994. Moves grpcio-status off 1.71.x, which
     # caps protobuf<6.
     "protobuf>=6.31.1",
-    "pyasn1>=0.6.4",
+    "pyasn1>=0.6.5",
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",
     "pyjwt>=2.14.0",
