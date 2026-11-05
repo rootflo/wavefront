@@ -79,6 +79,47 @@ def test_the_proxy_status_code_is_returned(client, proxy):
     assert response.json()['meta']['message'] == 'Pipeline error: boom'
 
 
+@pytest.mark.parametrize(
+    'value, sent',
+    [
+        ('42', '42'),
+        (42, '42'),
+        ('https://other-host.example/x', 'https%3A%2F%2Fother-host.example%2Fx'),
+        ('a/../../internal', 'a%2F..%2F..%2Finternal'),
+        ('Ada Lovelace', 'Ada%20Lovelace'),
+    ],
+)
+def test_path_params_are_encoded_as_one_segment(client, proxy, value, sent):
+    client.post(
+        '/v1/api-services/crm/execute',
+        json={'api_id': 'get-user', 'path_params': {'id': value}},
+    )
+
+    assert proxy.process_request.await_args.kwargs['path_params'] == {'id': sent}
+
+
+@pytest.mark.parametrize('value', ['', '.', '..'])
+def test_dot_and_empty_path_params_are_rejected(client, proxy, value):
+    response = client.post(
+        '/v1/api-services/crm/execute',
+        json={'api_id': 'get-user', 'path_params': {'id': value}},
+    )
+
+    assert response.status_code == 400
+    proxy.process_request.assert_not_awaited()
+
+
+def test_a_backend_204_comes_back_as_a_200_envelope(client, proxy):
+    proxy.process_request.return_value = ProxyResponse.success(
+        data=None, http_status_code=204
+    )
+
+    response = client.post('/v1/api-services/crm/execute', json={'api_id': 'x'})
+
+    assert response.status_code == 200
+    assert response.json()['meta']['status'] == 'success'
+
+
 def test_binary_responses_pass_through(client, proxy):
     proxy.process_request.return_value = Response(
         content=b'\x89PNG', media_type='image/png'

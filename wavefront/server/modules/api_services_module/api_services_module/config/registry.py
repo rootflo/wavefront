@@ -7,6 +7,10 @@ from common_module.log.logger import logger
 from ..core.manager import ApiServicesManager
 
 
+class ServiceNotFoundError(ValueError):
+    """No service with this id in the database."""
+
+
 class ServiceRegistry:
     """
     Registry for managing service definitions.
@@ -103,7 +107,9 @@ class ServiceRegistry:
 
         service = await self.api_service_manager.get_api_service(id=service_id)
         if not service:
-            raise ValueError(f'No service definition found for service: {service_id}')
+            raise ServiceNotFoundError(
+                f'No service definition found for service: {service_id}'
+            )
         service_def_yaml = self.api_service_manager.fetch_service_def(service)
         service_def = self.parser.parse_yaml_string(service_def_yaml)
         self.register_service(service_definition=service_def)

@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from common_module.log.logger import logger
 from ..models.pipeline import PipelineContext, PipelineException
 from ..models.service import ProxyResponse, ServiceDefinition, ApiConfig
-from ..config.registry import ServiceRegistry
+from ..config.registry import ServiceNotFoundError, ServiceRegistry
 from ..pipeline.builder import PipelineBuilder, PipelineCache
 from ..auth.manager import AuthManager
 from .manager import ApiServicesManager
@@ -59,7 +59,7 @@ class ApiProxy:
             return None
         try:
             await self.service_registry.load_service_from_db(service_id)
-        except ValueError:
+        except ServiceNotFoundError:
             return None
         service_definition = self.service_registry.get_service(service_id)
         if service_definition:

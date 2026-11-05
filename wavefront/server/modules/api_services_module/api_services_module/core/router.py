@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Request, HTTPException, Response
 import json
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,20 @@ class ExecuteApiRequest(BaseModel):
     path_params: Dict[str, Any] = Field(default_factory=dict)
     query_params: Dict[str, Any] = Field(default_factory=dict)
     headers: Dict[str, str] = Field(default_factory=dict)
+
+
+def _encode_path_params(path_params: Dict[str, Any]) -> Dict[str, str]:
+    """Encode each value as one path segment, so it can't change the backend URL."""
+    encoded = {}
+    for name, value in path_params.items():
+        value = str(value)
+        if value in ('', '.', '..'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid value for path parameter '{name}': {value!r}",
+            )
+        encoded[name] = quote(value, safe='')
+    return encoded
 
 
 class ProxyRouter:
@@ -114,7 +129,7 @@ class ProxyRouter:
                 api_version=body.api_version,
                 method='POST',
                 path='_workflow',
-                path_params=body.path_params,
+                path_params=_encode_path_params(body.path_params),
                 query_params=body.query_params,
                 headers=body.headers,
                 body=body.payload,
@@ -122,7 +137,9 @@ class ProxyRouter:
             )
             if isinstance(proxy_response, Response):
                 return proxy_response
-            response.status_code = proxy_response.http_status_code
+            # A 204 can't carry the JSON envelope the caller parses
+            status_code = proxy_response.http_status_code
+            response.status_code = 200 if status_code == 204 else status_code
             return proxy_response
 
         # Authentication endpoint (for direct auth API calls)
