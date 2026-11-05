@@ -22,11 +22,13 @@ import {
   argumentSource,
   describeOnCall,
   effectiveMethod,
+  fieldLabel,
   prefetchBlockers,
   readToolContext,
   suggestedSource,
   toolArguments,
   ToolContextSettings,
+  usableBind,
   writeToolContext,
 } from './agent-tool-context';
 
@@ -61,7 +63,12 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
   const overrides = tool.association.config_overrides;
   const args = useMemo(() => toolArguments(tool), [tool]);
   const method = effectiveMethod(tool, overrides);
-  const [settings, setSettings] = useState<ToolContextSettings>(() => readToolContext(overrides));
+  // Saved binds the server ignores (e.g. a whole object argument) are shown, then dropped on save
+  const [ignoredBinds] = useState(() => usableBind(args, readToolContext(overrides).bind).ignored);
+  const [settings, setSettings] = useState<ToolContextSettings>(() => {
+    const saved = readToolContext(overrides);
+    return { ...saved, bind: usableBind(args, saved.bind).bind };
+  });
   const saveOverrides = useSetAgentToolOverrides(appId, agentId);
 
   const blockers = prefetchBlockers(args, method, settings);
@@ -101,6 +108,13 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
             title="Who fills in each detail?"
             hint="The AI normally fills every detail from the conversation. Details taken from the call itself are always right, and the caller is never asked for them."
           >
+            {ignoredBinds.length > 0 && (
+              <div className={`rounded-md p-3 text-xs ${toneClass.warning}`} role="note">
+                Saved settings for {ignoredBinds.map(fieldLabel).join(', ')} don&apos;t work on calls: only a text
+                detail can come from the call, not a whole object. Pick the field inside it below. Saving removes the
+                old setting.
+              </div>
+            )}
             {args.length === 0 ? (
               <div className="frost-text-muted rounded-md border border-dashed p-3 text-sm">
                 This tool takes no details.
@@ -118,7 +132,7 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <Label htmlFor={`source-${arg.name}`} className="font-mono text-sm">
-                            {arg.name}
+                            {fieldLabel(arg.name)}
                           </Label>
                           {arg.required && <Badge className={toneClass.neutral}>required</Badge>}
                         </div>
@@ -137,19 +151,30 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
                         )}
                       </div>
                       <div className="sm:w-64">
-                        <Select value={source} onValueChange={(value) => setSource(arg.name, value as ArgumentSource)}>
-                          <SelectTrigger id={`source-${arg.name}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ARGUMENT_SOURCES.map((s) => (
-                              <SelectItem key={s.value} value={s.value}>
-                                {s.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="frost-text-muted mt-1 text-xs">{sourceLabel(source).example}</p>
+                        {!arg.bindable ? (
+                          <p className="frost-text-muted text-xs">
+                            Always the AI. Only text details can come from the call.
+                          </p>
+                        ) : (
+                          <>
+                            <Select
+                              value={source}
+                              onValueChange={(value) => setSource(arg.name, value as ArgumentSource)}
+                            >
+                              <SelectTrigger id={`source-${arg.name}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ARGUMENT_SOURCES.map((s) => (
+                                  <SelectItem key={s.value} value={s.value}>
+                                    {s.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="frost-text-muted mt-1 text-xs">{sourceLabel(source).example}</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

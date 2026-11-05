@@ -3,6 +3,10 @@ import contextlib
 import json
 
 from call_processing.services.common.context.store import (
+    FETCHED,
+    JOINED,
+    LIVE,
+    SAVED,
     CallContextStore,
     context_key,
 )
@@ -148,4 +152,25 @@ async def test_other_pods_failed_fetch_falls_back_to_a_live_call():
     result = await store.get_or_fetch(KEY, fetch)
 
     assert result == {'name': 'Jane Doe'}
+    assert fetch.calls == 1
+
+
+async def test_lookup_says_where_the_answer_came_from():
+    redis = FakeRedis()
+    fetch = CountingFetch()
+
+    assert (await CallContextStore(redis).lookup(KEY, fetch))[1] == FETCHED
+    assert (await CallContextStore(redis).lookup(KEY, fetch))[1] == SAVED
+    assert (await CallContextStore(BrokenRedis()).lookup(KEY, fetch))[1] == LIVE
+
+
+async def test_lookup_during_a_running_fetch_is_joined():
+    store = CallContextStore(FakeRedis())
+    fetch = CountingFetch(delay=0.05)
+
+    (_, first), (_, second) = await asyncio.gather(
+        store.lookup(KEY, fetch), store.lookup(KEY, fetch)
+    )
+
+    assert (first, second) == (FETCHED, JOINED)
     assert fetch.calls == 1

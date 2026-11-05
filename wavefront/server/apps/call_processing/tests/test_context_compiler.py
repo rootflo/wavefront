@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -126,4 +127,113 @@ async def test_tool_without_context_settings_is_never_cached(api_calls):
     await fn({'mobile_number': '+911234567890'})
     await fn({'mobile_number': '+911234567890'})
 
+    assert len(api_calls) == 2
+
+
+async def test_prefetch_logs_call_info_with_secret_headers_redacted(api_calls, caplog):
+    store = CallContextStore(FakeRedis())
+    tool = _tool(PREFETCH)
+    tool['config'].update(
+        headers={'X-Tenant': 'riverbend', 'X-Api-Token': 'abc'},
+        auth_type='bearer',
+        auth_credentials={'token': 'secret-token'},
+    )
+
+    with caplog.at_level(logging.INFO, logger='call_processing'):
+        start_prefetch([tool], SUBJECT, 'agent-1', store)
+        await _drain()
+
+    done = next(
+        r.getMessage() for r in caplog.records if 'Prefetch done' in r.getMessage()
+    )
+    assert "tool 'find_account', call CA123 (inbound), agent agent-1" in done
+    assert 'fetched GET https://water.test/account in' in done
+    assert "'X-Tenant': 'riverbend'" in done
+    assert "'Authorization': '<redacted>'" in done
+    assert "'X-Api-Token': '<redacted>'" in done
+    assert 'secret-token' not in caplog.text
+    assert '1234567890' not in caplog.text
+    lookup_key = next(
+        r.getMessage().split('key ')[1]
+        for r in caplog.records
+        if 'Call context miss, called the API and saved' in r.getMessage()
+    )
+    assert done.endswith(f'key {lookup_key}')
+
+
+def test_log_safe_headers_redacts_secrets():
+    wrapper = ApiToolWrapper(
+        url='https://water.test',
+        method='GET',
+        headers={'X-Tenant': 'riverbend', 'X-Api-Token': 'abc', 'X-Client': 'c1'},
+        auth_type='api_key',
+        auth_credentials={'key_name': 'X-Client', 'key_value': 'k1'},
+    )
+
+    assert wrapper.log_safe_headers() == {
+        'X-Tenant': 'riverbend',
+        'X-Api-Token': '<redacted>',
+        'X-Client': '<redacted>',
+    }
+
+
+class _Params:
+    """What Pipecat hands a tool function: the AI's arguments and its call id."""
+
+    def __init__(self, arguments, tool_call_id):
+        self.arguments = arguments
+        self.tool_call_id = tool_call_id
+        self.sent = []
+
+    async def result_callback(self, result, properties=None):
+        self.sent.append(result)
+
+
+async def test_ai_call_after_prefetch_logs_a_hit_with_the_same_key(api_calls, caplog):
+    store = CallContextStore(FakeRedis())
+    tools = [_tool(PREFETCH)]
+
+    with caplog.at_level(logging.INFO, logger='call_processing'):
+        start_prefetch(tools, SUBJECT, 'agent-1', store)
+        await _drain()
+        await _ai_tool(tools, store)['find_account']({})
+
+    messages = [r.getMessage() for r in caplog.records]
+    miss = next(m for m in messages if 'Call context miss' in m)
+    hit = next(m for m in messages if 'Call context hit' in m)
+    assert 'API call skipped (saved result from Redis)' in hit
+    assert hit.split('key ')[1] == miss.split('key ')[1]
+    assert len(api_calls) == 1
+
+
+async def test_repeated_identical_result_is_sent_as_a_short_reference(api_calls):
+    store = CallContextStore(FakeRedis())
+    fn = _ai_tool([_tool({'read_only': True})], store)['find_account']
+    first = _Params({'mobile_number': '+911234567890'}, 'call_1')
+    second = _Params({'mobile_number': '+911234567890'}, 'call_2')
+
+    await fn(first)
+    await fn(second)
+
+    assert first.sent == [{'name': 'Jane Doe'}]
+    assert second.sent == [
+        {
+            'unchanged': True,
+            'same_as_tool_call_id': 'call_1',
+            'note': 'Same result as the earlier find_account call in this '
+            'conversation. Answer from that result.',
+        }
+    ]
+    assert len(api_calls) == 1
+
+
+async def test_different_arguments_still_get_the_full_result(api_calls):
+    store = CallContextStore(FakeRedis())
+    fn = _ai_tool([_tool({'read_only': True})], store)['find_account']
+    other = _Params({'mobile_number': '+910000000000'}, 'call_2')
+
+    await fn(_Params({'mobile_number': '+911234567890'}, 'call_1'))
+    await fn(other)
+
+    assert other.sent == [{'name': 'Jane Doe'}]
     assert len(api_calls) == 2

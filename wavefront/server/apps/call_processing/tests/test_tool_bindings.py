@@ -1,4 +1,4 @@
-import pytest
+import logging
 
 from call_processing.services.common.context.bindings import (
     resolve_bindings,
@@ -45,9 +45,10 @@ def test_no_bind_config_means_no_bindings():
     assert tool_bindings(_tool()) == {}
 
 
-def test_unknown_variable_is_rejected():
-    with pytest.raises(ValueError, match='caller.email'):
-        tool_bindings(_tool({'mobile_number': 'caller.email'}))
+def test_unknown_variable_is_ignored_and_logged(caplog):
+    with caplog.at_level(logging.WARNING, logger='call_processing'):
+        assert tool_bindings(_tool({'mobile_number': 'caller.email'})) == {}
+    assert "unknown variable 'caller.email'" in caplog.text
 
 
 def test_resolves_every_call_variable():
@@ -92,9 +93,7 @@ async def test_bound_value_is_merged_and_wins():
 
     await fn({'service': 'water', 'mobile_number': '98'})
 
-    assert wrapper.calls == [
-        {'service': 'water', 'mobile_number': '+911234567890'}
-    ]
+    assert wrapper.calls == [{'service': 'water', 'mobile_number': '+911234567890'}]
 
 
 async def test_unbound_tool_is_unchanged():
@@ -120,8 +119,8 @@ def test_factory_wires_subject_into_bound_tools():
     assert len(registrations) == 2
 
 
-def test_factory_skips_tool_with_unknown_variable():
+def test_factory_keeps_tool_with_unknown_variable_and_leaves_field_to_ai():
     schemas, _ = ToolWrapperFactory.create_all_tool_functions(
         [_tool({'mobile_number': 'caller.email'})], call_subject=SUBJECT
     )
-    assert schemas == []
+    assert list(schemas[0].properties) == ['mobile_number', 'service']

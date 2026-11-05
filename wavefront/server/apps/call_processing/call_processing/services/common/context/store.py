@@ -15,8 +15,9 @@ during a Redis outage.
 import asyncio
 import hashlib
 import json
+import time
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from redis.asyncio import Redis
 
@@ -41,6 +42,19 @@ _NO_RESULT = object()
 _UNAVAILABLE = object()
 
 Fetch = Callable[[], Awaitable[Any]]
+
+# Where a lookup's answer came from
+SAVED = 'saved'  # a result saved earlier in this call: no API call
+JOINED = 'joined'  # a fetch already running (the prefetch, say): no extra API call
+FETCHED = 'fetched'  # this lookup called the API and saved the result
+LIVE = 'live'  # called the API without the store (Redis down, or a wait timed out)
+
+_OUTCOME_LOG = {
+    SAVED: 'hit, API call skipped (saved result from Redis)',
+    JOINED: 'hit, API call skipped (joined a fetch already running)',
+    FETCHED: 'miss, called the API and saved the result',
+    LIVE: 'miss, called the API (store unavailable or wait timed out)',
+}
 
 
 def is_failure(result: Any) -> bool:
@@ -101,6 +115,11 @@ class CallContextStore:
 
     async def get_or_fetch(self, key: str, fetch: Fetch) -> Any:
         """The saved result for ``key``, or ``fetch()``'s (saved when it succeeds)."""
+        result, _ = await self.lookup(key, fetch)
+        return result
+
+    async def lookup(self, key: str, fetch: Fetch) -> Tuple[Any, str]:
+        """Like ``get_or_fetch``, plus where the answer came from (``SAVED`` …)."""
         running = self._in_flight.get(key)
         if running is not None:
             try:
@@ -108,35 +127,35 @@ class CallContextStore:
             except asyncio.TimeoutError:
                 result = _NO_RESULT
             if result is _NO_RESULT or is_failure(result):
-                return await fetch()
-            return result
+                return await fetch(), LIVE
+            return result, JOINED
 
         # Registered before the first await, so a concurrent lookup finds it
         future = asyncio.get_running_loop().create_future()
         self._in_flight[key] = future
         result = _NO_RESULT
         try:
-            result = await self._resolve(key, fetch)
-            return result
+            result, source = await self._resolve(key, fetch)
+            return result, source
         finally:
             self._in_flight.pop(key, None)
             future.set_result(result)
 
-    async def _resolve(self, key: str, fetch: Fetch) -> Any:
+    async def _resolve(self, key: str, fetch: Fetch) -> Tuple[Any, str]:
         saved = await self._read(key)
         if saved is _UNAVAILABLE:
-            return await fetch()
+            return await fetch(), LIVE
         if saved is None:
             if await self._claim(key):
-                return await self._fetch(key, fetch)
+                return await self._fetch(key, fetch), FETCHED
             saved = _PENDING  # another pod claimed it a moment ago
         if 'result' in saved:
-            return saved['result']
+            return saved['result'], SAVED
         # Another pod is fetching (the Twilio webhook, say): wait for it
         saved = await self._poll(key)
         if saved is not None:
-            return saved['result']
-        return await self._fetch(key, fetch)
+            return saved['result'], JOINED
+        return await self._fetch(key, fetch), FETCHED
 
     async def _fetch(self, key: str, fetch: Fetch) -> Any:
         try:
@@ -206,6 +225,22 @@ class ToolCache:
     call_ref: str
     tool_name: str
 
+    def key(self, args: Dict[str, Any]) -> str:
+        return context_key(self.agent_id, self.call_ref, self.tool_name, args)
+
     async def run(self, args: Dict[str, Any], fetch: Fetch) -> Any:
-        key = context_key(self.agent_id, self.call_ref, self.tool_name, args)
-        return await self.store.get_or_fetch(key, fetch)
+        result, _ = await self.lookup(args, fetch)
+        return result
+
+    async def lookup(self, args: Dict[str, Any], fetch: Fetch) -> Tuple[Any, str]:
+        """The result and where it came from, logged as a hit or a miss."""
+        key = self.key(args)
+        started = time.monotonic()
+        result, source = await self.store.lookup(key, fetch)
+        # The key matches the "Prefetch done" line's when this used the prefetch
+        logger.info(
+            f'Call context {_OUTCOME_LOG[source]}: tool {self.tool_name!r}, '
+            f'call {self.call_ref}, {round((time.monotonic() - started) * 1000)}ms, '
+            f'key {key}'
+        )
+        return result, source

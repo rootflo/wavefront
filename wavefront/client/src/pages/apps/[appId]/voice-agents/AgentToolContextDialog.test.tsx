@@ -17,13 +17,13 @@ const makeTool = (
   configOverrides?: Record<string, unknown>
 ): VoiceAgentToolWithAssociation => ({
   id: 'tool-1',
-  name: 'get_customer',
-  display_name: 'Customer lookup',
-  description: 'Looks up the customer',
+  name: 'find_account',
+  display_name: 'Account lookup',
+  description: 'Finds the account',
   tool_type: 'api',
-  config: { method, url: 'https://crm.test/customer' },
+  config: { method, url: 'https://water.test/account' },
   parameter_schema: {
-    properties: { mobile_number: { type: 'string', description: 'Customer mobile' } },
+    properties: { mobile_number: { type: 'string', description: 'Caller mobile' } },
     required: ['mobile_number'],
   },
   created_at: '2026-01-01T00:00:00Z',
@@ -85,5 +85,52 @@ describe('AgentToolContextDialog', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(saveMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentToolContextDialog on a nested schema (get_bill)', () => {
+  beforeEach(() => saveMutate.mockReset());
+
+  const billTool: VoiceAgentToolWithAssociation = {
+    ...makeTool('POST', {
+      context: { bind: { request: 'caller.phone' }, prefetch: true, read_only: true },
+    }),
+    name: 'get_bill',
+    parameter_schema: {
+      type: 'object',
+      properties: {
+        request: {
+          type: 'object',
+          required: ['service'],
+          properties: {
+            language: { enum: ['en', 'hi'], type: 'string' },
+            period: { type: 'string' },
+            service: { enum: ['water', 'sewer'], type: 'string' },
+            phone: { type: 'string' },
+          },
+        },
+      },
+      required: ['request'],
+    },
+  };
+
+  it('replaces the old object bind with the nested phone field', async () => {
+    renderDialog(billTool);
+
+    expect(screen.getByText(/Saved settings for request don't work on calls/)).toBeInTheDocument();
+    expect(screen.getByText('request › service')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Use caller's phone number/ }));
+    expect(screen.getByText(/Still set to the AI: request › service/)).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Look it up as the call starts' })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveMutate).toHaveBeenCalledWith(
+      {
+        toolId: 'tool-1',
+        configOverrides: { context: { bind: { 'request.phone': 'caller.phone' }, read_only: true } },
+      },
+      expect.anything()
+    );
   });
 });

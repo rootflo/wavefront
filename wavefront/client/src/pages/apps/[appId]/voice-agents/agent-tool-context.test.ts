@@ -4,29 +4,73 @@ import {
   contextSummary,
   describeOnCall,
   effectiveMethod,
+  fieldLabel,
   isReusedInCall,
   prefetchBlockers,
   readToolContext,
   suggestedSource,
   toolArguments,
+  usableBind,
   writeToolContext,
 } from './agent-tool-context';
 
-const MOBILE = { name: 'mobile_number', required: true };
-const PRODUCT = { name: 'product_type', required: false };
+const MOBILE = { name: 'mobile_number', required: true, bindable: true, parents: [] };
+const SERVICE = { name: 'service', required: true, bindable: true, parents: [] };
+
+// Made-up scenario: a water utility helpline whose tools take one `request` object.
+// find_account needs only the caller's phone; get_bill also needs the service asked about.
+const LANGUAGE = { enum: ['en', 'hi'], type: 'string' };
+const FIND_ACCOUNT = {
+  type: 'object',
+  required: ['request'],
+  properties: {
+    request: {
+      type: 'object',
+      required: ['phone'],
+      properties: { phone: { type: 'string' } },
+    },
+  },
+};
+const GET_BILL = {
+  type: 'object',
+  required: ['request'],
+  properties: {
+    request: {
+      type: 'object',
+      required: ['service'],
+      properties: {
+        language: LANGUAGE,
+        period: { type: 'string' },
+        service: { enum: ['water', 'sewer'], type: 'string' },
+        phone: { type: 'string' },
+      },
+    },
+  },
+};
+const PHONE_BIND = { 'request.phone': 'caller.phone' as const };
 
 describe('toolArguments', () => {
   it('reads names, descriptions and required flags from the schema', () => {
     expect(
       toolArguments({
         parameter_schema: {
-          properties: { mobile_number: { type: 'string', description: 'Customer mobile' }, product_type: {} },
+          properties: { mobile_number: { type: 'string', description: 'Caller mobile' }, service: {} },
           required: ['mobile_number'],
         },
       })
     ).toEqual([
-      { name: 'mobile_number', description: 'Customer mobile', required: true },
-      { name: 'product_type', description: undefined, required: false },
+      { name: 'mobile_number', description: 'Caller mobile', required: true, bindable: true, parents: [] },
+      { name: 'service', description: undefined, required: false, bindable: false, parents: [] },
+    ]);
+  });
+
+  it('opens an object argument up into its fields', () => {
+    const parents = [{ name: 'request', required: true }];
+    expect(toolArguments({ parameter_schema: GET_BILL })).toEqual([
+      { name: 'request.language', description: undefined, required: false, bindable: true, parents },
+      { name: 'request.period', description: undefined, required: false, bindable: true, parents },
+      { name: 'request.service', description: undefined, required: true, bindable: true, parents },
+      { name: 'request.phone', description: undefined, required: false, bindable: true, parents },
     ]);
   });
 
@@ -87,11 +131,11 @@ describe('prefetchBlockers', () => {
   });
 
   it('names the details still left to the AI', () => {
-    const [blocker] = prefetchBlockers([MOBILE, PRODUCT], 'GET', {
+    const [blocker] = prefetchBlockers([MOBILE, SERVICE], 'GET', {
       bind: { mobile_number: 'caller.phone' },
       readOnly: false,
     });
-    expect(blocker).toContain('Still set to the AI: product_type.');
+    expect(blocker).toContain('Still set to the AI: service.');
   });
 
   it('blocks a write request unless it is marked read-only', () => {
@@ -114,7 +158,7 @@ describe('argumentSource', () => {
   it('is the AI unless the server fills it', () => {
     const settings = { bind: { mobile_number: 'caller.phone' as const } };
     expect(argumentSource(settings, 'mobile_number')).toBe('caller.phone');
-    expect(argumentSource(settings, 'product_type')).toBe('ai');
+    expect(argumentSource(settings, 'service')).toBe('ai');
   });
 });
 
@@ -124,9 +168,9 @@ describe('suggestedSource', () => {
     ['customerPhone', 'caller.phone'],
     ['contact_no', 'caller.phone'],
     ['call_sid', 'call.id'],
-    ['product_type', undefined],
+    ['service', undefined],
   ])('%s -> %s', (name, expected) => {
-    expect(suggestedSource({ name, required: false })).toBe(expected);
+    expect(suggestedSource({ name, required: false, bindable: true, parents: [] })).toBe(expected);
   });
 });
 
@@ -156,7 +200,7 @@ describe('describeOnCall', () => {
 describe('contextSummary', () => {
   const tool = {
     config: { method: 'GET' as const, url: 'https://x' },
-    parameter_schema: { properties: { mobile_number: {} } },
+    parameter_schema: { properties: { mobile_number: { type: 'string' } } },
   };
 
   it('is empty when nothing is set', () => {
@@ -168,5 +212,70 @@ describe('contextSummary', () => {
     expect(contextSummary(tool, { context: { bind, prefetch: true } })).toBe('Looked up at call start');
     expect(contextSummary(tool, { context: { bind } })).toBe('Details auto-filled');
     expect(contextSummary(tool, { context: { read_only: true } })).toBe('Reused in call');
+  });
+});
+
+describe('nested fields (water helpline scenario)', () => {
+  const findAccount = toolArguments({ parameter_schema: FIND_ACCOUNT });
+  const getBill = toolArguments({ parameter_schema: GET_BILL });
+
+  it('shows paths readably', () => {
+    expect(fieldLabel('request.phone')).toBe('request › phone');
+  });
+
+  it('lets find_account run early once its phone is filled', () => {
+    expect(prefetchBlockers(findAccount, 'POST', { bind: PHONE_BIND, readOnly: true })).toEqual([]);
+  });
+
+  it('blocks on a required field only the AI can fill', () => {
+    const requiredLanguage = {
+      ...FIND_ACCOUNT,
+      properties: {
+        request: {
+          type: 'object',
+          required: ['phone', 'language'],
+          properties: { phone: { type: 'string' }, language: LANGUAGE },
+        },
+      },
+    };
+    const args = toolArguments({ parameter_schema: requiredLanguage });
+    const [blocker] = prefetchBlockers(args, 'POST', { bind: PHONE_BIND, readOnly: true });
+    expect(blocker).toContain('Still set to the AI: request › language.');
+  });
+
+  it('names the nested required field that blocks get_bill', () => {
+    const [blocker] = prefetchBlockers(getBill, 'POST', { bind: PHONE_BIND, readOnly: true });
+    expect(blocker).toContain('Still set to the AI: request › service.');
+  });
+
+  it('counts nested required fields even when nothing is bound', () => {
+    const [blocker] = prefetchBlockers(findAccount, 'GET', { bind: {}, readOnly: false });
+    expect(blocker).toContain('request › phone');
+  });
+
+  it('suggests the caller phone for the nested phone field', () => {
+    const phone = findAccount.find((a) => a.name === 'request.phone')!;
+    expect(suggestedSource(phone)).toBe('caller.phone');
+    expect(suggestedSource(getBill.find((a) => a.name === 'request.language')!)).toBeUndefined();
+  });
+
+  it('ignores the old bind on the whole object and keeps the field bind', () => {
+    expect(usableBind(getBill, { request: 'caller.phone', ...PHONE_BIND })).toEqual({
+      bind: PHONE_BIND,
+      ignored: ['request'],
+    });
+  });
+
+  it('does not offer call values for non-text fields', () => {
+    const [count] = toolArguments({
+      parameter_schema: { properties: { count: { type: 'integer' } }, required: ['count'] },
+    });
+    expect(count.bindable).toBe(false);
+    expect(suggestedSource({ ...count, name: 'phone_count' })).toBeUndefined();
+  });
+
+  it('summarises the old object bind as not set', () => {
+    const tool = { config: { method: 'POST' as const, url: 'https://x' }, parameter_schema: GET_BILL };
+    expect(contextSummary(tool, { context: { bind: { request: 'caller.phone' } } })).toBeUndefined();
   });
 });

@@ -1,18 +1,23 @@
 """Tool arguments the server fills in instead of the AI.
 
 A tool association opts in through ``config_overrides.context.bind``, mapping
-an argument name to a call variable::
+an argument to a call variable. The argument is a dotted path, so a field
+nested inside an object argument can be bound too::
 
     "context": {"bind": {"mobile_number": "caller.phone"}}
+    "context": {"bind": {"request.phone": "caller.phone"}}
 
-Bound arguments are hidden from the AI's tool schema and merged into the
+Bound fields are hidden from the AI's tool schema and written into the
 arguments before the tool runs. A variable with no value on this call (no
-phone number on a browser call, say) leaves the argument with the AI, which
-is how every tool works today.
+phone number on a browser call, say) leaves the field with the AI, which is
+how every tool works today. So does a bind that can't apply (unknown
+variable, no such field, not a text field): it is logged and ignored.
 """
 
-from typing import Any, Dict, Optional
+import copy
+from typing import Any, Dict, List, Optional
 
+from call_processing.log.logger import logger
 from call_processing.services.common.context.subject import CallSubject
 
 CALL_VARIABLES = ('caller.phone', 'call.id', 'call.direction', 'agent.id')
@@ -24,16 +29,43 @@ def tool_context(tool: Dict[str, Any]) -> Dict[str, Any]:
     return overrides.get('context') or {}
 
 
+def _schema_field(schema: Dict[str, Any], path: str) -> Optional[Dict[str, Any]]:
+    """The JSON-schema of the field at a dotted path, or None if there is none."""
+    node: Any = schema
+    for part in path.split('.'):
+        properties = node.get('properties') if isinstance(node, dict) else None
+        if not isinstance(properties, dict) or part not in properties:
+            return None
+        node = properties[part]
+    return node if isinstance(node, dict) else None
+
+
 def tool_bindings(tool: Dict[str, Any]) -> Dict[str, str]:
-    """The tool's ``bind`` map; raises ``ValueError`` on an unknown variable."""
+    """The tool's usable binds: field path -> call variable.
+
+    Every call variable is text, so only a string field can take one. Binds
+    that can't apply are logged and left to the AI; the tool still loads.
+    """
     bind = tool_context(tool).get('bind') or {}
-    unknown = sorted(set(bind.values()) - set(CALL_VARIABLES))
-    if unknown:
-        raise ValueError(
-            f'Unknown bind variable(s) {unknown}; '
-            f'expected one of {list(CALL_VARIABLES)}'
+    schema = tool.get('parameter_schema') or {}
+    usable = {}
+    for path, variable in bind.items():
+        field = _schema_field(schema, path)
+        if variable not in CALL_VARIABLES:
+            problem = (
+                f'unknown variable {variable!r}; expected one of {list(CALL_VARIABLES)}'
+            )
+        elif field is None:
+            problem = 'no such field in the tool schema'
+        elif field.get('type') != 'string':
+            problem = f"it is a {field.get('type', 'untyped')} field, not text"
+        else:
+            usable[path] = variable
+            continue
+        logger.warning(
+            f"Ignoring bind '{path}' for tool '{tool.get('name')}': {problem}"
         )
-    return dict(bind)
+    return usable
 
 
 def resolve_bindings(
@@ -50,3 +82,71 @@ def resolve_bindings(
             }
         )
     return {arg: values[var] for arg, var in bind.items() if values.get(var)}
+
+
+def hidden_schema(schema: Dict[str, Any], paths) -> Dict[str, Any]:
+    """A copy of the tool's schema without the bound fields (what the AI sees).
+
+    An object left with no fields of its own is removed too.
+    """
+    schema = copy.deepcopy(schema)
+    for path in paths:
+        _remove_field(schema, path.split('.'))
+    return schema
+
+
+def _remove_field(node: Dict[str, Any], parts: List[str]) -> None:
+    properties = node.get('properties')
+    head = parts[0]
+    if not isinstance(properties, dict) or head not in properties:
+        return
+    if len(parts) > 1:
+        _remove_field(properties[head], parts[1:])
+        if properties[head].get('properties'):
+            return  # the object still has fields for the AI
+    del properties[head]
+    if head in (node.get('required') or []):
+        node['required'] = [name for name in node['required'] if name != head]
+
+
+def merge_bound(args: Any, values: Dict[str, str]) -> Dict[str, Any]:
+    """The AI's arguments with the server's values written in (the server wins).
+
+    Creates the enclosing object when the AI left it out.
+    """
+    merged = copy.deepcopy(args) if isinstance(args, dict) else {}
+    for path, value in values.items():
+        *parents, leaf = path.split('.')
+        node = merged
+        for part in parents:
+            if not isinstance(node.get(part), dict):
+                node[part] = {}
+            node = node[part]
+        node[leaf] = value
+    return merged
+
+
+def unbound_required(schema: Dict[str, Any], bound_paths) -> List[str]:
+    """Required fields the server doesn't fill, as dotted paths, at every level.
+
+    An object is looked into when it is required or holds a bound field (it is
+    sent either way); optional fields left unbound are simply not sent.
+    """
+    bound = set(bound_paths)
+    missing: List[str] = []
+
+    def walk(node: Dict[str, Any], prefix: str) -> None:
+        required = set(node.get('required') or [])
+        for name, spec in (node.get('properties') or {}).items():
+            path = f'{prefix}{name}'
+            if path in bound:
+                continue
+            holds_bound = any(p.startswith(f'{path}.') for p in bound)
+            if isinstance(spec, dict) and spec.get('properties'):
+                if name in required or holds_bound:
+                    walk(spec, f'{path}.')
+            elif name in required:
+                missing.append(path)
+
+    walk(schema, '')
+    return missing

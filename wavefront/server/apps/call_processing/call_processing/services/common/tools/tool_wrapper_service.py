@@ -6,18 +6,26 @@ functions that can be registered with the LLM for function calling.
 """
 
 import base64
+import hashlib
+import json
+import re
+import time
 from typing import Dict, Any, List, Tuple, Callable, Optional, Awaitable
 import flo_lib.http as httpx
 
 from call_processing.log.logger import logger
 from call_processing.services.common.context.bindings import (
+    hidden_schema,
+    merge_bound,
     resolve_bindings,
     tool_bindings,
     tool_context,
+    unbound_required,
 )
 from call_processing.services.common.context.store import (
     CallContextStore,
     ToolCache,
+    is_failure,
 )
 from call_processing.services.common.context.subject import CallSubject
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -28,6 +36,29 @@ _SHARED_HTTP_CLIENT: Optional[httpx.AsyncClient] = None
 # Voice budget: keep tool waits short so the user is not muted for long.
 _DEFAULT_API_TIMEOUT_S = 4.0
 _DEFAULT_APP_ACK_TIMEOUT_S = 3.0
+# Header names whose values are never logged
+_SECRET_HEADER = re.compile(r'auth|token|key|secret|cookie|password|signature', re.I)
+
+
+def repeat_reference(tool_name: str, earlier_call_id: str) -> Dict[str, Any]:
+    """Sent instead of a read-only result the AI already has in this conversation.
+
+    Every tool result stays in the LLM context for the rest of the call, so a
+    repeated lookup would add the same (often large) result again each time.
+    """
+    return {
+        'unchanged': True,
+        'same_as_tool_call_id': earlier_call_id,
+        'note': (
+            f'Same result as the earlier {tool_name} call in this conversation. '
+            'Answer from that result.'
+        ),
+    }
+
+
+def _result_digest(result: Any) -> str:
+    canonical = json.dumps(result, sort_keys=True, separators=(',', ':'), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def log_safe_keys(params: Any) -> Any:
@@ -152,6 +183,18 @@ class ApiToolWrapper:
                 encoded = base64.b64encode(credentials.encode()).decode()
                 headers['Authorization'] = f'Basic {encoded}'
         return headers
+
+    def log_safe_headers(self) -> Dict[str, str]:
+        """The headers a request sends, with secret values redacted, for debugging."""
+        api_key_header = str(self.auth_credentials.get('key_name', '')).lower()
+        return {
+            name: (
+                '<redacted>'
+                if _SECRET_HEADER.search(name) or name.lower() == api_key_header
+                else value
+            )
+            for name, value in self._apply_auth(self.headers.copy()).items()
+        }
 
     async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -334,8 +377,10 @@ class ToolWrapperFactory:
         required = parameter_schema.get('required', [])
         bound_values = bound_values or {}
         if bound_values:
-            properties = {k: v for k, v in properties.items() if k not in bound_values}
-            required = [r for r in required if r not in bound_values]
+            # Bound fields can be nested (request.phone): drop just them
+            hidden = hidden_schema(parameter_schema, bound_values)
+            properties = hidden.get('properties', {})
+            required = hidden.get('required', [])
 
         # Create FunctionSchema object (Pipecat's official way)
         function_schema = FunctionSchema(
@@ -344,6 +389,10 @@ class ToolWrapperFactory:
             properties=properties,
             required=required,
         )
+
+        # Read-only results already given to the AI in this stack's context:
+        # cache key -> (tool call id, result digest)
+        delivered: Dict[str, Tuple[str, str]] = {}
 
         async def tool_function(params):
             """
@@ -371,11 +420,11 @@ class ToolWrapperFactory:
 
                 if bound_values:
                     # The server's values win over anything the AI sent
-                    tool_params = {**(tool_params or {}), **bound_values}
+                    tool_params = merge_bound(tool_params, bound_values)
 
                 # Execute the tool wrapper
                 if tool_cache is not None:
-                    result = await tool_cache.run(
+                    result, _ = await tool_cache.lookup(
                         tool_params, lambda: wrapper.execute(tool_params)
                     )
                 else:
@@ -384,6 +433,21 @@ class ToolWrapperFactory:
                 logger.info(
                     f"Tool '{tool_name}' execution result: {log_safe_result(result)}"
                 )
+
+                if tool_cache is not None and not is_failure(result):
+                    key = tool_cache.key(tool_params)
+                    digest = _result_digest(result)
+                    earlier = delivered.get(key)
+                    if earlier and earlier[1] == digest:
+                        logger.info(
+                            f"Tool '{tool_name}': same result already in the "
+                            f'conversation (tool call {earlier[0]}); sent a short '
+                            'reference instead of repeating it'
+                        )
+                        result = repeat_reference(tool_name, earlier[0])
+                    else:
+                        call_id = getattr(params, 'tool_call_id', '') or ''
+                        delivered[key] = (call_id, digest)
 
                 # Return result via callback if available
                 if result_callback:
@@ -481,9 +545,10 @@ class ToolWrapperFactory:
     ) -> Optional[Callable[[], Awaitable[Any]]]:
         """The tool's lookup with server-filled arguments, or None if it can't prefetch.
 
-        Only read-only tools whose every argument the server fills can prefetch:
-        otherwise the AI's later call has other arguments, a different key, and
-        never sees the prefetched result.
+        Only read-only tools whose every required field, at every level, the
+        server fills can prefetch: nobody has spoken yet, so nothing else is
+        known, and the AI's later call must produce the same arguments (and
+        key) to get the prefetched result.
         """
         if not tool_context(tool).get('prefetch'):
             return None
@@ -499,18 +564,45 @@ class ToolWrapperFactory:
             )
             return None
         bound_values = resolve_bindings(tool_bindings(tool), call_subject, agent_id)
-        properties = (tool.get('parameter_schema') or {}).get('properties') or {}
-        unbound = sorted(set(properties) - set(bound_values))
+        unbound = unbound_required(tool.get('parameter_schema') or {}, bound_values)
         if unbound:
             logger.warning(
-                f"Not prefetching tool '{name}': arguments {unbound} are not server-filled"
+                f"Not prefetching tool '{name}': required fields {unbound} "
+                'are not server-filled'
             )
             return None
         tool_cache = ToolCache(context_store, agent_id, call_subject.call_ref, name)
 
         async def job():
-            args = dict(bound_values)
-            return await tool_cache.run(args, lambda: wrapper.execute(args))
+            # What the AI's call becomes after the merge when it sends nothing
+            # else, so both land on the same key. Optional fields the AI adds
+            # (a language, say) give a different key: that call goes live.
+            args = merge_bound({}, bound_values)
+            fetch_ms: List[int] = []
+
+            async def fetch():
+                started = time.monotonic()
+                try:
+                    return await wrapper.execute(args)
+                finally:
+                    fetch_ms.append(round((time.monotonic() - started) * 1000))
+
+            result = await tool_cache.run(args, fetch)
+            phone = call_subject.phone
+            request = (
+                f'fetched {wrapper.method} {wrapper.url.split("?")[0]} in {fetch_ms[0]}ms'
+                if fetch_ms
+                else 'reused a saved or running fetch'
+            )
+            logger.info(
+                f"Prefetch done: tool '{name}', call {call_subject.call_ref} "
+                f'({call_subject.direction}), agent {agent_id}, '
+                f"phone ***{phone[-4:] if len(phone) > 4 else ''}: {request}; "
+                f'result {log_safe_result(result)}; args {log_safe_keys(args)}; '
+                f'timeout {wrapper.timeout}s; auth {wrapper.auth_type}; '
+                f'headers {wrapper.log_safe_headers()}; key {tool_cache.key(args)}'
+            )
+            return result
 
         return job
 
