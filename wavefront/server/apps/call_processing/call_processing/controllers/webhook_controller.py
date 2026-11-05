@@ -12,6 +12,12 @@ from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 
 from call_processing.di.application_container import ApplicationContainer
 from call_processing.log.logger import logger
+from call_processing.services.common.context.compiler import (
+    prefetch_for_agent,
+    run_in_background,
+)
+from call_processing.services.common.context.store import CallContextStore
+from call_processing.services.common.context.subject import CallSubject
 from call_processing.services.common.voice_agent_cache_service import (
     VoiceAgentCacheService,
 )
@@ -73,6 +79,9 @@ async def inbound_webhook(
     call_processing_base_url: str = Depends(
         Provide[ApplicationContainer.config.env_config.call_processing_base_url]
     ),
+    call_context_store: CallContextStore = Depends(
+        Provide[ApplicationContainer.call_context_store]
+    ),
 ):
     """
     Twilio inbound webhook endpoint
@@ -105,6 +114,18 @@ async def inbound_webhook(
 
     agent_id = agent['id']
     logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
+
+    # Use the time before the call is answered: warm the agent's configs and
+    # prefetch caller lookups. The stream finds them by CallSid.
+    subject = CallSubject.for_call(
+        call_ref=CallSid, direction='inbound', raw_phone=From
+    )
+    run_in_background(
+        prefetch_for_agent(
+            voice_agent_cache_service, str(agent_id), subject, call_context_store
+        ),
+        name=f'call {CallSid}',
+    )
 
     return _stream_twiml(
         call_processing_base_url,

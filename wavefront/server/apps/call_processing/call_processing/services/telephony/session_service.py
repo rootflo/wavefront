@@ -24,6 +24,7 @@ from pipecat.transports.websocket.fastapi import (
 
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.log.logger import logger
+from call_processing.services.common.context.store import CallContextStore
 from call_processing.services.common.context.subject import (
     normalize_indian_phone_number,
 )
@@ -131,9 +132,11 @@ class TelephonySessionService:
         self,
         voice_agent_cache_service: VoiceAgentCacheService,
         app_settings: CallProcessingAppSettings,
+        call_context_store: Optional[CallContextStore] = None,
     ):
         self.voice_agent_cache_service = voice_agent_cache_service
         self.app_settings = app_settings
+        self.call_context_store = call_context_store
 
     async def handle_stream(self, websocket: WebSocket) -> None:
         """Media stream that names its voice agent in the stream parameters."""
@@ -314,6 +317,7 @@ class TelephonySessionService:
             call_direction=call_direction,
             customer_number=customer_number,
             agent_number=agent_number,
+            context_store=self.call_context_store,
         )
         await conversation.run(transport, configs)
 

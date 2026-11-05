@@ -18,10 +18,15 @@ from call_processing.services.common.context.subject import CallSubject
 CALL_VARIABLES = ('caller.phone', 'call.id', 'call.direction', 'agent.id')
 
 
+def tool_context(tool: Dict[str, Any]) -> Dict[str, Any]:
+    """The tool association's ``config_overrides.context`` settings ({} if none)."""
+    overrides = (tool.get('association') or {}).get('config_overrides') or {}
+    return overrides.get('context') or {}
+
+
 def tool_bindings(tool: Dict[str, Any]) -> Dict[str, str]:
     """The tool's ``bind`` map; raises ``ValueError`` on an unknown variable."""
-    overrides = (tool.get('association') or {}).get('config_overrides') or {}
-    bind = (overrides.get('context') or {}).get('bind') or {}
+    bind = tool_context(tool).get('bind') or {}
     unknown = sorted(set(bind.values()) - set(CALL_VARIABLES))
     if unknown:
         raise ValueError(

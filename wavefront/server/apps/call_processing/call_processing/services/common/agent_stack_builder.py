@@ -26,6 +26,7 @@ from call_processing.constants.language_config import LANGUAGE_DISPLAY_NAMES
 from call_processing.log.logger import logger
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.common.audio_config import with_sample_rate
+from call_processing.services.common.context.store import CallContextStore
 from call_processing.services.common.context.subject import CallSubject
 from call_processing.services.common.direct_language_switch import (
     DirectLanguageSwitchProcessor,
@@ -91,6 +92,8 @@ class StackOptions:
     # Phone calls: who the call is about, for server-filled tool arguments
     # (``config_overrides.context.bind``). None on browser calls.
     call_subject: Optional[CallSubject] = None
+    # Phone calls: saved read-only tool results (prefetched or repeated lookups)
+    context_store: Optional[CallContextStore] = None
 
 
 def build_agent_stack(
@@ -261,6 +264,7 @@ def build_agent_stack(
                 messenger_getter=lambda: shared.messenger,
                 call_subject=options.call_subject,
                 agent_id=str(agent_id) if agent_id else None,
+                context_store=options.context_store,
             )
 
             # Register each tool with LLM
