@@ -6,7 +6,7 @@ Cloud / Redis / DB settings come from package config.ini.
 
 import threading
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from dependency_injector import containers
 from dependency_injector import providers
@@ -39,6 +39,8 @@ class WorkerServices:
     cloud_storage: CloudStorageManager
     cache: CacheManager
     execution_bucket: str
+    # None when [guardrails] enabled is false
+    guardrails_engine: Optional[Any] = None
 
 
 _lock = threading.Lock()
@@ -197,6 +199,7 @@ def get_services() -> WorkerServices:
             cloud_storage=container.common.cloud_storage_manager(),
             cache=container.db.cache_manager(),
             execution_bucket=bucket_name,
+            guardrails_engine=_guardrails_engine(container.guardrails()),
         )
 
     return _services
