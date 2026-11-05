@@ -33,6 +33,7 @@ __all__ = [
     'SECRET_MASK',
     'SecretCipher',
     'SecretModeMismatchError',
+    'UnavailableSecretCipher',
     'UnencryptedSecretError',
 ]
 
@@ -217,3 +218,34 @@ class SecretCipher:
             raise SecretModeMismatchError(
                 'Found an encrypted secret while envelope encryption is disabled'
             )
+
+
+class UnavailableSecretCipher(SecretCipher):
+    """A cipher for services that must never encrypt or decrypt secrets.
+
+    Floware is the only service with KMS access; the others read plaintext from
+    it. Wired where a container still declares a cipher, so any use fails
+    loudly instead of reading ciphertext as a value. Masking still works.
+    """
+
+    def __init__(self):
+        super().__init__(enabled=False)
+
+    @staticmethod
+    def _unavailable(*_args, **_kwargs):
+        raise RuntimeError('Secrets are only decrypted by floware')
+
+    protect = reveal = protect_json = reveal_json = _unavailable
+    protect_fields = reveal_fields = _unavailable
+
+    async def aprotect(self, *args, **kwargs):
+        self._unavailable()
+
+    async def areveal(self, *args, **kwargs):
+        self._unavailable()
+
+    async def aprotect_fields(self, *args, **kwargs):
+        self._unavailable()
+
+    async def areveal_fields(self, *args, **kwargs):
+        self._unavailable()

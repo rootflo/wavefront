@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from urllib.parse import quote
 from uuid import UUID
 
 # from floconsole.constants.app import AppDeploymentType
@@ -110,7 +111,8 @@ class FlowareProxyService:
         app_base_url = await self._get_app_base_url(app.private_url, app_id)
 
         # Step 3: Prepare request to floware
-        floware_url = f'{app_base_url}/floware/{path}'
+        encoded_path = quote(path, safe="/:@!$&'()*+,;=")
+        floware_url = f'{app_base_url}/floware/{encoded_path}'
 
         # Copy headers from original request, excluding Authorization
         headers = {
@@ -127,8 +129,13 @@ class FlowareProxyService:
         if self.app_env != 'production' and self.passthrough_secret:
             headers[RootfloHeaders.PASSTHROUGH] = self.passthrough_secret
 
-        # Copy query parameters
-        query_params = dict(request.query_params)
+        # Copy query parameters, except include_secrets: floware returns plaintext
+        # secrets with it to internal services, and console users are not one
+        query_params = {
+            key: value
+            for key, value in request.query_params.items()
+            if key != 'include_secrets'
+        }
 
         # Step 5: Detect if streaming (SSE) is needed
         is_streaming = 'text/event-stream' in request.headers.get('accept', '').lower()

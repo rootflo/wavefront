@@ -1,5 +1,5 @@
-"""The api_key is stored and cached protected, revealed only for runtime use,
-and never returned in public responses."""
+"""The api_key is stored and cached protected, revealed only for runtime use or
+to internal services, and never returned in public responses."""
 
 import json
 import uuid
@@ -316,13 +316,25 @@ async def test_runtime_config_rejects_ciphertext_when_flag_off(repository, cache
 
 
 @pytest.fixture
-def client(service):
+def secret_access():
+    """What the auth middleware decided for the caller; internal services get True."""
+    return False
+
+
+@pytest.fixture
+def client(service, secret_access):
     llm = LlmInferenceConfigContainer()
     common = CommonContainer()
     llm.llm_inference_config_service.override(service)
     llm.wire(modules=[llm_inference_config_controller])
     common.wire(modules=[llm_inference_config_controller])
     app = FastAPI()
+
+    @app.middleware('http')
+    async def set_secret_access(request, call_next):
+        request.state.secret_access = secret_access
+        return await call_next(request)
+
     app.include_router(llm_inference_config_router)
     try:
         with TestClient(app) as test_client:
@@ -332,6 +344,7 @@ def client(service):
         common.unwire()
 
 
+@pytest.mark.parametrize('secret_access', [False, True], ids=['user', 'service'])
 async def test_get_without_include_secrets_is_public(client, service):
     created = await create(service)
 
@@ -343,9 +356,22 @@ async def test_get_without_include_secrets_is_public(client, service):
     assert body['has_api_key'] is True
 
 
-async def test_get_with_include_secrets_returns_the_stored_form(
-    client, service, flag_on
+async def test_get_with_include_secrets_is_forbidden_without_secret_access(
+    client, service
 ):
+    created = await create(service)
+
+    response = client.get(
+        f'/v1/llm-inference-configs/{created["id"]}', params={'include_secrets': True}
+    )
+
+    assert response.status_code == 403
+    assert API_KEY not in response.text
+    assert ENVELOPE_PREFIX not in response.text
+
+
+@pytest.mark.parametrize('secret_access', [True])
+async def test_get_with_include_secrets_returns_plaintext_to_services(client, service):
     created = await create(service)
 
     response = client.get(
@@ -354,5 +380,14 @@ async def test_get_with_include_secrets_returns_the_stored_form(
 
     assert response.status_code == 200
     body = response.json()['data']
-    assert body == await service.get_config(uuid.UUID(created['id']))
-    assert_stored_form(body['api_key'], flag_on)
+    assert body == await service.get_runtime_config(uuid.UUID(created['id']))
+    assert body['api_key'] == API_KEY
+
+
+@pytest.mark.parametrize('secret_access', [True])
+async def test_get_with_include_secrets_of_missing_config_is_404(client):
+    response = client.get(
+        f'/v1/llm-inference-configs/{uuid.uuid4()}', params={'include_secrets': True}
+    )
+
+    assert response.status_code == 404

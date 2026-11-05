@@ -1,6 +1,7 @@
 """Voice agent cache service for fetching configs from Redis"""
 
 import asyncio
+import copy
 import json
 from typing import Dict, Any, List, Tuple, Optional
 from uuid import UUID
@@ -16,37 +17,62 @@ from call_processing.cache.cache_utils import (
 )
 from call_processing.log.logger import logger
 from call_processing.services.common.floware_http_client import FlowareHttpClient
-from common_module.security.secret_cipher import SecretCipher
+from call_processing.services.common.secret_memo import SecretMemo
 from fastapi import HTTPException
 
-# Secret keys inside a telephony config's credentials, by provider. A copy of
-# TELEPHONY_SECRET_FIELDS in floware's voice_agents_module/utils/telephony_secrets.py
-# (call_processing does not depend on that module); keep them in sync.
-TELEPHONY_SECRET_FIELDS: Dict[str, Tuple[str, ...]] = {
-    'twilio': ('auth_token',),
-    'exotel': ('api_key', 'api_token'),
-    'smartflo': ('api_key',),
+CONFIG_CACHE_KEY_FUNCS = {
+    'voice_agent': get_voice_agent_cache_key,
+    'llm_inference_config': get_llm_config_cache_key,
+    'tts_config': get_tts_config_cache_key,
+    'stt_config': get_stt_config_cache_key,
+    'telephony_config': get_telephony_config_cache_key,
+    'tools': get_tools_config_cache_key,
 }
+
+# The secret-bearing key of each config type. Its value never goes to Redis;
+# it is kept in the process-local memo only.
+SECRET_KEYS: Dict[str, str] = {
+    'llm_inference_config': 'api_key',
+    'tts_config': 'api_key',
+    'stt_config': 'api_key',
+    'telephony_config': 'credentials',
+}
+
+
+def _split_secrets(
+    config_type: str, config: Dict[str, Any]
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """(public, secrets) of a config; telephony credentials come back as a dict"""
+    public = dict(config)
+    secret_key = SECRET_KEYS.get(config_type)
+    if secret_key is None or secret_key not in public:
+        return public, {}
+    value = public.pop(secret_key)
+    if secret_key == 'credentials' and isinstance(value, str):
+        value = json.loads(value)
+    return public, {secret_key: value}
 
 
 class VoiceAgentCacheService:
     """Service for fetching voice agent configurations from Redis cache
 
-    Configs are cached exactly as floware returns them, so their secrets are
-    ciphertext when envelope encryption is on. `get_all_agent_configs` hands
-    callers copies with the secrets revealed.
+    Redis holds configs without their secrets. The secrets (fetched in
+    plaintext from floware) live only in a process-local memo, tagged with the
+    config's `updated_at`; a mismatch with Redis means the config changed, so
+    it is fetched again.
     """
 
     def __init__(
         self,
         cache_manager: CacheManager,
         floware_http_client: Optional[FlowareHttpClient] = None,
-        secret_cipher: Optional[SecretCipher] = None,
     ):
         self.cache_manager = cache_manager
         self.floware_http_client = floware_http_client
-        self.secret_cipher = secret_cipher or SecretCipher(enabled=False)
         self.cache_ttl = 3600 * 24
+        # Staleness is caught by the updated_at check, so the memo can live as long
+        # as the Redis entries it pairs with
+        self._secret_memo = SecretMemo(max_entries=4096, ttl_seconds=self.cache_ttl)
 
     async def _fetch_missing_configs_from_api(
         self, missing_configs: List[Tuple[str, UUID]]
@@ -119,30 +145,48 @@ class VoiceAgentCacheService:
             logger.error(f'Error in parallel config fetch: {e}', exc_info=True)
             raise
 
-    async def _cache_config(
-        self, config_type: str, config_id: UUID, config_data: Dict
-    ) -> None:
-        """Cache a config with appropriate key"""
-        cache_key_funcs = {
-            'llm_inference_config': get_llm_config_cache_key,
-            'tts_config': get_tts_config_cache_key,
-            'stt_config': get_stt_config_cache_key,
-            'telephony_config': get_telephony_config_cache_key,
-            'tools': get_tools_config_cache_key,
-        }
+    async def cache_config(
+        self, config_type: str, config_id: UUID, fetched: Any
+    ) -> Tuple[bool, Any]:
+        """Cache a config fetched from floware: the public part goes to Redis,
+        the secrets to the process-local memo under its `updated_at`.
 
-        cache_key_func = cache_key_funcs.get(config_type)
-        if cache_key_func:
-            cache_key = cache_key_func(config_id)
-            await self.cache_manager.aset_json(
-                cache_key, config_data, expiry=self.cache_ttl
+        Returns whether the Redis write succeeded, and the config for the caller
+        with its secrets merged in (copies, so the memo can't be mutated).
+        """
+        cache_key_func = CONFIG_CACHE_KEY_FUNCS[config_type]
+
+        if config_type in SECRET_KEYS:
+            public, secrets = _split_secrets(config_type, fetched)
+            self._secret_memo.put(
+                (config_type, str(config_id)), public.get('updated_at'), secrets
             )
-            if config_type == 'tools':
-                logger.info(
-                    f'Cached {len(config_data) if config_data else 0} tools for agent {config_id}'
-                )
-            else:
-                logger.info(f'Cached {config_type} {config_id}')
+            usable = {**public, **copy.deepcopy(secrets)}
+        else:
+            public = usable = fetched
+
+        success = await self.cache_manager.aset_json(
+            cache_key_func(config_id), public, expiry=self.cache_ttl
+        )
+        if config_type == 'tools':
+            logger.info(
+                f'Cached {len(public) if public else 0} tools for agent {config_id}'
+            )
+        else:
+            logger.info(f'Cached {config_type} {config_id}')
+        return success, usable
+
+    def _memo_secrets(
+        self, config_type: str, config_id: Any, public: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Memoised secrets for a cached config, if they match its `updated_at`"""
+        entry = self._secret_memo.get((config_type, str(config_id)))
+        if entry is None:
+            return None
+        updated_at, secrets = entry
+        if updated_at != public.get('updated_at'):
+            return None
+        return secrets
 
     async def get_all_agent_configs(
         self, agent_id: UUID, *, require_telephony: bool = True
@@ -154,9 +198,12 @@ class VoiceAgentCacheService:
         1. Try fetching voice agent from cache
         2. If voice agent missing, fetch from floware API
         3. Try fetching all configs from cache (in parallel, off the event loop)
-        4. For any missing configs, fetch them from floware API in parallel
-        5. Cache the newly fetched configs for future requests
-        6. If any API calls fail, raise HTTPException
+        4. Take each config's secrets from the memo when its `updated_at`
+           matches the cached config
+        5. Fetch configs missing from the cache, or whose secrets are not
+           memoised, from floware API in parallel
+        6. Cache the newly fetched configs (secrets to the memo only)
+        7. If any API calls fail, raise HTTPException
 
         Args:
             agent_id: Voice agent UUID
@@ -172,7 +219,7 @@ class VoiceAgentCacheService:
                 'telephony_config': {...} | None,
                 'tools': {...}
             }
-            with plaintext secrets (the cache keeps the stored form)
+            with plaintext secrets merged in
 
         Raises:
             HTTPException: If agent not found or configs cannot be fetched
@@ -223,39 +270,43 @@ class VoiceAgentCacheService:
                 detail=f'Voice agent {agent_id} has incomplete configuration',
             )
 
-        # Parallel Redis reads (each offloaded so they do not block the loop)
-        cache_keys = {
-            'llm': get_llm_config_cache_key(llm_config_id),
-            'tts': get_tts_config_cache_key(tts_config_id),
-            'stt': get_stt_config_cache_key(stt_config_id),
-            'tools': get_tools_config_cache_key(agent_id),
+        config_ids = {
+            'llm_inference_config': llm_config_id,
+            'tts_config': tts_config_id,
+            'stt_config': stt_config_id,
         }
         fetch_telephony = bool(require_telephony and telephony_config_id)
         if fetch_telephony:
-            cache_keys['telephony'] = get_telephony_config_cache_key(
-                telephony_config_id
-            )
+            config_ids['telephony_config'] = telephony_config_id
+
+        # Parallel Redis reads (each offloaded so they do not block the loop)
+        cache_keys = {
+            config_type: CONFIG_CACHE_KEY_FUNCS[config_type](config_id)
+            for config_type, config_id in config_ids.items()
+        }
+        cache_keys['tools'] = get_tools_config_cache_key(agent_id)
 
         cached = await asyncio.gather(
             *(self.cache_manager.aget_json(k) for k in cache_keys.values())
         )
-        by_name = dict(zip(cache_keys.keys(), cached))
-        llm_config = by_name['llm']
-        tts_config = by_name['tts']
-        stt_config = by_name['stt']
-        tools = by_name['tools']
-        telephony_config = by_name.get('telephony') if fetch_telephony else None
+        by_type = dict(zip(cache_keys.keys(), cached))
+        tools = by_type.pop('tools')
 
-        # Identify missing configs
+        # Configs with their secrets merged in, and those to fetch from floware
+        configs: Dict[str, Optional[Dict[str, Any]]] = {}
         missing_configs = []
-        if not llm_config:
-            missing_configs.append(('llm_inference_config', llm_config_id))
-        if not tts_config:
-            missing_configs.append(('tts_config', tts_config_id))
-        if not stt_config:
-            missing_configs.append(('stt_config', stt_config_id))
-        if fetch_telephony and not telephony_config:
-            missing_configs.append(('telephony_config', telephony_config_id))
+        for config_type, config_id in config_ids.items():
+            data = by_type[config_type]
+            if not data:
+                missing_configs.append((config_type, config_id))
+                continue
+            # Secrets found in Redis (from older entries) are never used
+            public, _ = _split_secrets(config_type, data)
+            secrets = self._memo_secrets(config_type, config_id, public)
+            if secrets is None:
+                missing_configs.append((config_type, config_id))
+                continue
+            configs[config_type] = {**public, **copy.deepcopy(secrets)}
         if tools is None:
             missing_configs.append(('tools', agent_id))
 
@@ -273,25 +324,18 @@ class VoiceAgentCacheService:
 
             # Update local variables with fetched configs and cache them
             for config_type, config_id in missing_configs:
-                config_data = fetched_configs[config_type]
+                _, usable = await self.cache_config(
+                    config_type, config_id, fetched_configs[config_type]
+                )
+                if config_type == 'tools':
+                    tools = usable
+                else:
+                    configs[config_type] = usable
 
-                if config_type == 'llm_inference_config':
-                    llm_config = config_data
-                    await self._cache_config(config_type, llm_config_id, config_data)
-                elif config_type == 'tts_config':
-                    tts_config = config_data
-                    await self._cache_config(config_type, tts_config_id, config_data)
-                elif config_type == 'stt_config':
-                    stt_config = config_data
-                    await self._cache_config(config_type, stt_config_id, config_data)
-                elif config_type == 'telephony_config':
-                    telephony_config = config_data
-                    await self._cache_config(
-                        config_type, telephony_config_id, config_data
-                    )
-                elif config_type == 'tools':
-                    tools = config_data
-                    await self._cache_config(config_type, agent_id, config_data)
+        llm_config = configs.get('llm_inference_config')
+        tts_config = configs.get('tts_config')
+        stt_config = configs.get('stt_config')
+        telephony_config = configs.get('telephony_config')
 
         # Final validation — telephony only when required (phone path)
         required_ok = all([llm_config, tts_config, stt_config])
@@ -323,35 +367,11 @@ class VoiceAgentCacheService:
 
         return {
             'agent': agent,
-            'llm_config': await self._reveal_api_key(llm_config),
-            'tts_config': await self._reveal_api_key(tts_config),
-            'stt_config': await self._reveal_api_key(stt_config),
-            'telephony_config': await self._reveal_credentials(telephony_config),
+            'llm_config': llm_config,
+            'tts_config': tts_config,
+            'stt_config': stt_config,
+            'telephony_config': telephony_config,
             'tools': tools,
-        }
-
-    async def _reveal_api_key(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Copy of an LLM/TTS/STT config with its api_key in plaintext."""
-        if 'api_key' not in config:
-            return dict(config)
-        return {
-            **config,
-            'api_key': await self.secret_cipher.areveal(config['api_key']),
-        }
-
-    async def _reveal_credentials(
-        self, config: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """Copy of a telephony config with its secret credentials in plaintext."""
-        if not config:
-            return config
-        credentials = config.get('credentials')
-        if isinstance(credentials, str):
-            credentials = json.loads(credentials)
-        fields = TELEPHONY_SECRET_FIELDS.get(config.get('provider'), ())
-        return {
-            **config,
-            'credentials': await self.secret_cipher.areveal_fields(credentials, fields),
         }
 
     async def prefetch_agent_configs(

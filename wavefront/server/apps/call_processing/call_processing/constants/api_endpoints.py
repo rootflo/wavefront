@@ -20,7 +20,7 @@ CONFIG_TYPE_ENDPOINTS = {
 VALID_CONFIG_TYPES = set(CONFIG_TYPE_ENDPOINTS.keys())
 
 # Config types fetched with `include_secrets=true`: floware returns their secrets
-# in stored form (ciphertext when envelope encryption is on)
+# in plaintext (only to internal services)
 SECRET_CONFIG_TYPES = {
     'llm_inference_config',
     'tts_config',

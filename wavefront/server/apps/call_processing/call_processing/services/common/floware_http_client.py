@@ -84,8 +84,9 @@ class FlowareHttpClient:
         self, config_type: str, config_id: UUID
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch a config from floware API. Configs with secrets are requested in
-        stored form (`include_secrets=true`); the cache service reveals them.
+        Fetch a config from floware API. Configs with secrets are requested
+        with `include_secrets=true`, which returns them in plaintext; the cache
+        service keeps those out of Redis.
 
         Args:
             config_type: Type of config (llm_inference_config, tts_config, etc.)

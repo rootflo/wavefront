@@ -237,16 +237,20 @@ async def validate_mtls_auth(
         if not xfcc:
             return False
 
-        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID
+        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID.
+        # The sidecar appends the peer it authenticated as the last entry; earlier
+        # entries arrived as request headers and can be forged.
         principal = None
-        match = re.search(r'URI=(spiffe://[^;,]+)', xfcc)
-        if match:
-            principal = match.group(1)
+        uris = re.findall(r'URI=(spiffe://[^;,"]+)', xfcc)
+        if uris:
+            principal = uris[-1]
         elif xfcc.startswith('spiffe://'):
             principal = xfcc
 
         if principal:
-            if not principal.startswith(allowed_principal_prefixes):
+            if not principal.startswith(
+                tuple(f'{prefix}/' for prefix in allowed_principal_prefixes)
+            ):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
@@ -372,6 +376,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
         ],
         secret_cipher: SecretCipher = Provide[CommonContainer.secret_cipher],
     ):
+        # Whether the caller may receive plaintext secrets (?include_secrets=true).
+        # Only internal service callers (mTLS, or passthrough outside production).
+        request.state.secret_access = False
         try:
             if request.method == 'OPTIONS':
                 return await call_next(request)
@@ -394,6 +401,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
                 if error_response:
                     return error_response
+                request.state.secret_access = True
                 return await call_next(request)
 
             # Check for mTLS authentication if the caller is presenting neither a
@@ -404,6 +412,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 if await validate_mtls_auth(
                     request, self.mtls_allowed_principal_prefixes
                 ):
+                    request.state.secret_access = True
                     return await call_next(request)
                 else:
                     logger.error(f'Invalid mTLS authentication for {request.url.path}')

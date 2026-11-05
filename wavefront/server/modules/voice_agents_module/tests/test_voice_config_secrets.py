@@ -6,9 +6,11 @@ in-memory repository and cache.
 
 import json
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
@@ -111,6 +113,20 @@ def body(response) -> dict:
     return json.loads(response.body)['data']
 
 
+def call_endpoint(
+    endpoint, service_arg, service, config_id, include_secrets, secret_access
+):
+    """Call a GET-by-id controller as the auth middleware would leave it: with
+    secret_access set for internal service callers only."""
+    return endpoint(
+        request=SimpleNamespace(state=SimpleNamespace(secret_access=secret_access)),
+        config_id=config_id,
+        include_secrets=include_secrets,
+        response_formatter=ResponseFormatter(),
+        **{service_arg: service},
+    )
+
+
 @pytest.fixture(params=[False, True], ids=['flag_off', 'flag_on'])
 def enabled(request):
     return request.param
@@ -203,26 +219,58 @@ class TestApiKeyConfigs:
         runtime = await service.get_runtime_config(repository.record.id)
         assert runtime['api_key'] == API_KEY
 
-    async def test_include_secrets_returns_the_stored_form(self, api_key_case):
+    async def test_include_secrets_returns_plaintext_to_services(self, api_key_case):
         service, repository, endpoint, service_arg = api_key_case
         await service.create_config(display_name='x', provider='p', api_key=API_KEY)
-        config_id = repository.record.id
 
-        def call(include_secrets):
-            return endpoint(
-                config_id=config_id,
-                include_secrets=include_secrets,
-                response_formatter=ResponseFormatter(),
-                **{service_arg: service},
+        response = await call_endpoint(
+            endpoint, service_arg, service, repository.record.id, True, True
+        )
+
+        assert response.status_code == 200
+        assert body(response)['api_key'] == API_KEY
+
+    async def test_include_secrets_is_forbidden_without_secret_access(
+        self, api_key_case
+    ):
+        service, repository, endpoint, service_arg = api_key_case
+        await service.create_config(display_name='x', provider='p', api_key=API_KEY)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await call_endpoint(
+                endpoint, service_arg, service, repository.record.id, True, False
             )
 
-        stored = body(await call(True))
-        public = body(await call(False))
+        assert exc_info.value.status_code == 403
 
-        assert stored['api_key'] == repository.record.api_key
+    @pytest.mark.parametrize('secret_access', [False, True], ids=['user', 'service'])
+    async def test_without_include_secrets_is_public(self, api_key_case, secret_access):
+        service, repository, endpoint, service_arg = api_key_case
+        await service.create_config(display_name='x', provider='p', api_key=API_KEY)
+
+        public = body(
+            await call_endpoint(
+                endpoint,
+                service_arg,
+                service,
+                repository.record.id,
+                False,
+                secret_access,
+            )
+        )
+
         assert 'api_key' not in public
         assert public['has_api_key'] is True
         assert_no_secret(public, {API_KEY})
+
+    async def test_include_secrets_of_missing_config_is_404(self, api_key_case):
+        service, _, endpoint, service_arg = api_key_case
+
+        response = await call_endpoint(
+            endpoint, service_arg, service, uuid.uuid4(), True, True
+        )
+
+        assert response.status_code == 404
 
 
 # ---- telephony -----------------------------------------------------------------
@@ -290,22 +338,54 @@ class TestTelephonyConfigs:
         runtime = await service.get_runtime_config(repository.record.id)
         assert runtime['credentials'] == EXOTEL
 
-    async def test_include_secrets_returns_the_stored_form(self, telephony):
+    async def test_include_secrets_returns_plaintext_to_services(self, telephony):
+        service, repository = telephony
+        await create_telephony(service, 'exotel', EXOTEL)
+
+        response = await call_endpoint(
+            get_telephony_config,
+            'telephony_config_service',
+            service,
+            repository.record.id,
+            True,
+            True,
+        )
+
+        assert response.status_code == 200
+        assert body(response)['credentials'] == EXOTEL
+
+    async def test_include_secrets_is_forbidden_without_secret_access(self, telephony):
         service, repository = telephony
         await create_telephony(service)
 
-        def call(include_secrets):
-            return get_telephony_config(
-                config_id=repository.record.id,
-                include_secrets=include_secrets,
-                response_formatter=ResponseFormatter(),
-                telephony_config_service=service,
+        with pytest.raises(HTTPException) as exc_info:
+            await call_endpoint(
+                get_telephony_config,
+                'telephony_config_service',
+                service,
+                repository.record.id,
+                True,
+                False,
             )
 
-        stored = body(await call(True))
-        public = body(await call(False))
+        assert exc_info.value.status_code == 403
 
-        assert stored['credentials'] == stored_credentials(repository)
+    @pytest.mark.parametrize('secret_access', [False, True], ids=['user', 'service'])
+    async def test_without_include_secrets_is_masked(self, telephony, secret_access):
+        service, repository = telephony
+        await create_telephony(service)
+
+        public = body(
+            await call_endpoint(
+                get_telephony_config,
+                'telephony_config_service',
+                service,
+                repository.record.id,
+                False,
+                secret_access,
+            )
+        )
+
         assert public['credentials']['auth_token'] == SECRET_MASK
         assert_no_secret(public, {TWILIO['auth_token']})
 

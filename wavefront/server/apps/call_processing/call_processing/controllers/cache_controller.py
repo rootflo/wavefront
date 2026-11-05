@@ -8,16 +8,10 @@ from typing import Optional
 
 from call_processing.log.logger import logger
 from call_processing.services.common.voice_agent_cache_service import (
+    CONFIG_CACHE_KEY_FUNCS,
     VoiceAgentCacheService,
 )
-from call_processing.cache.cache_utils import (
-    get_voice_agent_cache_key,
-    get_llm_config_cache_key,
-    get_tts_config_cache_key,
-    get_stt_config_cache_key,
-    get_telephony_config_cache_key,
-    get_tools_config_cache_key,
-)
+from call_processing.cache.cache_utils import get_tools_config_cache_key
 from call_processing.constants.api_endpoints import VALID_CONFIG_TYPES
 from call_processing.di.application_container import ApplicationContainer
 from dependency_injector.wiring import inject, Provide
@@ -153,15 +147,7 @@ async def invalidate_cache(
             detail=f'config_id must be a valid UUID for config_type={config_type}',
         )
 
-    cache_key_funcs = {
-        'voice_agent': get_voice_agent_cache_key,
-        'llm_inference_config': get_llm_config_cache_key,
-        'tts_config': get_tts_config_cache_key,
-        'stt_config': get_stt_config_cache_key,
-        'telephony_config': get_telephony_config_cache_key,
-    }
-
-    cache_key_func = cache_key_funcs.get(config_type)
+    cache_key_func = CONFIG_CACHE_KEY_FUNCS.get(config_type)
     if cache_key_func is None:
         logger.error(f'No cache key function configured for config_type={config_type}')
         raise HTTPException(
@@ -225,9 +211,10 @@ async def invalidate_cache(
                 },
             )
 
-        # Step 4: Store fresh config back in cache
-        success = voice_agent_cache_service.cache_manager.set_json(
-            cache_key, fresh_config, expiry=voice_agent_cache_service.cache_ttl
+        # Step 4: Store fresh config back in cache (configs keep their secrets
+        # out of Redis)
+        success, _ = await voice_agent_cache_service.cache_config(
+            config_type, config_id, fresh_config
         )
 
         if not success:

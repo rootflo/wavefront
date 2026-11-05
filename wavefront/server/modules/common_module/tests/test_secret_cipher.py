@@ -9,6 +9,7 @@ from common_module.security.secret_cipher import (
     SECRET_MASK,
     SecretCipher,
     SecretModeMismatchError,
+    UnavailableSecretCipher,
     UnencryptedSecretError,
 )
 from flo_cloud._types import FloCipher
@@ -235,3 +236,50 @@ async def test_async_variants_never_offload_when_disabled(monkeypatch):
         'password': 'pw'
     }
     assert threads.calls == 0
+
+
+# ---- unavailable (services without KMS) -------------------------------------
+
+UNAVAILABLE = 'Secrets are only decrypted by floware'
+
+
+def test_unavailable_cipher_refuses_every_protect_and_reveal():
+    cipher = UnavailableSecretCipher()
+    fields = ('password',)
+
+    for call in (
+        lambda: cipher.protect('sk-live'),
+        lambda: cipher.reveal('sk-live'),
+        lambda: cipher.protect_json({'k': 'v'}),
+        lambda: cipher.reveal_json({'k': 'v'}),
+        lambda: cipher.protect_fields({'password': 'pw'}, fields),
+        lambda: cipher.reveal_fields({'password': 'pw'}, fields),
+    ):
+        with pytest.raises(RuntimeError, match=UNAVAILABLE):
+            call()
+
+
+async def test_unavailable_cipher_refuses_async_variants():
+    cipher = UnavailableSecretCipher()
+    fields = ('password',)
+
+    for call in (
+        lambda: cipher.aprotect('sk-live'),
+        lambda: cipher.areveal('sk-live'),
+        lambda: cipher.aprotect_fields({'password': 'pw'}, fields),
+        lambda: cipher.areveal_fields({'password': 'pw'}, fields),
+    ):
+        with pytest.raises(RuntimeError, match=UNAVAILABLE):
+            await call()
+
+
+def test_unavailable_cipher_still_masks():
+    cipher = UnavailableSecretCipher()
+
+    assert not cipher.enabled
+    assert cipher.mask_fields({'password': 'pw'}, ('password',)) == {
+        'password': SECRET_MASK
+    }
+    assert cipher.merge_masked(
+        {'password': SECRET_MASK}, {'password': 'pw'}, ('password',)
+    ) == {'password': 'pw'}

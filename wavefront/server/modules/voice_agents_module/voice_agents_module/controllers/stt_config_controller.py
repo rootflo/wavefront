@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from user_management_module.authorization.secret_access import require_secret_access
 from voice_agents_module.models.stt_schemas import (
     CreateSttConfigPayload,
     UpdateSttConfigPayload,
@@ -86,9 +87,10 @@ async def list_stt_configs(
 @stt_config_router.get('/v1/stt-configs/{config_id}')
 @inject
 async def get_stt_config(
+    request: Request,
     config_id: UUID = Path(..., description='The ID of the STT configuration'),
     include_secrets: bool = Query(
-        False, description='Return the api_key in its stored form'
+        False, description='Return the api_key in plaintext (internal services only)'
     ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -102,15 +104,16 @@ async def get_stt_config(
 
     Args:
         config_id: UUID of the configuration to retrieve
-        include_secrets: Return the stored form, with api_key (ciphertext when
-            envelope encryption is on). Used by call_processing.
+        include_secrets: Return the api_key in plaintext. Only internal
+            service callers may set it. Used by call_processing.
 
     Returns:
         JSONResponse: Configuration details (has_api_key instead of api_key,
         unless include_secrets)
     """
     if include_secrets:
-        config_dict = await stt_config_service.get_stored_config(config_id)
+        require_secret_access(request)
+        config_dict = await stt_config_service.get_runtime_config(config_id)
     else:
         config_dict = await stt_config_service.get_config(config_id)
 
