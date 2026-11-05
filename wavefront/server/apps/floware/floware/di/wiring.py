@@ -126,7 +126,6 @@ def wire_containers() -> None:
         modules=['api_services_module.api_services_container'],
         packages=[
             'api_services_module.core',
-            'api_services_module.execution',
         ],
     )
 

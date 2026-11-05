@@ -2,7 +2,10 @@
 
 from fastapi import APIRouter, Request, HTTPException, Response
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote
+
+from pydantic import BaseModel, Field
 
 from .proxy import ApiProxy
 from .manager import ApiServicesManager
@@ -13,6 +16,31 @@ from fastapi import status
 
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
+
+
+class ExecuteApiRequest(BaseModel):
+    """Body of the internal execute endpoint: one API of a service, by id."""
+
+    api_id: str
+    api_version: str = 'v1'
+    payload: Any = None
+    path_params: Dict[str, Any] = Field(default_factory=dict)
+    query_params: Dict[str, Any] = Field(default_factory=dict)
+    headers: Dict[str, str] = Field(default_factory=dict)
+
+
+def _encode_path_params(path_params: Dict[str, Any]) -> Dict[str, str]:
+    """Encode each value as one path segment, so it can't change the backend URL."""
+    encoded = {}
+    for name, value in path_params.items():
+        value = str(value)
+        if value in ('', '.', '..'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid value for path parameter '{name}': {value!r}",
+            )
+        encoded[name] = quote(value, safe='')
+    return encoded
 
 
 class ProxyRouter:
@@ -78,6 +106,41 @@ class ProxyRouter:
             # Ensure dynamic routes match the reloaded service definition
             self.reload_service_routes(service_id)
             return {'message': f'Service {service_id} reloaded successfully'}
+
+        @self.router.post('/v1/api-services/{service_id}/execute')
+        async def execute_api(
+            service_id: str, body: ExecuteApiRequest, response: Response
+        ):
+            """Execute one API of a service by its id, for internal callers.
+
+            Workflow and agent tools call this instead of the dynamic route,
+            which is keyed by the API's path template and forwards the caller's
+            own headers to the backend. Only ``body.headers`` reach the backend
+            here, so the internal auth headers on this request (the passthrough
+            secret, the mesh client cert) never leave floware.
+
+            A function node hands the tool everything it collected — upstream
+            outputs, workflow variables — so when the API declares a payload
+            schema only those fields are sent, rather than workflow state.
+            """
+            proxy_response = await self.proxy.process_request(
+                service_id=service_id,
+                api_id=body.api_id,
+                api_version=body.api_version,
+                method='POST',
+                path='_workflow',
+                path_params=_encode_path_params(body.path_params),
+                query_params=body.query_params,
+                headers=body.headers,
+                body=body.payload,
+                restrict_payload_to_schema=True,
+            )
+            if isinstance(proxy_response, Response):
+                return proxy_response
+            # A 204 can't carry the JSON envelope the caller parses
+            status_code = proxy_response.http_status_code
+            response.status_code = 200 if status_code == 204 else status_code
+            return proxy_response
 
         # Authentication endpoint (for direct auth API calls)
         @self.router.post(

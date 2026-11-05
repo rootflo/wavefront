@@ -133,11 +133,6 @@ def create_api_services_container(
     if cache_manager:
         container.cache_manager.override(cache_manager)
 
-    container.wire(
-        modules=[__name__],
-        packages=[
-            'api_services_module.execution',
-        ],
-    )
+    container.wire(modules=[__name__])
 
     return container

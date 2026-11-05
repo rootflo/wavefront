@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from common_module.log.logger import logger
 from ..models.pipeline import PipelineContext, PipelineException
 from ..models.service import ProxyResponse, ServiceDefinition, ApiConfig
-from ..config.registry import ServiceRegistry
+from ..config.registry import ServiceNotFoundError, ServiceRegistry
 from ..pipeline.builder import PipelineBuilder, PipelineCache
 from ..auth.manager import AuthManager
 from .manager import ApiServicesManager
@@ -49,6 +49,24 @@ class ApiProxy:
                 detail='API services manager is not configured for this proxy',
             )
 
+    async def _load_missing_service(self, service_id: str):
+        """Load one service the in-memory registry does not have, from the database.
+
+        A replica that missed the create starts out without the service. Returns
+        None when it does not exist there either.
+        """
+        if not getattr(self.service_registry, 'api_service_manager', None):
+            return None
+        try:
+            await self.service_registry.load_service_from_db(service_id)
+        except ServiceNotFoundError:
+            return None
+        service_definition = self.service_registry.get_service(service_id)
+        if service_definition:
+            self.auth_manager.register_service_auth(service_definition)
+            logger.info(f'Loaded API service {service_id} on first use')
+        return service_definition
+
     def _initialize_auth_manager(self):
         """Initialize auth manager with all registered services."""
         for service in self.service_registry.get_all_services().values():
@@ -66,6 +84,7 @@ class ApiProxy:
         headers: Optional[Dict[str, str]] = None,
         body: Optional[Any] = None,
         trace: bool = False,
+        restrict_payload_to_schema: bool = False,
     ) -> Union[ProxyResponse, Response]:
         """
         Process an API request through the proxy pipeline.
@@ -80,6 +99,9 @@ class ApiProxy:
             query_params: Query parameters
             headers: Request headers
             body: Request body
+            restrict_payload_to_schema: When the API declares a payload_schema,
+                send only its declared fields. For internal callers whose body
+                is assembled from workflow state rather than written for this API.
 
         Returns:
             Union[ProxyResponse, Response] with standardized format (JSON/text via ProxyResponse, binary via fastapi.Response)
@@ -108,6 +130,8 @@ class ApiProxy:
             # Get service definition
             service_definition = self.service_registry.get_service(service_id)
             if not service_definition:
+                service_definition = await self._load_missing_service(service_id)
+            if not service_definition:
                 raise HTTPException(
                     status_code=404, detail=f'Service not found: {service_id}'
                 )
@@ -119,6 +143,16 @@ class ApiProxy:
                     status_code=404,
                     detail=f'API not found: {api_id} (version: {api_version}) in service: {service_id}',
                 )
+
+            if (
+                restrict_payload_to_schema
+                and api_config.payload_schema
+                and isinstance(context.body, dict)
+            ):
+                declared = {f.name for f in api_config.payload_schema.fields}
+                context.body = {
+                    k: v for k, v in context.body.items() if k in declared
+                } or None
 
             context.add_trace('proxy', 'Found service and API configuration')
 

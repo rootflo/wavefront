@@ -85,6 +85,8 @@ class TestBuildFunctionRegistry:
             'fetch_configuration',
             'message_processor',
             'trigger_message_processor',
+            'rf_api_service',
+            'trigger_api_service',
         ):
             assert isinstance(registry[name], MethodType), name
             assert registry[name].__self__ is api, name
@@ -92,8 +94,7 @@ class TestBuildFunctionRegistry:
     def test_tools_that_do_not_call_floware_stay_unbound(self):
         registry = build_function_registry(FlowareApiClient('http://f'))
 
-        for name in ('rf_api_service', 'passthrough', 'trigger_api_service'):
-            assert not isinstance(registry[name], MethodType), name
+        assert not isinstance(registry['passthrough'], MethodType)
 
     def test_bound_tools_keep_their_name_and_docstring(self):
         registry = build_function_registry(FlowareApiClient('http://f'))
