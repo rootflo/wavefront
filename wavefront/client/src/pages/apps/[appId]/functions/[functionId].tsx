@@ -1,27 +1,21 @@
 import floConsoleService from '@app/api';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
+import DetailActions from '@app/components/DetailActions';
+import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { useGetMessageProcessor } from '@app/hooks';
-import { getMessageProcessorKey, getMessageProcessorsKey } from '@app/hooks/data/query-keys';
+import { useGetMessageProcessor, useUpdateMessageProcessor } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { z } from 'zod';
-import { formatAppName } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
 
 const functionFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -33,15 +27,13 @@ type FunctionForm = z.infer<typeof functionFormSchema>;
 
 const FunctionDetail: React.FC = () => {
   const { app: appId, functionId } = useParams<{ app: string; functionId: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const updateMessageProcessor = useUpdateMessageProcessor(appId);
   const { notifySuccess, notifyError } = useNotifyStore();
 
   // Fetch message processor
-  const { data: processor } = useGetMessageProcessor(appId, functionId);
+  const { data: processor, isLoading: processorLoading } = useGetMessageProcessor(appId, functionId);
 
   const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   // Execution state
   const [executionInput, setExecutionInput] = useState('{}');
@@ -70,32 +62,20 @@ const FunctionDetail: React.FC = () => {
     }
   }, [processor, form]);
 
-  const handleSave = async (data: FunctionForm) => {
+  const handleSave = (data: FunctionForm) => {
     if (!functionId) return;
 
-    setSaving(true);
-    try {
-      const response = await floConsoleService.messageProcessorService.updateMessageProcessor(functionId, {
-        name: data.name.trim(),
-        description: data.description?.trim() || undefined,
-        yaml_content: data.yaml_content.trim(),
-      });
-
-      if (response.data?.data) {
-        // Invalidate query to refetch updated data
-        queryClient.invalidateQueries({ queryKey: getMessageProcessorKey(appId || '', functionId || '') });
-        queryClient.invalidateQueries({ queryKey: getMessageProcessorsKey(appId || '') });
-        setEditing(false);
-        notifySuccess('Function updated successfully');
-      } else {
-        notifyError(response.data?.meta?.error || 'Failed to update message processor');
-      }
-    } catch (error: unknown) {
-      console.error('Error updating function:', error);
-      notifyError('Failed to update function');
-    } finally {
-      setSaving(false);
-    }
+    updateMessageProcessor.mutate(
+      {
+        processorId: functionId,
+        data: {
+          name: data.name.trim(),
+          description: data.description?.trim() || undefined,
+          yaml_content: data.yaml_content.trim(),
+        },
+      },
+      { onSuccess: () => setEditing(false) }
+    );
   };
 
   const handleExecute = async () => {
@@ -142,70 +122,40 @@ const FunctionDetail: React.FC = () => {
     }
   };
 
+  const handleCancelEdit = () => {
+    setEditing(false);
+    // Revert changes by resetting form to processor data
+    if (processor) {
+      form.reset({
+        name: processor.name,
+        description: processor.description || '',
+        yaml_content: processor.yaml_content || '',
+      });
+    }
+  };
+
   return (
-    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
-      <Breadcrumb className="mb-6">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/functions`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Functions
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{processor?.name || functionId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
+      <PageBreadcrumb
+        items={[
+          { label: 'Functions', to: `/apps/${appId}/functions` },
+          { label: processor?.name || functionId, loading: processorLoading },
+        ]}
+      />
 
       <div className="flex w-full flex-col gap-10 pb-5">
-        <div className="flex items-center justify-between">
-          <p className="frost-text text-2xl leading-normal font-semibold">
-            {formatAppName(processor?.name || functionId)}
-          </p>
-          <div className="flex gap-4">
-            {editing ? (
-              <>
-                <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditing(false);
-                    // Revert changes by resetting form to processor data
-                    if (processor) {
-                      form.reset({
-                        name: processor.name,
-                        description: processor.description || '',
-                        yaml_content: processor.yaml_content || '',
-                      });
-                    }
-                  }}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/functions`} label="Back to functions" />
+            <PageTitle loading={processorLoading}>{formatAppName(processor?.name || functionId)}</PageTitle>
           </div>
+          <DetailActions
+            editing={editing}
+            onEdit={() => setEditing(true)}
+            onSave={form.handleSubmit(handleSave)}
+            onCancel={handleCancelEdit}
+            saving={updateMessageProcessor.isPending}
+          />
         </div>
 
         <div className="grid w-full gap-6 lg:grid-cols-2">
@@ -253,12 +203,11 @@ const FunctionDetail: React.FC = () => {
                       </FormLabel>
                       <FormControl>
                         <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                          <CodeMirror
+                          <CodeEditor
                             value={field.value}
                             height="400px"
                             extensions={[langs.yaml()]}
                             onChange={field.onChange}
-                            theme="dark"
                             editable={editing}
                           />
                         </div>
@@ -277,18 +226,17 @@ const FunctionDetail: React.FC = () => {
               <h3 className="frost-text text-lg font-semibold">Execute Function</h3>
 
               <div className="flex h-full flex-col gap-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label htmlFor="inputData" className="frost-text block pb-2 text-sm font-medium">
                       Input Data (JSON) <span className="text-red-500">*</span>
                     </label>
                     <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                      <CodeMirror
+                      <CodeEditor
                         value={executionInput}
                         height="150px"
                         extensions={[langs.json()]}
                         onChange={(value) => setExecutionInput(value)}
-                        theme="dark"
                       />
                     </div>
                   </div>
@@ -298,12 +246,11 @@ const FunctionDetail: React.FC = () => {
                       Execution Context (optional)
                     </label>
                     <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                      <CodeMirror
+                      <CodeEditor
                         value={executionContext}
                         height="150px"
                         extensions={[langs.json()]}
                         onChange={(value) => setExecutionContext(value)}
-                        theme="dark"
                       />
                     </div>
                   </div>
@@ -312,12 +259,11 @@ const FunctionDetail: React.FC = () => {
                 <div className="flex flex-1 flex-col">
                   <label className="frost-text block pb-2 text-sm font-medium">Result</label>
                   <div className="frost-control ring-frost-border flex-1 overflow-hidden rounded-lg border ring-1">
-                    <CodeMirror
+                    <CodeEditor
                       value={JSON.stringify(executionResult, null, 2)}
                       extensions={[langs.json()]}
                       height="100%"
                       editable={false}
-                      theme="dark"
                       className="h-full"
                     />
                   </div>

@@ -38,7 +38,7 @@ export const chatbotFormSchema = z.object({
   description: z.string().max(500, 'Description must be 500 characters or fewer'),
   system_prompt: z.string().min(1, 'System prompt is required'),
   welcome_message: z.string(),
-  llm_config_id: z.string().min(1, 'LLM configuration is required'),
+  llm_config_id: z.string().min(1, 'Model is required'),
   temperature: temperatureSchema,
   enabled: z.boolean(),
 });

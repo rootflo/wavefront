@@ -72,7 +72,7 @@ from call_processing.services.webrtc.room_service import (
     ERR_SWAP_FAILED,
 )
 from call_processing.services.webrtc.prompts import (
-    STEP_OPENER,
+    build_step_opener,
     default_step_instruction,
     step_heading,
     step_language_line,
@@ -553,7 +553,10 @@ class ClientSessionMessenger(SessionEvents):
             await self.interrupt()
         await self._task.queue_frame(
             LLMMessagesAppendFrame(
-                messages=[{'role': 'user', 'content': STEP_OPENER}], run_llm=True
+                messages=[
+                    {'role': 'user', 'content': build_step_opener(ctx.instruction)}
+                ],
+                run_llm=True,
             )
         )
 

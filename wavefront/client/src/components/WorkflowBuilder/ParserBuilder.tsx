@@ -1,13 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { Plus, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Button } from '@app/components/ui/button';
 
+/** One field of an agent's output parser; objects nest `fields`, arrays describe their `items`. */
+export interface ParserField {
+  name?: string;
+  type: string;
+  description?: string;
+  fields?: ParserField[];
+  items?: ParserField;
+}
+
+/** An agent's output parser: the structured shape its answer is parsed into. */
+export interface ParserSchema {
+  name?: string;
+  version?: string;
+  description?: string;
+  fields?: ParserField[];
+}
+
 interface ParserBuilderProps {
-  value: any;
-  onChange: (val: any) => void;
+  value: ParserSchema | undefined;
+  onChange: (val: ParserSchema) => void;
 }
 
 const FIELD_TYPE_OPTIONS = [
@@ -24,18 +40,18 @@ const FieldEditor = ({
   onChange,
   onDelete,
 }: {
-  field: any;
-  onChange: (val: any) => void;
+  field: ParserField;
+  onChange: (val: ParserField) => void;
   onDelete: () => void;
 }) => {
   const [expanded, setExpanded] = useState(true);
 
-  const updateField = (key: string, val: any) => {
+  const updateField = <K extends keyof ParserField>(key: K, val: ParserField[K]) => {
     onChange({ ...field, [key]: val });
   };
 
   const handleTypeChange = (newType: string) => {
-    const newField = { ...field, type: newType };
+    const newField: ParserField = { ...field, type: newType };
     if (newType === 'object' && !newField.fields) {
       newField.fields = [];
     }
@@ -45,7 +61,7 @@ const FieldEditor = ({
     onChange(newField);
   };
 
-  const handleNestedFieldChange = (idx: number, newF: any) => {
+  const handleNestedFieldChange = (idx: number, newF: ParserField) => {
     const newFields = [...(field.fields || [])];
     newFields[idx] = newF;
     updateField('fields', newFields);
@@ -104,7 +120,7 @@ const FieldEditor = ({
 
       {expanded && field.type === 'object' && (
         <div className="border-border/50 mt-1 ml-6 border-l pl-2">
-          {(field.fields || []).map((f: any, idx: number) => (
+          {(field.fields || []).map((f, idx) => (
             <FieldEditor
               key={idx}
               field={f}
@@ -156,11 +172,11 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
     );
   }
 
-  const updateRoot = (key: string, val: any) => {
+  const updateRoot = <K extends keyof ParserSchema>(key: K, val: ParserSchema[K]) => {
     onChange({ ...value, [key]: val });
   };
 
-  const handleFieldChange = (idx: number, newF: any) => {
+  const handleFieldChange = (idx: number, newF: ParserField) => {
     const newFields = [...(value.fields || [])];
     newFields[idx] = newF;
     updateRoot('fields', newFields);
@@ -221,7 +237,7 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
         </Label>
 
         <div className="flex flex-col gap-1">
-          {(value.fields || []).map((f: any, idx: number) => (
+          {(value.fields || []).map((f, idx) => (
             <FieldEditor
               key={idx}
               field={f}

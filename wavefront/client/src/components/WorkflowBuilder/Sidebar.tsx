@@ -49,7 +49,7 @@ export const Sidebar = ({
   }
 
   return (
-    <aside className="border-border bg-card z-10 flex h-full w-64 shrink-0 flex-col border-r shadow-xs">
+    <aside className="border-border bg-card z-10 flex h-full w-64 shrink-0 flex-col border-r shadow-xs max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20">
       <SidebarHeader onCollapse={() => setCollapsed(true)} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">

@@ -3,7 +3,7 @@ import { Bot, Cpu, Filter, FileCode2, RotateCcw, Wrench } from 'lucide-react';
 import React from 'react';
 import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
-import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs } from '@app/hooks';
 import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 

@@ -1,5 +1,8 @@
 import { appEnv } from '@app/config/env';
 import { TOKEN_KEY } from '@app/lib/constants';
+import { getRouteAppId } from '@app/lib/current-app';
+import { clearSession } from '@app/lib/session';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
@@ -26,11 +29,14 @@ axiosInstance.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Replace :appId with the actual appId from the URL
+    // App-scoped endpoints are written with an :appId placeholder, filled from the page's app
     if (config.url?.includes(':appId')) {
-      const pageUrl = new URL(window.location.href);
-      const appId = pageUrl.pathname.split('/')[2];
-      config.url = config.url?.replace(':appId', appId || '');
+      const appId = getRouteAppId();
+      if (!appId) {
+        // Fail loudly rather than send the request to the wrong app or to none
+        throw new Error(`${config.url} needs an app, but this page is not inside one`);
+      }
+      config.url = config.url.replace(':appId', encodeURIComponent(appId));
     }
 
     return config;
@@ -45,15 +51,19 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   function (err: IAxiosError) {
-    const errorData = err.response as IApiResponse;
-    useNotifyStore.setState({
-      visible: true,
-      type: 'error',
-      message: errorData.data?.meta?.error || 'Something went wrong',
-    });
+    // The one error toast for every request; a mutation hook may replace it with a more specific fallback.
+    // A cancelled request was abandoned on purpose, so it isn't reported.
+    if (!axios.isCancel(err)) {
+      useNotifyStore.setState({
+        visible: true,
+        type: 'error',
+        // A network failure or timeout has no response, so this must not assume one
+        message: extractErrorMessage(err) || 'Something went wrong',
+      });
+    }
     const errCode = err.response?.status;
     if (errCode === 401) {
-      localStorage.clear();
+      clearSession();
       useAuthStore.setState({
         authenticated: false,
       });

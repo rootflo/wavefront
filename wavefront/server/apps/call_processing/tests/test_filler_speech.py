@@ -144,3 +144,44 @@ async def test_vad_starts_the_turn_only_while_the_bot_is_silent():
     result = await strategy.process_frame(VADUserStartedSpeakingFrame())
     assert result == ProcessFrameResult.STOP
     assert started == [True]
+
+
+class ArmThenSwitch(FillerSpeechProcessor):
+    """Arms with the phrases of the current language, which then switches
+    before the filler fires (a direct language switch)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.language = 'en'
+
+    async def process_frame(self, frame, direction):
+        if isinstance(frame, UserStoppedSpeakingFrame):
+            await self.arm_thinking_filler(
+                lambda: {'en': ['Hmm'], 'hi': ['हम्म'], 'ta': []}[self.language]
+            )
+            self.language = self.next_language
+        await super().process_frame(frame, direction)
+
+
+async def test_a_phrase_callable_follows_a_switch_made_after_arming():
+    processor = ArmThenSwitch(delay_secs=0.05)
+    processor.next_language = 'hi'
+
+    down, _ = await run_test(
+        processor,
+        frames_to_send=[UserStoppedSpeakingFrame(), SleepFrame(sleep=0.2)],
+    )
+
+    assert _spoken(down) == ['हम्म']
+
+
+async def test_a_phrase_callable_with_no_phrases_says_nothing():
+    processor = ArmThenSwitch(delay_secs=0.05)
+    processor.next_language = 'ta'
+
+    down, _ = await run_test(
+        processor,
+        frames_to_send=[UserStoppedSpeakingFrame(), SleepFrame(sleep=0.2)],
+    )
+
+    assert _spoken(down) == []

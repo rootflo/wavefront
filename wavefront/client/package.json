@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "test": "vitest run"
   },
   "dependencies": {
@@ -55,6 +55,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
+    "@testing-library/user-event": "14.5.2",
     "@types/dagre": "^0.7.54",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
@@ -67,6 +71,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
+    "jsdom": "25.0.1",
     "postcss": "^8.5.23",
     "prettier": "^3.7.4",
     "tailwindcss": "^4.1.17",

@@ -3,7 +3,7 @@ from typing import Union, List, Tuple, Optional, IO, ContextManager, Mapping, It
 from .aws.s3 import S3Storage
 from .gcp.gcs import GCSStorage
 from .azure.blob_storage import AzureBlobStorage
-from ._types import CloudProvider
+from ._types import CloudProvider, FolderListing
 
 
 class CloudStorageManager:
@@ -34,6 +34,10 @@ class CloudStorageManager:
         """Return object bytes from ``bucket_name`` / ``file_path``."""
         return self.handler.get_file(bucket_name, file_path)
 
+    def download_to_file(self, bucket_name: str, file_path: str, dest) -> None:
+        """Stream an object to the local file ``dest`` (str or Path)."""
+        self.handler.download_to_file(bucket_name, file_path, str(dest))
+
     def read_file_with_content_type(
         self, bucket_name: str, file_path: str
     ) -> Tuple[bytes, Optional[str]]:
@@ -46,6 +50,19 @@ class CloudStorageManager:
         if callable(getter):
             return getter(self.handler, bucket_name, file_path)
         return self.handler.get_file(bucket_name, file_path), None
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix`` (folders + objects), paged by ``page_token``."""
+        return self.handler.list_folder(
+            bucket_name, prefix, page_size, page_token, delimiter
+        )
 
     def list_files(
         self, bucket_name: str, prefix: str, page_size: int = 50, page_number: int = 1

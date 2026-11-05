@@ -1,4 +1,4 @@
-import { PiiEntity, PiiEntityGroup } from '@app/api/guardrails-service';
+import { PiiEntity, PiiEntityGroup } from '@app/types/guardrails';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popo
 import { Check, ChevronDown, ChevronRight, ChevronsUpDown, Search, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { LOOSE_PATTERN_SCORE, PRECISION_TOOLTIPS, PRECISION_WARNINGS } from './adapter-meta';
+import { matchesSearch } from '@app/utils/search';
 
 const GLOBAL_GROUP = 'Global';
 
@@ -57,22 +58,31 @@ const EntityRow: React.FC<{
       />
       <span className="min-w-0">
         <span className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-gray-800">{entity.label}</span>
+          <span className="frost-text text-sm">{entity.label}</span>
           {warning && (
             <span
               title={PRECISION_TOOLTIPS[entity.precision]}
-              className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800"
+              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-800 dark:text-amber-300"
             >
               {warning}
             </span>
           )}
         </span>
-        <span className="mt-0.5 block text-xs text-gray-500">{entity.description}</span>
-        {entity.example && <span className="mt-0.5 block font-mono text-[11px] text-gray-400">{entity.example}</span>}
+        <span className="frost-text-subtle mt-0.5 block text-xs">{entity.description}</span>
+        {entity.example && (
+          <span className="frost-text-subtle mt-0.5 block font-mono text-[11px]">{entity.example}</span>
+        )}
       </span>
     </label>
   );
 };
+
+const entityMatches = (query: string) => (entity: PiiEntity) =>
+  matchesSearch(query, entity.label, entity.id, entity.description);
+
+/** A group cut down to the entities matching `query`; the whole group when there's no query. */
+const filterGroup = (group: PiiEntityGroup, query: string): PiiEntityGroup =>
+  query ? { ...group, entities: group.entities.filter(entityMatches(query)) } : group;
 
 const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChange }) => {
   const [search, setSearch] = useState('');
@@ -109,22 +119,14 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
   }, [countryGroups, selectedSet]);
 
   const query = search.trim().toLowerCase();
-  const matches = (entity: PiiEntity) =>
-    entity.label.toLowerCase().includes(query) ||
-    entity.id.toLowerCase().includes(query) ||
-    entity.description.toLowerCase().includes(query);
-
-  const filterGroup = (group: PiiEntityGroup) =>
-    query ? { ...group, entities: group.entities.filter(matches) } : group;
 
   // Global first, then whichever countries have been added. One list, so the
   // sections behave identically - Global just cannot be removed.
   const visibleGroups = useMemo(
     () =>
       [...(globalGroup ? [globalGroup] : []), ...countryGroups.filter((g) => pickedCountries.includes(g.group))]
-        .map(filterGroup)
+        .map((group) => filterGroup(group, query))
         .filter((group) => group.entities.length > 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [globalGroup, countryGroups, pickedCountries, query]
   );
 
@@ -134,9 +136,8 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
     if (!query) return [];
     return countryGroups
       .filter((group) => !pickedCountries.includes(group.group))
-      .map((group) => ({ group: group.group, count: group.entities.filter(matches).length }))
+      .map((group) => ({ group: group.group, count: group.entities.filter(entityMatches(query)).length }))
       .filter((entry) => entry.count > 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryGroups, pickedCountries, query]);
 
   const toggle = (id: string, checked: boolean) => {
@@ -175,7 +176,7 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
       <div className="flex items-center justify-between">
         <div className="pr-8">
           <Label className="text-sm font-medium">What to redact</Label>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="frost-text-subtle mt-1 text-xs">
             Only the types you select are detected. Anything unselected is passed through untouched.
           </p>
         </div>
@@ -193,7 +194,7 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
 
       <div className="mt-3 flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="frost-text-subtle absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             className="pl-9"
             placeholder="Search identifiers, e.g. aadhaar, passport, card"
@@ -225,7 +226,7 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
                       >
                         <Check className={`mr-2 h-4 w-4 ${isPicked ? 'opacity-100' : 'opacity-0'}`} />
                         <span className="flex-1">{group.group}</span>
-                        <span className="text-xs text-gray-400">{group.entities.length}</span>
+                        <span className="frost-text-subtle text-xs">{group.entities.length}</span>
                       </CommandItem>
                     );
                   })}
@@ -261,13 +262,13 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
       )}
 
       {effective.length === 0 && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+        <p className="mt-3 rounded-md border border-amber-400/50 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
           Nothing is selected, so this check would detect nothing while still appearing to be on. Select at least one
           type, or switch the check off.
         </p>
       )}
 
-      <div className="mt-3 flex flex-col divide-y divide-gray-100 rounded-md border border-gray-200">
+      <div className="divide-frost-border border-frost-border mt-3 flex flex-col divide-y rounded-md border">
         {visibleGroups.map((group) => {
           const open = query ? true : (expanded[group.group] ?? false);
           const count = selectedCountIn(group);
@@ -277,15 +278,15 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
                 type="button"
                 disabled={disabled}
                 onClick={() => setExpanded((current) => ({ ...current, [group.group]: !current[group.group] }))}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 disabled:cursor-not-allowed"
+                className="hover:bg-frost-glass flex w-full items-center justify-between px-3 py-2.5 text-left disabled:cursor-not-allowed"
               >
-                <span className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                <span className="frost-text flex items-center gap-2 text-sm font-medium">
                   {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   {group.group}
-                  <span className="text-xs font-normal text-gray-500">({group.entities.length})</span>
+                  <span className="frost-text-subtle text-xs font-normal">({group.entities.length})</span>
                 </span>
                 {count > 0 && (
-                  <span className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">{count}</span>
+                  <span className="bg-brand rounded px-2 py-0.5 text-xs font-medium text-white">{count}</span>
                 )}
               </button>
 
@@ -307,14 +308,14 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
         })}
 
         {visibleGroups.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-gray-500">
+          <p className="frost-text-subtle px-3 py-6 text-center text-sm">
             {query ? `No identifiers match "${search}".` : 'No identifier groups available.'}
           </p>
         )}
       </div>
 
       {hiddenMatches.length > 0 && (
-        <p className="mt-3 rounded-md border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-600">
+        <p className="border-frost-border bg-frost-glass frost-text-muted mt-3 rounded-md border border-dashed p-3 text-xs">
           Also found in countries you have not added:{' '}
           {hiddenMatches.map((entry, index) => (
             <React.Fragment key={entry.group}>
@@ -323,7 +324,7 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
                 type="button"
                 disabled={disabled}
                 onClick={() => addCountry(entry.group)}
-                className="cursor-pointer font-medium text-gray-900 underline underline-offset-2"
+                className="frost-text cursor-pointer font-medium underline underline-offset-2"
               >
                 {entry.group} ({entry.count})
               </button>

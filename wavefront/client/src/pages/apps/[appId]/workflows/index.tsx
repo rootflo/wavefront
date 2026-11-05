@@ -1,3 +1,7 @@
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
@@ -5,20 +9,21 @@ import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetNamespaces, useGetWorkflows } from '@app/hooks';
+import { useDeleteWorkflow, useGetNamespaces, useGetWorkflows } from '@app/hooks';
 import { getWorkflowsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/utils/download';
 import { useNotifyStore } from '@app/store';
 import { WorkflowListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, Trash2 } from 'lucide-react';
+import { Copy, Download, Trash2, Workflow, Upload } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
 import { parseUploadedWorkflow } from './workflow-utils';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/utils/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';
@@ -32,12 +37,13 @@ const ALL_NAMESPACES = '__all__';
 const WorkflowManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView('workflows');
   const queryClient = useQueryClient();
+  const deleteWorkflow = useDeleteWorkflow(appId);
+  const deletion = useDeleteConfirm<WorkflowListItem>((item) => deleteWorkflow.mutateAsync(item.id));
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [namespace, setNamespace] = useState('');
-  const [deleteItem, setDeleteItem] = useState<WorkflowListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -47,15 +53,9 @@ const WorkflowManagement: React.FC = () => {
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
   const filteredWorkflows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = term
-      ? workflows.filter(
-          (workflow) =>
-            workflow.name.toLowerCase().includes(term) ||
-            workflow.id.toLowerCase().includes(term) ||
-            workflow.namespace.toLowerCase().includes(term)
-        )
-      : workflows;
+    const filtered = workflows.filter((workflow) =>
+      matchesSearch(searchTerm, workflow.name, workflow.id, workflow.namespace)
+    );
 
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [workflows, searchTerm]);
@@ -149,24 +149,6 @@ const WorkflowManagement: React.FC = () => {
     setBulkError(failed.length > 0 ? `Failed to create workflows: ${failed.join(', ')}` : '');
   };
 
-  const handleDelete = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.workflowService.deleteWorkflow(deleteItem.id);
-      notifySuccess('Workflow deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getWorkflowsKey(appId || '', namespace || undefined),
-      });
-      setDeleteItem(null);
-    } catch {
-      notifyError('Failed to delete workflow');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // Workflows are created in a separate editor tab; refresh the list when one is created or saved there
   useWorkflowUpdatedListener(
     useCallback(() => {
@@ -179,46 +161,39 @@ const WorkflowManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="mb-8 flex shrink-0 items-center justify-end gap-3">
-        <Select
-          value={namespace || ALL_NAMESPACES}
-          onValueChange={(value) => setNamespace(value === ALL_NAMESPACES ? '' : value)}
-        >
-          <SelectTrigger className="w-48 cursor-pointer">
-            <SelectValue placeholder="All Namespaces" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_NAMESPACES}>All Namespaces</SelectItem>
-            {namespaces.map((ns) => (
-              <SelectItem key={ns.name} value={ns.name}>
-                {ns.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="text"
-          placeholder="Search"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-[180px]"
-        />
-        <Button variant="outline" onClick={() => setBulkDownloadOpen(true)} disabled={workflows.length === 0}>
-          Download
-        </Button>
-        <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-          Upload
-        </Button>
-        <Button onClick={handleCreateWorkflow} title="Opens the editor in a new tab">
-          Create Workflow
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
+      <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search workflows' }}
+        filters={
+          <FilterSelect
+            label="Namespace"
+            value={namespace || ALL_NAMESPACES}
+            onValueChange={(value) => setNamespace(value === ALL_NAMESPACES ? '' : value)}
+            allValue={ALL_NAMESPACES}
+            options={[
+              { value: ALL_NAMESPACES, label: 'All namespaces' },
+              ...namespaces.map((ns) => ({ value: ns.name, label: ns.name })),
+            ]}
+          />
+        }
+        secondary={[
+          {
+            label: 'Download',
+            icon: Download,
+            onClick: () => setBulkDownloadOpen(true),
+            disabled: workflows.length === 0,
+          },
+          { label: 'Upload', icon: Upload, onClick: () => setBulkUploadOpen(true) },
+        ]}
+        primary={{ label: 'Create workflow', onClick: handleCreateWorkflow }}
+        className="md:justify-end"
+      />
 
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
-        <p className="frost-text-muted text-sm">Loading workflows...</p>
+        <ResourceListSkeleton view={view} />
       ) : filteredWorkflows.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -229,73 +204,108 @@ const WorkflowManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>ID</TableHead>
-                <TableHead>Namespace</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <ResourceList
+          view={view}
+          cards={
+            <>
               {filteredWorkflows.map((workflow) => (
-                <TableRow
+                <ResourceCard
                   key={workflow.id}
-                  className="cursor-pointer"
+                  icon={Workflow}
+                  title={workflow.name}
+                  metadata={[
+                    { label: 'Id', value: workflow.id, isMono: true, isCopyable: true },
+                    ...(workflow.namespace ? [{ label: 'Namespace', value: workflow.namespace }] : []),
+                    ...(workflow.current_version !== undefined
+                      ? [{ label: 'Version', value: `v${workflow.current_version}` }]
+                      : []),
+                    { label: 'Created', value: formatCreatedAt(workflow.created_at) },
+                  ]}
                   onClick={() => navigate(`/apps/${appId}/workflows/${workflow.id}`)}
-                >
-                  <TableCell className="max-w-[220px] truncate font-medium" title={workflow.name}>
-                    {workflow.name}
-                  </TableCell>
-                  <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <span className="truncate font-mono text-xs" title={workflow.id}>
-                        {workflow.id}
-                      </span>
-                      <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(workflow.id)}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="frost-text-muted">{workflow.namespace || '—'}</TableCell>
-                  <TableCell className="frost-text-muted">
-                    {workflow.current_version !== undefined ? `v${workflow.current_version}` : '—'}
-                  </TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(workflow.created_at)}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Download"
-                        loading={downloadingId === workflow.id}
-                        onClick={() => void handleWorkflowDownload(workflow)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(workflow)}>
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                  onDeleteClick={() => deletion.ask(workflow)}
+                  deleteTitle="Delete workflow"
+                  extraActions={[
+                    {
+                      label: 'Download',
+                      icon: Download,
+                      disabled: downloadingId === workflow.id,
+                      onClick: () => void handleWorkflowDownload(workflow),
+                    },
+                  ]}
+                />
               ))}
-            </TableBody>
-          </Table>
-        </div>
+            </>
+          }
+          table={
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Namespace</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredWorkflows.map((workflow) => (
+                  <TableRow
+                    key={workflow.id}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/apps/${appId}/workflows/${workflow.id}`)}
+                  >
+                    <TableCell className="max-w-[220px] truncate font-medium" title={workflow.name}>
+                      {workflow.name}
+                    </TableCell>
+                    <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-mono text-xs" title={workflow.id}>
+                          {workflow.id}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copy ID"
+                          onClick={() => void handleCopyId(workflow.id)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="frost-text-muted">{workflow.namespace || '—'}</TableCell>
+                    <TableCell className="frost-text-muted">
+                      {workflow.current_version !== undefined ? `v${workflow.current_version}` : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(workflow.created_at)}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Download"
+                          loading={downloadingId === workflow.id}
+                          onClick={() => void handleWorkflowDownload(workflow)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" title="Delete" onClick={() => deletion.ask(workflow)}>
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          }
+        />
       )}
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Workflow"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       <BulkDownloadDialog

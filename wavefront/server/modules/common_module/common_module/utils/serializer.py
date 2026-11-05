@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 from decimal import Decimal
 import uuid
 
@@ -8,7 +8,8 @@ def serialize_values(input):
     if not isinstance(input, dict):
         if isinstance(input, uuid.UUID):
             return str(input)
-        elif isinstance(input, (datetime, date)):
+        # Postgres TIME arrives as datetime.time, which json.dumps rejects too.
+        elif isinstance(input, (datetime, date, time)):
             return input.isoformat()
         # Postgres numeric/decimal arrives as Decimal, which json.dumps rejects.
         # float keeps it a JSON number, so callers can do arithmetic on it
@@ -29,7 +30,7 @@ def serialize_values(input):
         value = input.get(column, None)
         if isinstance(value, uuid.UUID):
             result[column] = str(value)
-        elif isinstance(value, (datetime, date)):
+        elif isinstance(value, (datetime, date, time)):
             result[column] = value.isoformat()
         elif isinstance(value, Decimal):
             result[column] = float(value)

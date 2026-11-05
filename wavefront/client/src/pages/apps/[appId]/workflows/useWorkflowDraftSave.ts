@@ -1,10 +1,7 @@
-import floConsoleService from '@app/api';
-import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
 import { useValidateWorkflowYaml } from '@app/hooks/data/yaml-validation-hooks';
-import { useNotifyStore } from '@app/store';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import type { Problem } from '@app/components/WorkflowBuilder/ProblemsPanel';
+import { useUpdateWorkflow } from '@app/hooks';
 
 export type WorkflowSaveAction = 'save' | 'new';
 
@@ -56,8 +53,7 @@ export const useWorkflowDraftSave = ({
   baseVersion,
   onSaved,
 }: UseWorkflowDraftSaveOptions) => {
-  const { notifySuccess } = useNotifyStore();
-  const queryClient = useQueryClient();
+  const { mutateAsync: saveWorkflow } = useUpdateWorkflow(appId);
   const validateYaml = useValidateWorkflowYaml();
   const [saving, setSaving] = useState(false);
   const [submitAction, setSubmitAction] = useState<WorkflowSaveAction | null>(null);
@@ -80,30 +76,23 @@ export const useWorkflowDraftSave = ({
           setValidationErrors(toProblems(validation.errors));
           return;
         }
-        const response = await floConsoleService.workflowService.updateWorkflow(
+        const response = await saveWorkflow({
           workflowId,
-          draftYaml,
-          baseVersion,
-          createNewVersion
-        );
+          yamlContent: draftYaml,
+          version: baseVersion,
+          createNewVersion,
+        });
         const savedVersion = response.data?.meta?.status === 'success' ? response.data.data?.data?.version : undefined;
-        // Refetch versions so version metadata stays in sync.
-        queryClient.invalidateQueries({ queryKey: getWorkflowVersionsKey(appId || '', workflowId) });
         await onSaved(createNewVersion, savedVersion);
         broadcastWorkflowUpdated(workflowId);
-        notifySuccess(
-          createNewVersion
-            ? 'New version created (not promoted — promote it from Versions to make it live)'
-            : 'Workflow updated successfully'
-        );
-      } catch (error) {
-        console.error('Error updating workflow:', error);
+      } catch {
+        // useUpdateWorkflow has already shown the error
       } finally {
         setSaving(false);
         setSubmitAction(null);
       }
     },
-    [appId, workflowId, draftYaml, baseVersion, onSaved, validateYaml, queryClient, notifySuccess]
+    [workflowId, draftYaml, baseVersion, onSaved, validateYaml, saveWorkflow]
   );
 
   const dismissValidationErrors = useCallback(() => setValidationErrors([]), []);

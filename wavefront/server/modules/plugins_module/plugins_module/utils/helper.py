@@ -11,6 +11,11 @@ class AddDatasourcePayload(BaseModel):
     description: str | None = None
 
 
+class CreateFolderPayload(BaseModel):
+    # Folder to create, relative to the datasource base path, e.g. "reports/2025".
+    path: str
+
+
 class UpdateDatasourcePayload(BaseModel):
     name: str | None = None
     type: str | None = None

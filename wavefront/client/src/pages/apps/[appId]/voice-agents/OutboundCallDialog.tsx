@@ -11,7 +11,7 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
 import React, { useState } from 'react';

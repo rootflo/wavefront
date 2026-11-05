@@ -1,4 +1,5 @@
-from typing import Dict, Any
+import logging
+from typing import Any, Dict, List, Optional
 import io
 import mimetypes
 import posixpath
@@ -39,19 +40,22 @@ from db_repo_module.cache.application_cache import (
 from datasource import (
     DatasourcePlugin,
     FileStoragePlugin,
+    InvalidQueryError,
+    InvalidResourceError,
     build_datasource_uri,
     build_file_storage_config,
     split_datasource_uri,
     is_file_storage_type,
 )
+from datasource.file_storage.config import normalize_storage_path
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
-    check_is_valid_resource,
     fetch_data_filters,
     get_datasource_config,
     validate_datasource_payload,
 )
 from plugins_module.utils.helper import (
+    CreateFolderPayload,
     InsertRowsJsonMultiPayload,
     AddDatasourcePayload,
     DeleteRowsJsonPayload,
@@ -532,18 +536,6 @@ async def query_datasource(
     user_id = request.state.session.user_id
     role_id = request.state.session.role_id
 
-    resource_is_valid = check_is_valid_resource(resource_id)
-    if not resource_is_valid:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'Invalid resource name: {resource_id}'
-            ),
-        )
-
-    if resource_id == 'parsed_data_object':
-        resource_id = 'rf_parsed_data_object'
-
     rls_filters = []
     filter = query_filter
     is_admin = await check_is_admin(role_id)
@@ -582,16 +574,22 @@ async def query_datasource(
     if join and expand:
         join_query = f'$expand={expand}&$join={join}'
 
-    result: QueryResult = datasource_plugin.fetch_data(
-        table_name=resource_id,
-        projection=projection,
-        filter=filter,
-        join=join_query,
-        offset=offset,
-        limit=limit,
-        order_by=order_by,
-        group_by=group_by,
-    )
+    try:
+        result: QueryResult = datasource_plugin.fetch_data(
+            table_name=resource_id,
+            projection=projection,
+            filter=filter,
+            join=join_query,
+            offset=offset,
+            limit=limit,
+            order_by=order_by,
+            group_by=group_by,
+        )
+    except (InvalidResourceError, InvalidQueryError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -704,6 +702,11 @@ async def insert_rows_json_multi(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             content=response_formatter.buildErrorResponse(str(e)),
         )
+    except InvalidResourceError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     datasource_audit_service.record_from_request(
         request,
@@ -757,9 +760,15 @@ async def insert_rows_json(
         {**row, 'created_at': datetime.now().isoformat()}
         for row in insert_rows_json_payload.data
     ]
-    await asyncio.to_thread(
-        datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
-    )
+    try:
+        await asyncio.to_thread(
+            datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
+        )
+    except InvalidResourceError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     # The only mutation path that runs for every datasource type, not just
     # Postgres — it needs no RETURNING, because the rows submitted are already
@@ -817,6 +826,15 @@ async def update_rows_json_multi(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can update rows'
+            ),
+        )
+
     if not update_rows_json_multi_payload.updates:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -936,6 +954,15 @@ async def update_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can update rows'
+            ),
+        )
+
     if not update_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1047,6 +1074,15 @@ async def delete_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Only admin users can delete rows'
+            ),
+        )
+
     if not delete_rows_json_payload.filter.strip():
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1724,6 +1760,97 @@ async def list_datasource_files(
     )
 
 
+@datasource_router.get('/v1/datasources/{datasource_id}/files/browse')
+@inject
+async def browse_datasource_files(
+    request: Request,
+    datasource_id: str,
+    prefix: str = Query(
+        '',
+        description='Folder to open, relative to the datasource base path; empty for the root',
+    ),
+    page_size: int = Query(100, ge=1, le=1000),
+    page_token: Optional[str] = Query(
+        None, description='next_page_token from the previous page'
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """One folder level: its sub-folders and the files directly in it, with size and dates.
+
+    Unlike ``/files/list`` (every file under a prefix, by page number) this does not descend
+    into sub-folders and pages with the provider's own token, so a folder browser can load
+    one level at a time and every page costs a single list call.
+    """
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File browsing is only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        file_storage = FileStoragePlugin(datasource_config)
+        listing = await asyncio.to_thread(
+            file_storage.list_folder, prefix, page_size, page_token
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'prefix': prefix,
+                'folders': [
+                    {
+                        'name': posixpath.basename(folder.rstrip('/')),
+                        'prefix': folder,
+                    }
+                    for folder in listing.folders
+                ],
+                'files': [
+                    {
+                        'path': build_datasource_uri(datasource_id, item.key),
+                        'relative_path': item.key,
+                        'name': posixpath.basename(item.key),
+                        'size': item.size,
+                        'content_type': item.content_type,
+                        'updated_at': item.updated_at.isoformat()
+                        if item.updated_at
+                        else None,
+                    }
+                    for item in listing.files
+                ],
+                'next_page_token': listing.next_page_token,
+            }
+        ),
+    )
+
+
 @datasource_router.post('/v1/datasources/{datasource_id}/files')
 @inject
 async def upload_datasource_file(
@@ -1799,6 +1926,205 @@ async def upload_datasource_file(
         status_code=status.HTTP_201_CREATED,
         content=response_formatter.buildSuccessResponse(
             {'path': datasource_path, 'storage_uri': storage_uri}
+        ),
+    )
+
+
+# Files per batch request; the client splits bigger uploads (a whole folder, say) into several.
+MAX_BATCH_UPLOAD_FILES = 100
+
+logger = logging.getLogger(__name__)
+
+
+@datasource_router.post('/v1/datasources/{datasource_id}/files/batch')
+@inject
+async def upload_datasource_files_batch(
+    request: Request,
+    datasource_id: str,
+    files: List[UploadFile] = File(...),
+    paths: List[str] = Form(
+        ...,
+        description='One per file, in the same order: the key relative to the base path '
+        '(a trailing / keeps the file name)',
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
+    ),
+):
+    """Upload several files in one request, e.g. a folder with its sub-folders.
+
+    Each file stands alone: one that fails (a bad path, a storage error) is reported in its
+    result and the rest still upload. The response lists a result per file, in request order.
+    """
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    if len(files) != len(paths):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Got {len(files)} files but {len(paths)} paths; send one path per file'
+            ),
+        )
+    if len(files) > MAX_BATCH_UPLOAD_FILES:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'At most {MAX_BATCH_UPLOAD_FILES} files per request'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File upload is only supported for file storage datasources'
+            ),
+        )
+
+    file_storage = FileStoragePlugin(datasource_config)
+    results: List[Dict[str, Any]] = []
+    audit_entries = []
+    for index, (file, path) in enumerate(zip(files, paths)):
+        try:
+            target_path = _upload_target_path(path, file.filename)
+            datasource_path = build_datasource_uri(datasource_id, target_path)
+            file_content = await file.read()
+            content_type = _stored_content_type(file.content_type)
+            storage_uri = await asyncio.to_thread(
+                file_storage.upload_file, file_content, target_path, content_type
+            )
+        except ValueError as e:
+            results.append({'index': index, 'error': str(e)})
+            continue
+        except Exception:
+            logger.exception('Batch upload failed for file %s', index)
+            results.append({'index': index, 'error': 'Upload failed'})
+            continue
+        results.append(
+            {'index': index, 'path': datasource_path, 'storage_uri': storage_uri}
+        )
+        audit_entries.append(
+            _file_audit_entry(
+                datasource_path,
+                storage_uri,
+                len(file_content),
+                content_type,
+                snapshot='submitted',
+            )
+        )
+
+    if audit_entries:
+        datasource_audit_service.record_from_request(
+            request,
+            datasource_id=datasource_id,
+            datasource_type=datasource_type,
+            operation='upload',
+            entries=audit_entries,
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'uploaded': len(audit_entries),
+                'failed': len(results) - len(audit_entries),
+                'results': results,
+            }
+        ),
+    )
+
+
+@datasource_router.post('/v1/datasources/{datasource_id}/files/folders')
+@inject
+async def create_datasource_folder(
+    request: Request,
+    datasource_id: str,
+    payload: CreateFolderPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
+    ),
+):
+    """Create an empty folder (an empty ``<folder>/`` placeholder object, as cloud consoles do)."""
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Folders are only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        relative = normalize_storage_path(payload.path)
+        if not relative:
+            raise ValueError('path is required')
+        file_storage = FileStoragePlugin(datasource_config)
+        storage_uri = await asyncio.to_thread(file_storage.create_folder, relative)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    prefix = f'{relative}/'
+    # build_datasource_uri normalizes the trailing slash away; a folder keeps it.
+    datasource_path = f'{build_datasource_uri(datasource_id, relative)}/'
+    # Recorded as an upload: it writes one (empty) object, like any other upload.
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='upload',
+        entries=[
+            _file_audit_entry(
+                datasource_path, storage_uri, 0, None, snapshot='submitted'
+            )
+        ],
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=response_formatter.buildSuccessResponse(
+            {'path': datasource_path, 'prefix': prefix, 'storage_uri': storage_uri}
         ),
     )
 

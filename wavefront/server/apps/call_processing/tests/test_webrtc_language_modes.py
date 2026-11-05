@@ -60,6 +60,7 @@ def _build(
     languages=('en', 'hi', 'ta'),
     customer_number='',
     room_context_language=False,
+    conversation_config=None,
     **kwargs,
 ):
     options = (
@@ -78,6 +79,7 @@ def _build(
             'supported_languages': list(languages),
             'default_language': 'en',
             'tts_voice_ids': {'en': 'v-en', 'hi': 'v-hi'},
+            'conversation_config': conversation_config,
         },
         llm_config={},
         tts_config={'provider': 'deepgram', 'api_key': 'k'},
@@ -265,3 +267,42 @@ def test_welcome_mute_is_skipped_for_an_agent_swapped_in_mid_call():
     stack = _build_with_config(MUTE, is_initial_stack=False)
 
     assert _mute_strategy_names(stack) == ['FunctionCallUserMuteStrategy']
+
+
+# ------------------------------------------------------ direct language switch
+
+DIRECT = {'language_switch': {'direct_switch': True}}
+
+
+def test_direct_switch_sits_between_the_user_aggregator_and_the_llm():
+    stack = _build(conversation_config=DIRECT)
+
+    assert stack.pre_llm_processors == [stack.language_switcher]
+    slot_a = stack.slot_a_processors
+    assert slot_a.index(stack.language_switcher) == slot_a.index(stack.llm) - 1
+
+
+def test_direct_switch_is_off_unless_the_agent_opts_in():
+    assert _build().language_switcher._enabled is False
+    assert _build(conversation_config=DIRECT).language_switcher._enabled is True
+
+
+def test_direct_switch_needs_the_native_language_tool():
+    room = _build(conversation_config=DIRECT, room_context_language=True)
+    single = _build_with_config(DIRECT)
+
+    assert room.language_switcher._enabled is False
+    assert single.language_switcher._enabled is False
+
+
+def test_the_agents_choice_words_reach_the_direct_switch():
+    stack = _build(
+        conversation_config={
+            'language_switch': {
+                'direct_switch': True,
+                'choice_words': {'hi': ['chahiye']},
+            }
+        }
+    )
+
+    assert stack.language_switcher._choice_words == {'hi': ('chahiye',)}

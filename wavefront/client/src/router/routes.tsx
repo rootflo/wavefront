@@ -19,8 +19,8 @@ import FunctionDetail from '@app/pages/apps/[appId]/functions/[functionId]';
 import KnowledgeBaseDetailPage from '@app/pages/apps/[appId]/knowledge-bases/[kbId]';
 import KnowledgeBasesListPage from '@app/pages/apps/[appId]/knowledge-bases/index';
 import GuardrailsManagement from '@app/pages/apps/[appId]/guardrails';
-import LLMInferenceConfigsManagement from '@app/pages/apps/[appId]/llm-inference';
-import LLMInferenceConfigDetail from '@app/pages/apps/[appId]/llm-inference/[configId]';
+import ModelHub from '@app/pages/apps/[appId]/model-hub';
+import ModelDetail from '@app/pages/apps/[appId]/model-hub/[configId]';
 import VoiceAgentsPage from '@app/pages/apps/[appId]/voice-agents';
 import VoiceAgentsLayout from '@app/pages/apps/[appId]/voice-agents/layout';
 import SttConfigsPage from '@app/pages/apps/[appId]/voice-agents/stt-configs';
@@ -127,12 +127,12 @@ const routes = {
           element: <KnowledgeBaseDetailPage />,
         },
         {
-          path: 'llm-repository',
-          element: <LLMInferenceConfigsManagement />,
+          path: 'model-hub',
+          element: <ModelHub />,
         },
         {
-          path: 'llm-repository/:llmId',
-          element: <LLMInferenceConfigDetail />,
+          path: 'model-hub/:modelId',
+          element: <ModelDetail />,
         },
         {
           path: 'guardrails',

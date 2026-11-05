@@ -63,7 +63,9 @@ class WebRTCConversation(BaseConversation):
         self.room_context_language = room_context_handles_language
         self.messenger: Optional[ClientSessionMessenger] = None
         self.swap_controller: Optional[AgentSwapController] = None
+        self._slot_stt: Optional[SwappableSlot] = None
         self._slot_a: Optional[SwappableSlot] = None
+        self._slot_tts: Optional[SwappableSlot] = None
         self._slot_b: Optional[SwappableSlot] = None
 
     def stack_options(self) -> StackOptions:
@@ -90,11 +92,16 @@ class WebRTCConversation(BaseConversation):
         )
         shared.messenger = self.messenger
 
+        # STT and TTS get slots of their own so a swap can keep them connected
+        self._slot_stt = SwappableSlot([stack.stt], name='AgentSlotSTT')
         self._slot_a = SwappableSlot(stack.slot_a_processors, name='AgentSlotA')
+        self._slot_tts = SwappableSlot([stack.tts], name='AgentSlotTTS')
         self._slot_b = SwappableSlot(stack.slot_b_processors, name='AgentSlotB')
         return [
             transport.input(),  # Audio input from the browser
-            self._slot_a,  # STT -> user aggregator -> LLM -> TTS
+            self._slot_stt,  # Speech-to-Text
+            self._slot_a,  # User aggregator -> LLM -> fillers
+            self._slot_tts,  # Text-to-Speech
             transport.output(),  # Audio output to the browser
             # After output so captions follow what the bot is actually saying
             BotCaptionProcessor(self.messenger),
@@ -114,7 +121,9 @@ class WebRTCConversation(BaseConversation):
         hooks = self.session_hooks
         if hooks and hooks.swap:
             self.swap_controller = AgentSwapController(
+                slot_stt=self._slot_stt,
                 slot_a=self._slot_a,
+                slot_tts=self._slot_tts,
                 slot_b=self._slot_b,
                 task=task,
                 messenger=messenger,

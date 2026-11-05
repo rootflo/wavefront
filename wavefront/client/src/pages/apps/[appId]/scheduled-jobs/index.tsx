@@ -1,26 +1,25 @@
-import floConsoleService from '@app/api';
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
+import { toneClass } from '@app/lib/tones';
+import { ResourceListSkeleton } from '@app/components/ResourceList';
+import ResourceCard from '@app/components/ResourceCard';
+import { CalendarClock, Play, Pause } from 'lucide-react';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Badge } from '@app/components/ui/badge';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetAllDatasources, useGetAppUsers, useGetScheduledJobs } from '@app/hooks';
-import { getScheduledJobsKey } from '@app/hooks/data/query-keys';
+import {
+  useDeleteScheduledJob,
+  useGetAllDatasources,
+  useGetAppUsers,
+  useGetScheduledJobs,
+  useSetScheduledJobPaused,
+} from '@app/hooks';
 import { cn } from '@app/lib/utils';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
 import { ScheduledJob } from '@app/types/scheduled-job';
-import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import ScheduledJobFormDialog from './ScheduledJobFormDialog';
 import {
   extractRecipientUserIdsFromPayload,
@@ -29,29 +28,29 @@ import {
   getDatasourceIdFromPayload,
   resolveUsersFromRecipientIds,
 } from './scheduled-job-utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/utils/search';
 
 const statusBadgeClass: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  paused: 'bg-yellow-100 text-yellow-800',
-  running: 'bg-blue-100 text-blue-800',
-  failed: 'bg-red-100 text-red-800',
-  completed: 'bg-gray-100 text-gray-800',
+  active: toneClass.success,
+  paused: toneClass.warning,
+  running: toneClass.info,
+  failed: toneClass.danger,
+  completed: toneClass.neutral,
 };
 
 const ScheduledJobsPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const setJobPaused = useSetScheduledJobPaused(appId);
+  const deleteScheduledJob = useDeleteScheduledJob(appId);
+  const deletion = useDeleteConfirm<ScheduledJob>((item) => deleteScheduledJob.mutateAsync(item.id));
   const { selectedApp } = useDashboardStore();
-  const { notifySuccess, notifyError } = useNotifyStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null);
-  const [deleteJob, setDeleteJob] = useState<ScheduledJob | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [actionJobId, setActionJobId] = useState<string | null>(null);
 
   const { data: jobs = [], isLoading } = useGetScheduledJobs(appId);
   const { data: datasources = [] } = useGetAllDatasources(appId);
@@ -73,23 +72,18 @@ const ScheduledJobsPage: React.FC = () => {
       const payload = job.payload || {};
       const datasourceId = getDatasourceIdFromPayload(payload);
       const datasourceName = datasourceNameById.get(datasourceId) || datasourceId;
-      const queriesLabel = formatJobQueriesLabel(job).toLowerCase();
-      const subject = String(payload.subject || '').toLowerCase();
-      return (
-        job.cron_expr.toLowerCase().includes(term) ||
-        job.timezone.toLowerCase().includes(term) ||
-        job.status.toLowerCase().includes(term) ||
-        datasourceName.toLowerCase().includes(term) ||
-        datasourceId.toLowerCase().includes(term) ||
-        queriesLabel.includes(term) ||
-        subject.includes(term)
+      return matchesSearch(
+        term,
+        job.cron_expr,
+        job.timezone,
+        job.status,
+        datasourceName,
+        datasourceId,
+        formatJobQueriesLabel(job),
+        String(payload.subject || '')
       );
     });
   }, [jobs, searchTerm, statusFilter, datasourceNameById]);
-
-  const refreshJobs = () => {
-    queryClient.invalidateQueries({ queryKey: getScheduledJobsKey(appId || '') });
-  };
 
   const handleCreate = () => {
     setEditingJob(null);
@@ -101,42 +95,13 @@ const ScheduledJobsPage: React.FC = () => {
     setFormOpen(true);
   };
 
-  const handlePauseResume = async (job: ScheduledJob) => {
-    setActionJobId(job.id);
-    try {
-      if (job.status === 'paused' || job.status === 'failed') {
-        await floConsoleService.scheduledJobService.resumeScheduledJob(job.id);
-        notifySuccess(
-          job.status === 'failed'
-            ? 'Scheduled job resumed; it will run on the next scheduler poll'
-            : 'Scheduled job resumed'
-        );
-      } else {
-        await floConsoleService.scheduledJobService.pauseScheduledJob(job.id);
-        notifySuccess('Scheduled job paused');
-      }
-      refreshJobs();
-    } catch {
-      notifyError('Failed to update job status');
-    } finally {
-      setActionJobId(null);
-    }
+  const handlePauseResume = (job: ScheduledJob) => {
+    const resuming = job.status === 'paused' || job.status === 'failed';
+    setJobPaused.mutate({ jobId: job.id, paused: !resuming, wasFailed: job.status === 'failed' });
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteJob) return;
-    setDeleting(true);
-    try {
-      await floConsoleService.scheduledJobService.deleteScheduledJob(deleteJob.id);
-      notifySuccess('Scheduled job deleted');
-      setDeleteJob(null);
-      refreshJobs();
-    } catch {
-      notifyError('Failed to delete scheduled job');
-    } finally {
-      setDeleting(false);
-    }
-  };
+  /** Disables just the row whose pause/resume is in flight. */
+  const isActing = (jobId: string) => setJobPaused.isPending && setJobPaused.variables?.jobId === jobId;
 
   const getRecipientSummary = (job: ScheduledJob) => {
     const ids = extractRecipientUserIdsFromPayload(job.payload || {});
@@ -149,63 +114,35 @@ const ScheduledJobsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
-      <Breadcrumb className="mb-4">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/scheduled-jobs`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Scheduled Jobs
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <PageBreadcrumb items={[{ label: 'Scheduled Jobs', to: `/apps/${appId}/scheduled-jobs` }]} />
 
-      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Scheduled Jobs</h1>
-          <p className="frost-text-muted mt-2">Manage email report schedules for {selectedApp?.app_name}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Input
-            className="w-[200px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+      <ListHeader
+        title="Scheduled Jobs"
+        count={filteredJobs.length || undefined}
+        subtitle={<>Manage email report schedules for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search scheduled jobs' }}
+        filters={
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            allValue="all"
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'paused', label: 'Paused' },
+              { value: 'running', label: 'Running' },
+              { value: 'failed', label: 'Failed' },
+              { value: 'completed', label: 'Completed' },
+            ]}
           />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="running">Running</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={handleCreate}>Create Schedule</Button>
-        </div>
-      </div>
+        }
+        primary={{ label: 'Create schedule', onClick: handleCreate }}
+      />
 
       {isLoading ? (
-        <p className="frost-text-muted text-sm">Loading scheduled jobs...</p>
+        <ResourceListSkeleton view="table" />
       ) : filteredJobs.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -216,80 +153,125 @@ const ScheduledJobsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Datasource</TableHead>
-                <TableHead>Queries</TableHead>
-                <TableHead>Cron</TableHead>
-                <TableHead>Recipients</TableHead>
-                <TableHead>Next run</TableHead>
-                <TableHead>Last run</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredJobs.map((job) => {
-                const payload = job.payload || {};
-                const datasourceId = getDatasourceIdFromPayload(payload);
-                const canPauseResume = job.status === 'active' || job.status === 'paused' || job.status === 'failed';
-                return (
-                  <TableRow key={job.id}>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn('font-normal capitalize', statusBadgeClass[job.status] || '')}
-                      >
-                        {job.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[160px] truncate" title={datasourceId}>
-                      {datasourceNameById.get(datasourceId) || datasourceId || '—'}
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={formatJobQueriesLabel(job)}>
-                      {formatJobQueriesLabel(job)}
-                    </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">
-                      <span className="font-mono text-xs">{job.cron_expr}</span>
-                      <span className="mt-0.5 block text-[#878787]">{job.timezone}</span>
-                    </TableCell>
-                    <TableCell className="max-w-[180px] truncate text-sm" title={getRecipientSummary(job)}>
-                      {getRecipientSummary(job)}
-                    </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{formatDateTime(job.next_run_at)}</TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{formatDateTime(job.last_run_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canPauseResume ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={actionJobId === job.id}
-                            onClick={() => void handlePauseResume(job)}
-                          >
-                            {job.status === 'paused' || job.status === 'failed' ? 'Resume' : 'Pause'}
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredJobs.map((job) => {
+              const datasourceId = getDatasourceIdFromPayload(job.payload || {});
+              const canPauseResume = job.status === 'active' || job.status === 'paused' || job.status === 'failed';
+              const resume = job.status === 'paused' || job.status === 'failed';
+              return (
+                <ResourceCard
+                  key={job.id}
+                  icon={CalendarClock}
+                  title={datasourceNameById.get(datasourceId) || datasourceId || 'Scheduled job'}
+                  description={
+                    job.last_error || (formatJobQueriesLabel(job) !== '—' ? formatJobQueriesLabel(job) : undefined)
+                  }
+                  metadata={[
+                    {
+                      label: 'Status',
+                      value: job.status,
+                      className: cn('capitalize', statusBadgeClass[job.status] || ''),
+                    },
+                    { label: 'Cron', value: job.cron_expr, isMono: true },
+                    { label: 'Recipients', value: getRecipientSummary(job) },
+                    { label: 'Next run', value: formatDateTime(job.next_run_at) },
+                    ...(job.last_run_at ? [{ label: 'Last run', value: formatDateTime(job.last_run_at) }] : []),
+                  ]}
+                  onEditClick={() => handleEdit(job)}
+                  onDeleteClick={() => deletion.ask(job)}
+                  deleteTitle="Delete schedule"
+                  extraActions={
+                    canPauseResume
+                      ? [
+                          {
+                            label: resume ? 'Resume' : 'Pause',
+                            icon: resume ? Play : Pause,
+                            disabled: isActing(job.id),
+                            onClick: () => void handlePauseResume(job),
+                          },
+                        ]
+                      : []
+                  }
+                />
+              );
+            })}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Datasource</TableHead>
+                  <TableHead>Queries</TableHead>
+                  <TableHead>Cron</TableHead>
+                  <TableHead>Recipients</TableHead>
+                  <TableHead>Next run</TableHead>
+                  <TableHead>Last run</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredJobs.map((job) => {
+                  const payload = job.payload || {};
+                  const datasourceId = getDatasourceIdFromPayload(payload);
+                  const canPauseResume = job.status === 'active' || job.status === 'paused' || job.status === 'failed';
+                  return (
+                    <TableRow key={job.id}>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={cn('font-normal capitalize', statusBadgeClass[job.status] || '')}
+                        >
+                          {job.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[160px] truncate" title={datasourceId}>
+                        {datasourceNameById.get(datasourceId) || datasourceId || '—'}
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate" title={formatJobQueriesLabel(job)}>
+                        {formatJobQueriesLabel(job)}
+                      </TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">
+                        <span className="font-mono text-xs">{job.cron_expr}</span>
+                        <span className="frost-text-muted mt-0.5 block">{job.timezone}</span>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate text-sm" title={getRecipientSummary(job)}>
+                        {getRecipientSummary(job)}
+                      </TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{formatDateTime(job.next_run_at)}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{formatDateTime(job.last_run_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canPauseResume ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={isActing(job.id)}
+                              onClick={() => void handlePauseResume(job)}
+                            >
+                              {job.status === 'paused' || job.status === 'failed' ? 'Resume' : 'Pause'}
+                            </Button>
+                          ) : null}
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(job)}>
+                            Edit
                           </Button>
+                          <Button variant="destructive" size="sm" onClick={() => deletion.ask(job)}>
+                            Delete
+                          </Button>
+                        </div>
+                        {job.last_error ? (
+                          <p className="mt-1 max-w-[240px] truncate text-xs text-red-500" title={job.last_error}>
+                            {job.last_error}
+                          </p>
                         ) : null}
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(job)}>
-                          Edit
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteJob(job)}>
-                          Delete
-                        </Button>
-                      </div>
-                      {job.last_error ? (
-                        <p className="mt-1 max-w-[240px] truncate text-xs text-red-500" title={job.last_error}>
-                          {job.last_error}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
@@ -302,18 +284,14 @@ const ScheduledJobsPage: React.FC = () => {
             setFormOpen(open);
             if (!open) setEditingJob(null);
           }}
-          onSuccess={refreshJobs}
         />
       ) : null}
 
-      {deleteJob ? (
+      {deletion.item ? (
         <DeleteConfirmationDialog
-          isOpen={Boolean(deleteJob)}
+          {...deletion.dialogProps}
           title="Delete scheduled job"
           message="Are you sure you want to delete this schedule? This action cannot be undone."
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeleteJob(null)}
-          loading={deleting}
           confirmLabel="Delete"
           cancelLabel="Cancel"
         />

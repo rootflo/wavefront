@@ -26,7 +26,7 @@ dependencies = [
     "torch>=2.6.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "torchvision ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "opencv-python>=4.11.0.86",
-    "pillow>=12.3.0,<13",
+    "pillow>=13.0.0,<14",
     "psycopg2-binary>=2.9.10,<3.0.0",
     "numpy>=1.26.4,<2.0.0",
     "accelerate>=1.15.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",

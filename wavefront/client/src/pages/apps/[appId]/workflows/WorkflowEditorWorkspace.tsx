@@ -4,7 +4,7 @@ import { Button } from '@app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React from 'react';
 import LazyWorkflowVisualEditor from './LazyWorkflowVisualEditor';
 import { WorkflowSaveAction } from './useWorkflowDraftSave';
@@ -56,7 +56,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
     />
     <Tabs defaultValue="visual" className="flex h-full min-h-0 w-full flex-col">
       {/* TOP COMMAND BAR */}
-      <div className="border-border bg-card/95 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur-md">
+      <div className="border-border bg-card/95 z-30 flex h-auto min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 backdrop-blur-md md:h-14 md:flex-nowrap md:gap-4 md:py-0">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
           <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shadow-xs">
             WF
@@ -151,11 +151,10 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
         value="yaml"
         className="m-0 flex h-[calc(100vh-56px)] min-h-0 w-full flex-1 flex-col gap-2 p-4 outline-none"
       >
-        <CodeMirror
+        <CodeEditor
           value={yaml}
           editable={true}
           onChange={onYamlChange}
-          theme="dark"
           height="100%"
           width="100%"
           maxWidth="100%"

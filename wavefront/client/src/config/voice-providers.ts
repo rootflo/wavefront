@@ -49,8 +49,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       elevenlabs: {
         name: 'ElevenLabs',
         badge: {
-          bg: 'bg-purple-100',
-          text: 'text-purple-800',
+          bg: 'bg-purple-500/12',
+          text: 'text-purple-700 dark:text-purple-300',
         },
         parameters: {
           model: {
@@ -117,8 +117,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       deepgram: {
         name: 'Deepgram',
         badge: {
-          bg: 'bg-blue-100',
-          text: 'text-blue-800',
+          bg: 'bg-blue-500/12',
+          text: 'text-blue-700 dark:text-blue-300',
         },
         parameters: {
           base_url: {
@@ -144,8 +144,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       cartesia: {
         name: 'Cartesia',
         badge: {
-          bg: 'bg-green-100',
-          text: 'text-green-800',
+          bg: 'bg-green-500/12',
+          text: 'text-green-700 dark:text-green-300',
         },
         parameters: {
           model: {
@@ -172,8 +172,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       sarvam: {
         name: 'Sarvam',
         badge: {
-          bg: 'bg-orange-100',
-          text: 'text-orange-800',
+          bg: 'bg-orange-500/12',
+          text: 'text-orange-700 dark:text-orange-300',
         },
         parameters: {
           model: {
@@ -225,8 +225,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       azure: {
         name: 'Azure',
         badge: {
-          bg: 'bg-sky-100',
-          text: 'text-sky-700',
+          bg: 'bg-sky-500/12',
+          text: 'text-sky-700 dark:text-sky-300',
         },
         parameters: {
           style: {
@@ -307,8 +307,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       deepgram: {
         name: 'Deepgram',
         badge: {
-          bg: 'bg-blue-100',
-          text: 'text-blue-800',
+          bg: 'bg-blue-500/12',
+          text: 'text-blue-700 dark:text-blue-300',
         },
         parameters: {
           model: {
@@ -396,8 +396,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       sarvam: {
         name: 'Sarvam',
         badge: {
-          bg: 'bg-orange-100',
-          text: 'text-orange-800',
+          bg: 'bg-orange-500/12',
+          text: 'text-orange-700 dark:text-orange-300',
         },
         parameters: {
           model: {
@@ -427,8 +427,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       elevenlabs: {
         name: 'ElevenLabs',
         badge: {
-          bg: 'bg-purple-100',
-          text: 'text-purple-800',
+          bg: 'bg-purple-500/12',
+          text: 'text-purple-700 dark:text-purple-300',
         },
         parameters: {
           model: {
@@ -454,8 +454,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
       azure: {
         name: 'Azure',
         badge: {
-          bg: 'bg-sky-100',
-          text: 'text-sky-700',
+          bg: 'bg-sky-500/12',
+          text: 'text-sky-700 dark:text-sky-300',
         },
         parameters: {
           endpoint_id: {

@@ -1,6 +1,11 @@
 import pytest
+from pipecat.frames.frames import FunctionCallFromLLM
+from pipecat.services.openai.llm import OpenAILLMService
 
-from call_processing.services.common.providers.llm_service import LLMServiceFactory
+from call_processing.services.common.providers.llm_service import (
+    LLMServiceFactory,
+    sanitize_tool_name,
+)
 
 PARAMS = {
     'temperature': 0.2,
@@ -149,3 +154,64 @@ def test_bedrock_requires_region():
 def test_bedrock_rejects_half_a_key_pair():
     with pytest.raises(ValueError, match='aws_access_key_id'):
         _bedrock({'aws_region': 'us-east-1'})
+
+
+@pytest.mark.parametrize(
+    'name, expected',
+    [
+        ('submit_identity', 'submit_identity'),
+        ('submit_identity游戏副本', 'submit_identity'),
+        ('get weather!', 'getweather'),
+        ('x' * 80, 'x' * 64),
+        ('游戏', 'unknown_function'),
+    ],
+)
+def test_sanitize_tool_name(name, expected):
+    assert sanitize_tool_name(name) == expected
+
+
+@pytest.mark.parametrize(
+    'name, expected',
+    [
+        ('x' * 80, 'x' * 80),
+        ('x' * 140, 'x' * 128),
+        ('crm.lookup:v2', 'crm.lookup:v2'),
+        ('submit_identity游戏副本', 'submit_identity'),
+    ],
+)
+def test_sanitize_tool_name_gemini(name, expected):
+    assert sanitize_tool_name(name, 'gemini') == expected
+
+
+async def test_malformed_tool_names_are_repaired_before_dispatch(monkeypatch):
+    dispatched = []
+
+    async def fake_run(self, function_calls):
+        dispatched.extend(function_calls)
+
+    monkeypatch.setattr(OpenAILLMService, 'run_function_calls', fake_run)
+    llm = _create('openai', {})
+
+    await llm.run_function_calls(
+        [
+            FunctionCallFromLLM(
+                function_name='submit_identity游戏副本',
+                tool_call_id='1',
+                arguments={'field': 'name'},
+                context=None,
+            ),
+            FunctionCallFromLLM(
+                function_name='end_conversation',
+                tool_call_id='2',
+                arguments={},
+                context=None,
+            ),
+        ]
+    )
+
+    assert [c.function_name for c in dispatched] == [
+        'submit_identity',
+        'end_conversation',
+    ]
+    assert dispatched[0].arguments == {'field': 'name'}
+    assert dispatched[0].tool_call_id == '1'

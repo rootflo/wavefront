@@ -1,7 +1,7 @@
 # Wolfi (Chainguard's glibc-based distro) instead of Debian slim: its packages
 # carry no unpatched CVEs, whereas Debian ships glibc/zlib/libxml2/util-linux
 # issues it marks no-fix. Pinned by digest; bump with `docker pull` + rescan.
-FROM cgr.dev/chainguard/wolfi-base@sha256:81211e15a86ea1d5357f284482af45730c51de45eaf10ad9ce205d6bfc2df323
+FROM cgr.dev/chainguard/wolfi-base@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
 
 WORKDIR /app
 
@@ -57,24 +57,13 @@ COPY wavefront/server/apps/floware /app/apps/floware
 COPY wavefront/server/scripts/floware-init.sh /app/scripts/floware-init.sh
 RUN chmod +x /app/scripts/floware-init.sh
 
-RUN --mount=from=ghcr.io/astral-sh/uv:0.12.24,source=/uv,target=/bin/uv uv sync --package floware --frozen --no-dev
+RUN --mount=from=ghcr.io/astral-sh/uv:0.12.24,source=/uv,target=/bin/uv uv sync --package floware --frozen --no-dev && \
+    rm -rf /root/.cache/uv
 
 # uv.lock covers the whole workspace, but only this app's deps are in the venv;
 # scanners (AWS Inspector) report every package in it, and nothing reads it at
 # runtime.
 RUN rm uv.lock
-
-# spaCy model for Presidio, which arrives with the flo-ai[guardrails] extra
-# that guardrails_module depends on. The model is not a pip dependency of it,
-# and Presidio downloads one on first use when absent -- which would put a
-# multi-hundred-MB fetch inside the first guarded request.
-#
-# `pip` is installed on purpose: `spacy download` resolves the model version
-# and then shells out to `python -m pip install`, and a uv-created venv has no
-# pip, so the download fails without it.
-RUN --mount=from=ghcr.io/astral-sh/uv:0.12.24,source=/uv,target=/bin/uv uv pip install pip && \
-    /app/.venv/bin/python -m spacy download en_core_web_lg && \
-    uv pip uninstall pip
 
 # Create a non-root user and change ownership of the /app directory
 RUN adduser -D -u 1000 floware && \

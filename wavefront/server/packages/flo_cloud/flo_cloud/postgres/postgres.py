@@ -87,6 +87,19 @@ class PostgresClient:
             params['sslmode'] = 'require'
         return params
 
+    def _table_identifier(self, table_name: str) -> sql.Identifier:
+        """Compose ``table_name`` as an identifier pinned to the configured schema.
+
+        An unqualified name would resolve through search_path, and Postgres
+        searches pg_catalog (and pg_temp) before it unless they are listed: a bare
+        'pg_class' would reach the system catalog rather than a table in
+        ``self.schema``. Qualified names are used as given.
+        """
+        parts = table_name.split('.')
+        if len(parts) == 1 and self.schema:
+            parts = [self.schema, *parts]
+        return sql.Identifier(*parts)
+
     def _convert_named_params(
         self, query: str, params: Optional[Dict[str, Any]]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
@@ -252,7 +265,7 @@ class PostgresClient:
 
             query = sql.SQL('SELECT {cols} FROM {table} WHERE {where}').format(
                 cols=sql.SQL(', ').join(sql.Identifier(c) for c in projection),
-                table=sql.Identifier(*table_name.split('.')),
+                table=self._table_identifier(table_name),
                 where=sql.SQL(converted_where),
             )
             if key_columns:
@@ -557,7 +570,7 @@ class PostgresClient:
         ]
         columns = list(serialized[0].keys())
         query = sql.SQL('INSERT INTO {table} ({cols}) VALUES ({vals})').format(
-            table=sql.Identifier(*table_name.split('.')),
+            table=self._table_identifier(table_name),
             cols=sql.SQL(', ').join(map(sql.Identifier, columns)),
             vals=sql.SQL(', ').join(sql.Placeholder(name=col) for col in columns),
         )
@@ -639,7 +652,7 @@ class PostgresClient:
         converted_where, _ = self._convert_named_params(where_clause, params or {})
 
         query = sql.SQL('UPDATE {table} SET {assignments} WHERE {where}').format(
-            table=sql.Identifier(*table_name.split('.')),
+            table=self._table_identifier(table_name),
             assignments=sql.SQL(', ').join(
                 sql.SQL('{col} = {val}').format(
                     col=sql.Identifier(col), val=sql.Placeholder(name=f'set_{col}')
@@ -748,7 +761,7 @@ class PostgresClient:
         converted_where, _ = self._convert_named_params(where_clause, params or {})
 
         query = sql.SQL('DELETE FROM {table} WHERE {where}').format(
-            table=sql.Identifier(*table_name.split('.')),
+            table=self._table_identifier(table_name),
             where=sql.SQL(converted_where),
         )
 

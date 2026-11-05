@@ -1,5 +1,6 @@
 """FileStoragePlugin: config validation, key/URI handling and provider wiring."""
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from datasource import (
     is_file_storage_type,
     split_datasource_uri,
 )
+from flo_cloud._types import FolderListing, StorageObject
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
 CLOUD_STORAGE = 'flo_cloud.cloud_storage'
@@ -295,6 +297,80 @@ class TestUploadDownload:
         assert paths == ['docs/a.pdf']
         assert has_next is True
         handler.list_files.assert_called_once_with('bkt', 'in/docs', 10, 2)
+
+    def test_list_folder_root_strips_base_path(self, s3_handler):
+        _, handler = s3_handler
+        updated = datetime(2025, 10, 1, tzinfo=timezone.utc)
+        handler.list_folder.return_value = FolderListing(
+            folders=['in/docs/', 'in/test/'],
+            files=[
+                StorageObject('in/readme.md', 120, 'text/markdown', updated),
+                # The folder's own placeholder object is not a file.
+                StorageObject('in/', 0),
+            ],
+            next_page_token='tok-2',
+        )
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        listing = plugin.list_folder(page_size=25)
+
+        assert listing.folders == ['docs/', 'test/']
+        assert listing.files == [
+            StorageObject('readme.md', 120, 'text/markdown', updated)
+        ]
+        assert listing.next_page_token == 'tok-2'
+        handler.list_folder.assert_called_once_with('bkt', 'in/', 25, None, '/')
+
+    def test_list_folder_nested_prefix_and_page_token(self, s3_handler):
+        _, handler = s3_handler
+        handler.list_folder.return_value = FolderListing(
+            folders=['in/docs/2025/'],
+            files=[StorageObject('in/docs/a.pdf', 10), StorageObject('in/docs/', 0)],
+        )
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        listing = plugin.list_folder('/docs/', page_size=10, page_token='tok-1')
+
+        assert listing.folders == ['docs/2025/']
+        assert [item.key for item in listing.files] == ['docs/a.pdf']
+        assert listing.next_page_token is None
+        handler.list_folder.assert_called_once_with('bkt', 'in/docs/', 10, 'tok-1', '/')
+
+    def test_list_folder_without_base_path_lists_bucket_root(self, gcs_handler):
+        _, handler = gcs_handler
+        handler.list_folder.return_value = FolderListing(
+            folders=['docs/'], files=[StorageObject('a.txt', 1)]
+        )
+        plugin = FileStoragePlugin(GCSFileStorageConfig('bkt'))
+
+        listing = plugin.list_folder()
+
+        assert listing.folders == ['docs/']
+        assert [item.key for item in listing.files] == ['a.txt']
+        handler.list_folder.assert_called_once_with('bkt', '', 100, None, '/')
+
+    def test_create_folder_writes_placeholder_under_base_path(self, s3_handler):
+        _, handler = s3_handler
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        uri = plugin.create_folder('/reports/2025/')
+
+        assert uri == 's3://bkt/in/reports/2025/'
+        handler.save_small_file.assert_called_once_with(
+            b'', 'bkt', 'in/reports/2025/', None, False
+        )
+
+    def test_create_folder_requires_a_path(self, s3_handler):
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        with pytest.raises(ValueError):
+            plugin.create_folder('/')
+
+    def test_list_folder_rejects_parent_segments(self, s3_handler):
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        with pytest.raises(ValueError):
+            plugin.list_folder('../secrets')
 
 
 def test_gcs_storage_accepts_credentials_info():

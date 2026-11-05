@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from dataclasses import replace
 from typing import Optional
 
-from flo_cloud._types import CloudProvider
+from flo_cloud._types import CloudProvider, FolderListing
 from flo_cloud.cloud_storage import CloudStorageManager
 
 from ..types import DataSourceType, FileStorageABC
@@ -121,6 +122,16 @@ class FileStoragePlugin(FileStorageABC):
         )
         return self.uri_for(key)
 
+    def create_folder(self, path: str) -> str:
+        """Create an empty folder at ``path`` (relative to ``base_path``); return its storage URI.
+
+        Object stores have no folders, only keys; like the GCS and S3 consoles this writes an empty
+        placeholder object named ``<folder>/``. Listings leave the placeholder out but show the folder.
+        """
+        key = f'{self._key_for(path)}/'
+        self.storage.save_small_file(b'', self.bucket_name, key)
+        return self.uri_for(key)
+
     def download_file(self, path: str) -> bytes:
         return self.storage.read_file(self.bucket_name, self.resolve_key(path))
 
@@ -161,6 +172,43 @@ class FileStoragePlugin(FileStorageABC):
         return [
             path for key in keys if (path := self._relative_listed_path(key))
         ], has_next
+
+    def list_folder(
+        self,
+        prefix: str = '',
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+    ) -> FolderListing:
+        """One level of the tree under ``base_path``: sub-folders and the files directly in ``prefix``.
+
+        ``prefix`` is relative to ``base_path``; so are the folders (ending in ``/``) and file keys
+        returned. Folder placeholder objects (keys ending in ``/``) are left out, as in ``list_files``.
+        """
+        relative_prefix = normalize_storage_path(prefix)
+        # The delimiter listing needs the folder itself, slash-terminated; the root of a bucket is ''.
+        storage_prefix = '/'.join(
+            part for part in (self.base_path, relative_prefix) if part
+        )
+        if storage_prefix:
+            storage_prefix += '/'
+
+        listing = self.storage.list_folder(
+            self.bucket_name, storage_prefix, page_size, page_token
+        )
+
+        folders = []
+        for folder in listing.folders:
+            relative = self._relative_listed_path(folder.rstrip('/'))
+            if relative:
+                folders.append(f'{relative}/')
+        files = [
+            replace(item, key=relative)
+            for item in listing.files
+            if (relative := self._relative_listed_path(item.key))
+        ]
+        return FolderListing(
+            folders=folders, files=files, next_page_token=listing.next_page_token
+        )
 
     def _relative_listed_path(self, key: str) -> Optional[str]:
         """``key`` relative to ``base_path``, or None if it is not a file under it."""

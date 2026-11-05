@@ -2,6 +2,7 @@ from typing import Optional
 from uuid import UUID
 from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.auth_utils import extract_auth_credentials
+from agents_module.utils.validation_utils import InvalidDefinitionError
 from fastapi import APIRouter, Depends, status, Path, Request, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from dependency_injector.wiring import inject, Provide
@@ -487,13 +488,19 @@ async def create_workflow(
     # Read raw YAML content from request body
     yaml_content = (await request.body()).decode('utf-8')
 
-    workflow = await workflow_crud_service.create_workflow(
-        name=name,
-        namespace=namespace,
-        yaml_content=yaml_content,
-        access_token=access_token,
-        app_key=app_key,
-    )
+    try:
+        workflow = await workflow_crud_service.create_workflow(
+            name=name,
+            namespace=namespace,
+            yaml_content=yaml_content,
+            access_token=access_token,
+            app_key=app_key,
+        )
+    except InvalidDefinitionError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Successfully created workflow - namespace: {namespace}, name: {name}')
     return JSONResponse(
@@ -762,14 +769,20 @@ async def update_workflow(
     # Read raw YAML content from request body
     yaml_content = (await request.body()).decode('utf-8')
 
-    workflow = await workflow_crud_service.update_workflow(
-        workflow_id=workflow_id,
-        yaml_content=yaml_content,
-        access_token=access_token,
-        app_key=app_key,
-        version=version,
-        create_new_version=create_new_version,
-    )
+    try:
+        workflow = await workflow_crud_service.update_workflow(
+            workflow_id=workflow_id,
+            yaml_content=yaml_content,
+            access_token=access_token,
+            app_key=app_key,
+            version=version,
+            create_new_version=create_new_version,
+        )
+    except InvalidDefinitionError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Successfully updated workflow - ID: {workflow_id}')
     return JSONResponse(

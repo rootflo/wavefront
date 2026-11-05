@@ -3,7 +3,7 @@ import { GitBranch, CornerDownRight, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
-import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs } from '@app/hooks';
 import { getRouterStrategy } from '../graphUtils';
 import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';

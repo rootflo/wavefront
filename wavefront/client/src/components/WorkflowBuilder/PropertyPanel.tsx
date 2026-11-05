@@ -6,7 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Button } from '@app/components/ui/button';
 import { useParams } from 'react-router';
-import { useGetLLMConfigs, useGetWorkflows, useGetTools } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs, useGetWorkflows, useGetTools } from '@app/hooks';
 import { AgentProperties } from './propertyPanel/AgentProperties';
 import { EntryAgentStatus } from './propertyPanel/EntryAgentStatus';
 import { FunctionProperties } from './propertyPanel/FunctionProperties';
@@ -107,7 +107,7 @@ export const PropertyPanel = ({
   const nodeTypeTitle = (selectedNode.type && NODE_TYPE_TITLES[selectedNode.type]) || DEFAULT_NODE_TYPE_TITLE;
 
   return (
-    <aside className="border-border bg-card z-10 flex h-full w-96 shrink-0 flex-col border-l shadow-[-2px_0_10px_rgba(0,0,0,0.05)]">
+    <aside className="border-border bg-card z-10 flex h-full w-96 max-w-[100vw] shrink-0 flex-col border-l shadow-[-2px_0_10px_rgba(0,0,0,0.05)] max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-50">
       <div className="border-border bg-muted/10 flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div>
           <h2 className="text-foreground text-xs font-semibold tracking-wider uppercase">{nodeTypeTitle}</h2>

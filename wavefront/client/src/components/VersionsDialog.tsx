@@ -69,7 +69,7 @@ const VersionsDialog: React.FC<VersionsDialogProps> = ({
           ) : sortedVersions.length === 0 ? (
             <div className="frost-text-muted flex h-80 items-center justify-center text-sm">No versions found</div>
           ) : (
-            <div className="border-frost-border h-80 overflow-y-auto rounded-md border">
+            <div className="border-frost-border h-80 overflow-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>

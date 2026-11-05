@@ -56,6 +56,7 @@ import { LayoutDirection, readLayoutDirection, saveLayoutDirection } from './lay
 import { ROUTED_EDGE_TYPE } from './autoLayout';
 import { RoutedEdge } from './canvas/RoutedEdge';
 import type { GraphIssue } from '@app/types/workflow-builder';
+import { useThemeStore } from '@app/store/theme-store';
 import { WorkflowTemplate, createLinearTemplate, createRouterTemplate } from './workflowTemplates';
 import { WorkflowActions, WorkflowActionsContext } from './hooks/useWorkflowActions';
 import { CanvasToolbar } from './canvas/CanvasToolbar';
@@ -111,6 +112,7 @@ interface WorkflowVisualEditorProps {
 
 export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVisualEditorProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const theme = useThemeStore((state) => state.theme);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -492,7 +494,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   return (
     <WorkflowActionsContext.Provider value={workflowActions}>
-      <div className="border-border bg-background flex h-full w-full overflow-hidden rounded-lg border">
+      <div className="border-border bg-background relative flex h-full w-full overflow-hidden rounded-lg border">
         <ReactFlowProvider>
           {/* ACTIVE WORKFLOW PALETTE & OUTLINE SIDEBAR */}
           <Sidebar
@@ -555,9 +557,12 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
               edgeTypes={edgeTypes}
               minZoom={0.1}
               fitView
+              colorMode={theme}
+              // Dark mode would otherwise paint an opaque pane over the frost canvas
+              style={{ '--xy-background-color': 'transparent' } as React.CSSProperties}
               className="bg-transparent"
             >
-              <Background color="hsl(var(--border))" gap={20} size={1} variant={BackgroundVariant.Dots} />
+              <Background color="var(--frost-text-subtle)" gap={20} size={1} variant={BackgroundVariant.Dots} />
               <RelayoutOnMeasure pending={relayoutOnMeasureRef} onMeasured={handleAutoLayout} />
               <Controls className="bg-card border-border fill-foreground" />
 

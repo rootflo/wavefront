@@ -67,7 +67,10 @@ const AppRouter = () => {
         <Route element={<ProtectedLayout setAuthenticatedState={setAuthenticatedState} />}>
           <Route
             element={
-              <DashboardLayout user={user || { first_name: '', last_name: '', email: '', id: '' }} apps={apps} />
+              <DashboardLayout
+                user={user || { first_name: '', last_name: '', email: '', id: '', role: '' }}
+                apps={apps}
+              />
             }
           >
             {routes.private.map((route) => renderChildren(route))}

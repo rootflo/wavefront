@@ -20,6 +20,7 @@ from agents_module.models.yaml_validation_schemas import YamlValidationResult
 from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.auth_utils import extract_auth_credentials
 from agents_module.utils.sse_utils import SSE_HEADERS, format_sse
+from agents_module.utils.validation_utils import InvalidDefinitionError
 from agents_module.utils.yaml_validation import decode_yaml_body
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -327,14 +328,20 @@ async def create_agent(
     # Read raw YAML content from request body
     yaml_content = (await request.body()).decode('utf-8')
 
-    agent = await agent_crud_service.create_agent(
-        name=name,
-        namespace=namespace,
-        yaml_content=yaml_content,
-        tool_available=tool_loader.load_all_tools(),
-        access_token=access_token,
-        app_key=app_key,
-    )
+    try:
+        agent = await agent_crud_service.create_agent(
+            name=name,
+            namespace=namespace,
+            yaml_content=yaml_content,
+            tool_available=tool_loader.load_all_tools(),
+            access_token=access_token,
+            app_key=app_key,
+        )
+    except InvalidDefinitionError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Successfully created agent - namespace: {namespace}, name: {name}')
     return JSONResponse(
@@ -596,15 +603,21 @@ async def update_agent(
     # Read raw YAML content from request body
     yaml_content = (await request.body()).decode('utf-8')
 
-    agent = await agent_crud_service.update_agent(
-        agent_id=agent_id,
-        yaml_content=yaml_content,
-        tool_available=tool_loader.load_all_tools(),
-        access_token=access_token,
-        app_key=app_key,
-        version=version,
-        create_new_version=create_new_version,
-    )
+    try:
+        agent = await agent_crud_service.update_agent(
+            agent_id=agent_id,
+            yaml_content=yaml_content,
+            tool_available=tool_loader.load_all_tools(),
+            access_token=access_token,
+            app_key=app_key,
+            version=version,
+            create_new_version=create_new_version,
+        )
+    except InvalidDefinitionError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Successfully updated agent - ID: {agent_id}')
     return JSONResponse(

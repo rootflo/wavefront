@@ -1,57 +1,35 @@
-import floConsoleService from '@app/api';
-import ConfigurationCard from '@app/components/ConfigurationCard';
+import ListHeader from '@app/components/ListHeader';
+import ConfigurationCard from './ConfigurationCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { useGetConfigurations } from '@app/hooks';
-import { getConfigurationsKey } from '@app/hooks/data/query-keys';
-import { useNotifyStore } from '@app/store';
+import { useDeleteConfiguration, useGetConfigurations } from '@app/hooks';
 import { ConfigurationListItem } from '@app/types/configuration';
-import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateConfigurationDialog from './CreateConfigurationDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/utils/search';
 
 const ConfigurationsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const deleteConfiguration = useDeleteConfiguration(appId);
+  const deletion = useDeleteConfirm<ConfigurationListItem>((item) =>
+    deleteConfiguration.mutateAsync({ namespace: item.namespace, key: item.key })
+  );
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<ConfigurationListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-
-  const { notifySuccess } = useNotifyStore();
 
   const { data: configurations = [], isLoading: loading } = useGetConfigurations(appId);
 
-  const filteredConfigurations = configurations.filter(
-    (configuration) =>
-      configuration.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      configuration.namespace.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredConfigurations = configurations.filter((configuration) =>
+    matchesSearch(searchTerm, configuration.key, configuration.namespace)
   );
-
-  const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: getConfigurationsKey(appId || ''),
-    });
 
   const handleCreateConfiguration = () => {
     setCreateDialogOpen(true);
-  };
-
-  const handleCreateSuccess = () => {
-    invalidate();
-    setCreateDialogOpen(false);
   };
 
   const handleConfigurationClick = (configuration: ConfigurationListItem) => {
@@ -62,74 +40,18 @@ const ConfigurationsManagement: React.FC = () => {
     );
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, configuration: ConfigurationListItem) => {
-    e.stopPropagation();
-    setDeleteItem(configuration);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.configurationService.deleteConfiguration(deleteItem.namespace, deleteItem.key);
-      notifySuccess('Configuration deleted successfully');
-      invalidate();
-      setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting configuration:', error);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/configurations`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Configurations
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <PageBreadcrumb items={[{ label: 'Configurations', to: `/apps/${appId}/configurations` }]} />
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">Configurations</h1>
-          <p className="animate-fade-in frost-text-muted mt-2">Static reference data workflows read at runtime</p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button onClick={handleCreateConfiguration}>Create Configuration</Button>
-        </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
+      <ListHeader
+        title="Configurations"
+        count={filteredConfigurations.length || undefined}
+        subtitle={<>Static reference data workflows read at runtime</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search configurations' }}
+        primary={{ label: 'Create configuration', onClick: handleCreateConfiguration }}
+      />
+      <div className="-mx-1 -mt-2 grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (
@@ -152,7 +74,7 @@ const ConfigurationsManagement: React.FC = () => {
                 key={configuration.id}
                 configuration={configuration}
                 onClick={handleConfigurationClick}
-                onDeleteClick={handleDeleteClick}
+                onDeleteClick={(e, item) => deletion.ask(item, e)}
               />
             ))}
           </>
@@ -160,21 +82,13 @@ const ConfigurationsManagement: React.FC = () => {
       </div>
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Configuration"
-        message={`Are you sure you want to delete "${deleteItem?.key}" from namespace "${deleteItem?.namespace}"? Any workflow reading it will start failing. This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.key}" from namespace "${deletion.item?.namespace}"? Any workflow reading it will start failing. This action cannot be undone.`}
       />
 
       {appId && (
-        <CreateConfigurationDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
+        <CreateConfigurationDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />
       )}
     </div>
   );

@@ -38,7 +38,7 @@ async def create_llm_inference_config(
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Admin access required to manage LLM inference configurations'
+                'Admin access required to manage models in the Model Hub'
             ),
         )
 
@@ -86,7 +86,7 @@ async def get_llm_inference_configs(
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Admin access required to manage LLM inference configurations'
+                'Admin access required to manage models in the Model Hub'
             ),
         )
 
@@ -156,7 +156,7 @@ async def update_llm_inference_config(
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Admin access required to manage LLM inference configurations'
+                'Admin access required to manage models in the Model Hub'
             ),
         )
 
@@ -280,7 +280,7 @@ async def delete_llm_inference_config(
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Admin access required to manage LLM inference configurations'
+                'Admin access required to manage models in the Model Hub'
             ),
         )
 

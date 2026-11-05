@@ -142,7 +142,7 @@ export const makeFlowEdge = (source: string, target: string, fromIterator = fals
     style: { stroke: color, strokeWidth: 2 },
     label: fromIterator ? 'On Complete [All]' : undefined,
     labelStyle: fromIterator ? { fill: ITERATOR_EDGE_COLOR, fontSize: 9, fontWeight: 600 } : undefined,
-    labelBgStyle: fromIterator ? { fill: 'hsl(var(--card))', stroke: ITERATOR_EDGE_COLOR, strokeWidth: 1 } : undefined,
+    labelBgStyle: fromIterator ? { fill: 'var(--card)', stroke: ITERATOR_EDGE_COLOR, strokeWidth: 1 } : undefined,
     labelBgPadding: fromIterator ? ([6, 3] as [number, number]) : undefined,
     labelBgBorderRadius: fromIterator ? 4 : undefined,
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
@@ -159,7 +159,7 @@ export const makeRouteEdge = (routerId: string, targetId: string, condition?: st
   labelStyle: { fill: ROUTER_EDGE_COLOR, fontWeight: 600, fontSize: 10, fontFamily: 'inherit' },
   labelBgPadding: [6, 4] as [number, number],
   labelBgBorderRadius: 4,
-  labelBgStyle: { fill: 'hsl(var(--background))', stroke: 'hsl(var(--border))', strokeWidth: 1 },
+  labelBgStyle: { fill: 'var(--background)', stroke: 'var(--border)', strokeWidth: 1 },
   style: { stroke: ROUTER_EDGE_COLOR, strokeWidth: 2 },
   data: { kind: EDGE_KINDS.ROUTE },
 });

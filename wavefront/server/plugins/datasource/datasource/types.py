@@ -5,6 +5,15 @@ from dataclasses import dataclass
 
 from flo_cloud.postgres import RowMutationResult
 
+from .validation import (
+    IDENTIFIER_RE,
+    TABLE_NAME_MAX_LEN,
+    InvalidResourceError,
+    validate_group_by,
+    validate_order_by,
+    validate_select,
+)
+
 
 @dataclass
 class Meta:
@@ -91,6 +100,32 @@ class DataSourceABC(ABC):
     @abstractmethod
     async def test_connection(self) -> bool:
         pass
+
+    def validate_table_name(self, table_name: str) -> None:
+        """Raise InvalidResourceError unless ``table_name`` is safe to query.
+
+        The default accepts a plain identifier only: reads prefix the name with
+        the configured schema or dataset, so a qualified name could only point
+        outside it. Datasources whose naming rules differ override this.
+        """
+        if (
+            not table_name
+            or len(table_name) > TABLE_NAME_MAX_LEN
+            or not IDENTIFIER_RE.fullmatch(table_name)
+        ):
+            raise InvalidResourceError(f'Invalid resource name: {table_name}')
+
+    def validate_query_clauses(
+        self,
+        projection: Optional[str],
+        order_by: Optional[str],
+        group_by: Optional[str],
+    ) -> None:
+        """Raise InvalidQueryError unless $select, $orderby and $groupby fit the
+        grammar in ``validation``. Override to widen it for a dialect."""
+        validate_select(projection)
+        validate_order_by(order_by)
+        validate_group_by(group_by)
 
     @abstractmethod
     def get_schema(self) -> dict:
