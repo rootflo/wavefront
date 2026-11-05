@@ -24,7 +24,10 @@ from ..models.service import ServiceDefinition
 SECRET_NAME_PATTERN = re.compile(r'^[A-Z][A-Z0-9_]*$')
 # `$` keeps this apart from the `{param}` path templating in pipeline/stages.py.
 SECRET_REF_PATTERN = re.compile(r'\$\{secrets\.([A-Z][A-Z0-9_]*)\}')
-SECRET_REF_MARKER = '${secrets.'
+# Scheme words allowed in front of a reference, e.g. `Bearer ${secrets.TOKEN}`
+AUTH_SCHEME_PATTERN = re.compile(
+    r'^\s*(bearer|basic|token|bot|apikey)\b', re.IGNORECASE
+)
 SECRET_AUTH_FIELDS = ('token', 'password', 'api_key')
 SENSITIVE_HEADER_PATTERN = re.compile(
     r'authorization|token|secret|key|cookie|password', re.IGNORECASE
@@ -97,10 +100,19 @@ def substitute(value: Any, resolved: Mapping[str, str]) -> Any:
 
 
 def is_literal_secret(value: Any) -> bool:
-    """A non-empty value that does not use a `${secrets.` reference."""
+    """A non-empty value with text beyond `${secrets.NAME}` references.
+
+    An auth scheme in front of a reference (`Bearer ${secrets.TOKEN}`) and
+    separators between references are allowed; any other text is a literal.
+    """
     if value is None or value == '':
         return False
-    return SECRET_REF_MARKER not in str(value)
+    text = str(value)
+    rest = SECRET_REF_PATTERN.sub('', text)
+    if rest == text:
+        return True
+    rest = AUTH_SCHEME_PATTERN.sub('', rest, count=1)
+    return any(char.isalnum() for char in rest)
 
 
 # ---- parsed YAML document ------------------------------------------------
@@ -208,11 +220,24 @@ def restore_masked_secrets(
         del stored[identity]
 
     result = copy.deepcopy(dict(service_yaml_dict))
+    fields = list(_iter_by_identity(result))
+    # An API repeated in the edit is as ambiguous as one repeated in storage
+    seen: Set[str] = set()
+    repeated: Set[str] = set()
+    for identity, _path, _parent, _key in fields:
+        if identity in seen:
+            repeated.add(identity)
+        seen.add(identity)
+
     missing: List[str] = []
-    for identity, path, parent, key in _iter_by_identity(result):
+    for identity, path, parent, key in fields:
         if parent[key] != SECRET_MASK:
             continue
-        if identity in stored and stored[identity] != SECRET_MASK:
+        if (
+            identity not in repeated
+            and identity in stored
+            and stored[identity] != SECRET_MASK
+        ):
             parent[key] = stored[identity]
         else:
             missing.append(path)
@@ -227,9 +252,10 @@ def _iter_by_identity(
 ) -> Iterator[Tuple[Optional[str], str, MutableMapping[str, Any], str]]:
     """Like `iter_secret_fields`, keyed so a field matches across edits.
 
-    API headers are keyed by the API's `id`, not its position: an edit that
-    adds, removes or reorders APIs must never pair one API's masked header with
-    another API's stored value. An API without an id gets no identity.
+    API headers are keyed by the API's `id` and `version` (how the runtime
+    finds an API), not its position: an edit that adds, removes or reorders APIs
+    must never pair one API's masked header with another API's stored value. An
+    API without an id gets no identity.
     """
     service, _prefix = _service_root(service_yaml_dict)
     apis = service.get('apis') if isinstance(service, Mapping) else None
@@ -240,7 +266,11 @@ def _iter_by_identity(
             continue
         api = apis[int(match.group(1))] if isinstance(apis, list) else None
         api_id = api.get('id') if isinstance(api, Mapping) else None
-        identity = f'apis[id={api_id}].{match.group(2)}' if api_id else None
+        identity = (
+            f"apis[id={api_id},version={api.get('version', 'v1')}].{match.group(2)}"
+            if api_id
+            else None
+        )
         yield identity, path, parent, key
 
 

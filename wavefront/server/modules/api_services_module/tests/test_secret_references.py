@@ -14,6 +14,7 @@ from api_services_module.secrets.references import (
     find_literal_secrets,
     find_refs,
     find_service_refs,
+    is_literal_secret,
     is_sensitive_header,
     mask_definition,
     replace_literals_with_refs,
@@ -144,6 +145,44 @@ def test_find_literal_secrets_skips_references_and_empty_values():
     assert find_literal_secrets(document) == []
 
 
+@pytest.mark.parametrize(
+    'value',
+    [
+        '${secrets.T}',
+        'Bearer ${secrets.T}',
+        'basic ${secrets.T}',
+        '${secrets.USER}:${secrets.PASS}',
+        '',
+        None,
+    ],
+)
+def test_is_literal_secret_false_for_references(value):
+    assert is_literal_secret(value) is False
+
+
+@pytest.mark.parametrize(
+    'value',
+    [
+        'sk-live-abc',
+        'sk-live-abc ${secrets.T}',
+        'Bearer sk-live-abc ${secrets.T}',
+        '${secrets.T}sk-live-abc',
+        '${secrets.lowercase}',
+        'Bearer',
+    ],
+)
+def test_is_literal_secret_true_for_literal_text(value):
+    assert is_literal_secret(value) is True
+
+
+def test_find_literal_secrets_flags_literal_text_next_to_a_reference():
+    document = {'service': {'auth': {'token': 'sk-live-abc ${secrets.T}'}}}
+
+    assert find_literal_secrets(document) == [
+        ('service.auth.token', 'sk-live-abc ${secrets.T}')
+    ]
+
+
 def test_find_literal_secrets_accepts_the_service_mapping():
     service = _document()['service']
 
@@ -234,6 +273,34 @@ def test_restore_masked_secrets_never_matches_ambiguous_api_ids():
     _merged, unmatched = restore_masked_secrets(incoming, stored)
 
     assert unmatched == ['service.apis[0].additional_headers.Authorization']
+
+
+def test_restore_masked_secrets_never_restores_api_ids_repeated_in_the_edit():
+    stored = _two_apis(('b', 'token-b'))
+    # A copied API kept the original's id
+    incoming = _two_apis(('b', SECRET_MASK), ('b', SECRET_MASK))
+
+    merged, unmatched = restore_masked_secrets(incoming, stored)
+
+    assert unmatched == [
+        'service.apis[0].additional_headers.Authorization',
+        'service.apis[1].additional_headers.Authorization',
+    ]
+    headers = [api['additional_headers'] for api in merged['service']['apis']]
+    assert headers == [{'Authorization': SECRET_MASK}] * 2
+
+
+def test_restore_masked_secrets_tells_api_versions_apart():
+    stored = _two_apis(('a', 'token-v1'), ('a', 'token-v2'))
+    stored['service']['apis'][1]['version'] = 'v2'
+    incoming = _two_apis(('a', SECRET_MASK), ('a', SECRET_MASK))
+    incoming['service']['apis'][0]['version'] = 'v2'
+
+    merged, unmatched = restore_masked_secrets(incoming, stored)
+
+    assert unmatched == []
+    headers = [api['additional_headers'] for api in merged['service']['apis']]
+    assert headers == [{'Authorization': 'token-v2'}, {'Authorization': 'token-v1'}]
 
 
 def test_restore_masked_secrets_reports_masks_without_stored_value():

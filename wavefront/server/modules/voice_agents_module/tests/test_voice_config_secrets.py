@@ -10,10 +10,19 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import ValidationError
 from fastapi import HTTPException
 
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
+from voice_agents_module.models.stt_schemas import (
+    CreateSttConfigPayload,
+    UpdateSttConfigPayload,
+)
+from voice_agents_module.models.tts_schemas import (
+    CreateTtsConfigPayload,
+    UpdateTtsConfigPayload,
+)
 from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.models.telephony_config import TelephonyConfig
 from db_repo_module.models.tts_config import TtsConfig
@@ -182,6 +191,18 @@ class TestApiKeyConfigs:
             assert updated.startswith(ENVELOPE_PREFIX)
         else:
             assert updated == 'sk-new'
+
+    async def test_update_with_the_mask_keeps_the_stored_key(self, api_key_case):
+        service, repository, _, _ = api_key_case
+        await service.create_config(display_name='x', provider='p', api_key=API_KEY)
+        stored_before = repository.record.api_key
+
+        await service.update_config(
+            repository.record.id, api_key=SECRET_MASK, display_name='y'
+        )
+
+        assert repository.record.api_key == stored_before
+        assert repository.record.display_name == 'y'
 
     async def test_cache_holds_the_stored_form(self, api_key_case, cache):
         service, repository, _, _ = api_key_case
@@ -450,3 +471,24 @@ class TestTelephonyConfigs:
                 provider='smartflo',
                 credentials={'api_key': SECRET_MASK},
             )
+
+
+# ---- api_key length ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    'create_payload, update_payload, provider',
+    [
+        (CreateSttConfigPayload, UpdateSttConfigPayload, 'deepgram'),
+        (CreateTtsConfigPayload, UpdateTtsConfigPayload, 'cartesia'),
+    ],
+    ids=['stt', 'tts'],
+)
+def test_api_key_is_capped_at_512_characters(create_payload, update_payload, provider):
+    create_payload(display_name='x', provider=provider, api_key='k' * 512)
+    update_payload(api_key='k' * 512)
+
+    with pytest.raises(ValidationError):
+        create_payload(display_name='x', provider=provider, api_key='k' * 513)
+    with pytest.raises(ValidationError):
+        update_payload(api_key='k' * 513)

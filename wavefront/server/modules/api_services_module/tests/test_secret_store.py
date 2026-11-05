@@ -422,6 +422,54 @@ async def test_update_rejects_literal_when_encryption_enabled():
     assert 'service.auth.token' in error.value.detail
 
 
+async def test_update_that_cannot_resolve_is_not_saved():
+    original = _service_yaml()
+    proxy, manager = await _proxy(enabled=True, yaml_by_id={'acme': original})
+    proxy.secret_store.resolve = AsyncMock(side_effect=RuntimeError('kms down'))
+
+    with pytest.raises(HTTPException) as error:
+        await proxy.update_api_services(
+            'acme', _service_yaml(api_headers={'X-Api-Key': '${secrets.ACME_TOKEN}'})
+        )
+
+    assert error.value.status_code == 500
+    assert manager.yaml_by_id['acme'] == original
+    assert proxy.service_registry.get_service('acme').auth.token == 'acme_token-value'
+    proxy.api_change_publisher.publish_message.assert_not_called()
+
+
+async def test_update_restores_previous_definition_when_reload_fails():
+    original = _service_yaml()
+    proxy, manager = await _proxy(
+        enabled=True, yaml_by_id={'acme': original}, secrets=('ACME_TOKEN', 'OTHER')
+    )
+    registry = proxy.service_registry
+    real_reload = registry.reload_service
+    calls = []
+
+    async def reload_failing_once(service_id):
+        calls.append(service_id)
+        if len(calls) == 1:
+            raise RuntimeError('reload failed')
+        await real_reload(service_id)
+
+    registry.reload_service = reload_failing_once
+
+    with pytest.raises(HTTPException):
+        await proxy.update_api_services(
+            'acme',
+            _service_yaml(
+                auth={'id': 'a', 'type': 'bearer', 'token': '${secrets.OTHER}'}
+            ),
+        )
+
+    assert manager.yaml_by_id['acme'] == original
+    assert registry.get_service('acme').auth.token == 'acme_token-value'
+    assert registry.services_referencing('ACME_TOKEN') == ['acme']
+    assert registry.services_referencing('OTHER') == []
+    proxy.api_change_publisher.publish_message.assert_not_called()
+
+
 # ---- read paths --------------------------------------------------------------------
 
 

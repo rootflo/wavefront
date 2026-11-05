@@ -7,16 +7,22 @@ from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import ValidationError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from common_module.common_container import CommonContainer
 from common_module.security.secret_cipher import (
+    SECRET_MASK,
     SecretCipher,
     SecretModeMismatchError,
     UnencryptedSecretError,
 )
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
+from llm_inference_config_module.models.schemas import (
+    CreateLlmInferenceConfigPayload,
+    UpdateLlmInferenceConfigPayload,
+)
 from flo_cloud._types import FloCipher
 from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 from llm_inference_config_module.container import LlmInferenceConfigContainer
@@ -214,6 +220,16 @@ async def test_update_without_api_key_keeps_the_stored_key(service, repository):
     assert repository.rows[config_id].api_key == stored_before
 
 
+async def test_update_with_the_mask_keeps_the_stored_key(service, repository):
+    created = await create(service)
+    config_id = uuid.UUID(created['id'])
+    stored_before = repository.rows[config_id].api_key
+
+    await service.update_config(config_id, api_key=SECRET_MASK, display_name='renamed')
+
+    assert repository.rows[config_id].api_key == stored_before
+
+
 async def test_update_with_null_api_key_clears_it(service, repository):
     created = await create(service)
     config_id = uuid.UUID(created['id'])
@@ -391,3 +407,16 @@ async def test_get_with_include_secrets_of_missing_config_is_404(client):
     )
 
     assert response.status_code == 404
+
+
+def test_api_key_is_capped_at_512_characters():
+    fields = {'display_name': 'x', 'llm_model': 'm', 'type': 'openai'}
+    CreateLlmInferenceConfigPayload(api_key='k' * 512, **fields)
+    CreateLlmInferenceConfigPayload(**fields)
+    UpdateLlmInferenceConfigPayload(api_key='k' * 512)
+    UpdateLlmInferenceConfigPayload(api_key=None)
+
+    with pytest.raises(ValidationError):
+        CreateLlmInferenceConfigPayload(api_key='k' * 513, **fields)
+    with pytest.raises(ValidationError):
+        UpdateLlmInferenceConfigPayload(api_key='k' * 513)

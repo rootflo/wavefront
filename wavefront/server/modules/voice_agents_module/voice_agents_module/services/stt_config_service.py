@@ -4,7 +4,7 @@ from uuid import UUID
 
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
-from common_module.security.secret_cipher import SecretCipher
+from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -196,6 +196,9 @@ class SttConfigService:
         if not existing_config:
             return None
 
+        # The mask means "keep the stored key"
+        if update_data.get('api_key') == SECRET_MASK:
+            del update_data['api_key']
         if 'api_key' in update_data:
             update_data['api_key'] = await self.secret_cipher.aprotect(
                 update_data['api_key']

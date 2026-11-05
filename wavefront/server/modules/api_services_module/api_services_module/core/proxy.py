@@ -495,14 +495,36 @@ class ApiProxy:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
+        stored_yaml = self.api_services_manager.fetch_service_def(service)
         service_yaml = await self._validate_secrets(
-            service_yaml,
-            stored_yaml=self.api_services_manager.fetch_service_def(service),
+            service_yaml, stored_yaml=stored_yaml
         )
+        # Resolve before saving, so a definition that can't run is never stored
+        try:
+            await self.service_registry.resolve_secrets(
+                ServiceDefinitionParser.parse_yaml_string(service_yaml)
+            )
+        except Exception as e:
+            logger.error(f'Failed to resolve secrets for {service_id}: {e}')
+            raise HTTPException(
+                status_code=500,
+                detail=f'Failed to resolve secrets for service {service_id}',
+            )
         await self.api_services_manager.update_api_service(
             id=service_id, service_def_yaml=service_yaml
         )
-        await self.reload_service(service_id)
+        try:
+            await self.reload_service(service_id)
+        except HTTPException:
+            # Put the previous definition back, in storage and in memory
+            await self.api_services_manager.update_api_service(
+                id=service_id, service_def_yaml=stored_yaml
+            )
+            try:
+                await self.reload_service(service_id)
+            except HTTPException:
+                logger.error(f'Failed to restore service {service_id}')
+            raise
         self.api_change_publisher.publish_message(
             UpdateMessage(
                 service_id=service_id,
