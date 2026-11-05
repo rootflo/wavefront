@@ -1,4 +1,4 @@
-"""A proxy whose registry was never loaded (the Celery worker) finds services on first use."""
+"""A proxy whose registry does not have a service yet (a replica that missed the create) finds it on first use."""
 
 from api_services_module.config.registry import ServiceRegistry
 from api_services_module.core.proxy import ApiProxy

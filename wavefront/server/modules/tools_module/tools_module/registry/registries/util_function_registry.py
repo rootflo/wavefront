@@ -10,6 +10,6 @@ from tools_module.utils.passthrough_fn import passthrough
 def build_util_function_registry(api: FlowareApiClient) -> Dict[str, Callable]:
     return {
         'message_processor': MethodType(execute_message_processor_fn, api),
-        'rf_api_service': execute_api_service_fn,
+        'rf_api_service': MethodType(execute_api_service_fn, api),
         'passthrough': passthrough,
     }

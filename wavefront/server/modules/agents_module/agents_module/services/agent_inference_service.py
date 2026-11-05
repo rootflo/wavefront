@@ -279,7 +279,13 @@ class AgentInferenceService:
         Returns:
             Tool object if API service found, None otherwise
         """
-        return await load_api_service_tool(tool_name, self.api_services_manager)
+        # The registry's copy has the floware client bound to its `api`
+        # argument; the bare function would be missing it.
+        return await load_api_service_tool(
+            tool_name,
+            self.api_services_manager,
+            self.tool_loader.function_registry['trigger_api_service'],
+        )
 
     def _create_llm_instance(self, config: LlmInferenceConfig):
         """

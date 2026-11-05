@@ -52,9 +52,7 @@ class ApiProxy:
     async def _load_missing_service(self, service_id: str):
         """Load one service the in-memory registry does not have, from the database.
 
-        Only floware's startup loads the registry, so a process that never ran it
-        (the Celery worker running a workflow's trigger_api_service nodes) or a
-        replica that missed the create starts out without the service. Returns
+        A replica that missed the create starts out without the service. Returns
         None when it does not exist there either.
         """
         if not getattr(self.service_registry, 'api_service_manager', None):
@@ -86,6 +84,7 @@ class ApiProxy:
         headers: Optional[Dict[str, str]] = None,
         body: Optional[Any] = None,
         trace: bool = False,
+        restrict_payload_to_schema: bool = False,
     ) -> Union[ProxyResponse, Response]:
         """
         Process an API request through the proxy pipeline.
@@ -100,6 +99,9 @@ class ApiProxy:
             query_params: Query parameters
             headers: Request headers
             body: Request body
+            restrict_payload_to_schema: When the API declares a payload_schema,
+                send only its declared fields. For internal callers whose body
+                is assembled from workflow state rather than written for this API.
 
         Returns:
             Union[ProxyResponse, Response] with standardized format (JSON/text via ProxyResponse, binary via fastapi.Response)
@@ -141,6 +143,16 @@ class ApiProxy:
                     status_code=404,
                     detail=f'API not found: {api_id} (version: {api_version}) in service: {service_id}',
                 )
+
+            if (
+                restrict_payload_to_schema
+                and api_config.payload_schema
+                and isinstance(context.body, dict)
+            ):
+                declared = {f.name for f in api_config.payload_schema.fields}
+                context.body = {
+                    k: v for k, v in context.body.items() if k in declared
+                } or None
 
             context.add_trace('proxy', 'Found service and API configuration')
 

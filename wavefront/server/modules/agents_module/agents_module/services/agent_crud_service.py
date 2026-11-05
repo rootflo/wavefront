@@ -32,6 +32,7 @@ from agents_module.utils.yaml_validation import (
 )
 from flo_ai import AgentBuilder
 from flo_ai.tool.base_tool import Tool
+from tools_module.utils.api_service_fn import execute_api_service_fn
 from tools_module.utils.api_service_tool_loader import load_api_service_tool
 from api_services_module.core.manager import ApiServicesManager
 
@@ -282,7 +283,11 @@ class AgentCrudService:
         Returns:
             Tool object if API service found, None otherwise
         """
-        return await load_api_service_tool(tool_name, self.api_services_manager)
+        # Only used to validate an agent's YAML, never run, so the unbound
+        # function is enough (same as the message-processor tool above).
+        return await load_api_service_tool(
+            tool_name, self.api_services_manager, execute_api_service_fn
+        )
 
     async def create_agent(
         self,
