@@ -22,6 +22,7 @@ from voice_agents_module.services.voice_agent_service import VoiceAgentService
 from voice_agents_module.services.twilio_service import TwilioService
 from voice_agents_module.services.exotel_service import ExotelService
 from voice_agents_module.services.smartflo_service import SmartfloService
+from voice_agents_module.services.call_prepare_client import CallPrepareClient
 from voice_agents_module.services.webrtc_room_client import (
     WebRTCRoomClient,
     WebRTCRoomClientError,
@@ -351,6 +352,9 @@ async def initiate_call(
     smartflo_service: SmartfloService = Depends(
         Provide[VoiceAgentsContainer.smartflo_service]
     ),
+    call_prepare_client: CallPrepareClient = Depends(
+        Provide[VoiceAgentsContainer.call_prepare_client]
+    ),
 ):
     """
     Initiate an outbound call for a voice agent
@@ -360,7 +364,7 @@ async def initiate_call(
 
     Args:
         agent_id: UUID of the voice agent
-        payload: Call details (to_number, optional from_number)
+        payload: Call details (to_number, optional from_number, optional context)
 
     Returns:
         JSONResponse: Call initiation details
@@ -502,6 +506,16 @@ async def initiate_call(
                 f'Unsupported telephony provider: {provider}'
             ),
         )
+
+    # The call is ringing: hand its context to call_processing, keyed by the
+    # provider's call id (what the media stream reports). Best-effort: a
+    # failure here leaves the call running, just without the context.
+    await call_prepare_client.prepare(
+        agent_id=agent_id,
+        call_ref=str(call_details.get('call_sid') or ''),
+        customer_number=payload.to_number,
+        context=payload.context,
+    )
 
     # Build unified response
     response_data = {

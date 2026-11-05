@@ -11,6 +11,7 @@ import {
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
+import { Textarea } from '@app/components/ui/textarea';
 import { useSetAgentToolOverrides } from '@app/hooks';
 import { toneClass } from '@app/lib/tones';
 import { VoiceAgentToolWithAssociation } from '@app/types/tool';
@@ -23,6 +24,7 @@ import {
   describeOnCall,
   effectiveMethod,
   fieldLabel,
+  parsePromptFields,
   prefetchBlockers,
   readToolContext,
   suggestedSource,
@@ -69,13 +71,16 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
     const saved = readToolContext(overrides);
     return { ...saved, bind: usableBind(args, saved.bind).bind };
   });
+  const [promptText, setPromptText] = useState(() => (settings.promptFields ?? []).join('\n'));
   const saveOverrides = useSetAgentToolOverrides(appId, agentId);
 
   const blockers = prefetchBlockers(args, method, settings);
   const canPrefetch = blockers.length === 0;
   // A prefetch that a later change blocked is shown off and saved off
   const prefetchOn = settings.prefetch && canPrefetch;
-  const onCall = describeOnCall(method, settings, canPrefetch);
+  // Prompt fields come from the prefetched result, so they only apply with it
+  const promptFields = prefetchOn ? parsePromptFields(promptText) : [];
+  const onCall = describeOnCall(method, { ...settings, promptFields }, canPrefetch);
   const fillsPhone = Object.values(settings.bind).includes('caller.phone');
 
   const setSource = (arg: string, source: ArgumentSource) =>
@@ -88,7 +93,10 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
 
   const handleSave = () =>
     saveOverrides.mutate(
-      { toolId: tool.id, configOverrides: writeToolContext(overrides, { ...settings, prefetch: prefetchOn }) },
+      {
+        toolId: tool.id,
+        configOverrides: writeToolContext(overrides, { ...settings, prefetch: prefetchOn, promptFields }),
+      },
       { onSuccess: () => onOpenChange(false) }
     );
 
@@ -219,6 +227,24 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
                 onCheckedChange={(prefetch) => setSettings((current) => ({ ...current, prefetch }))}
               />
             </div>
+            {prefetchOn && (
+              <div className="space-y-1">
+                <Label htmlFor="context-prompt-fields">Give the AI these details up front (optional)</Label>
+                <p className="frost-text-muted text-xs">
+                  Fields from this tool&apos;s result, one per line, like customer_name or account.amount_due. The AI
+                  knows them from the start of the call, so it can answer without calling the tool. Only text and
+                  numbers are used.
+                </p>
+                <Textarea
+                  id="context-prompt-fields"
+                  rows={3}
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder={'customer_name\naccount.amount_due'}
+                  className="font-mono text-xs"
+                />
+              </div>
+            )}
             {!canPrefetch && (
               <div className={`rounded-md p-3 text-xs ${toneClass.warning}`} role="note">
                 <p className="font-medium">To look it up as the call starts:</p>

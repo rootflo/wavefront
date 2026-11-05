@@ -1,3 +1,6 @@
+import json
+import re
+
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from typing import Optional, Union, Any, Dict, List
 from enum import Enum
@@ -160,12 +163,39 @@ class VoiceAgentResponse(BaseModel):
     updated_at: datetime
 
 
+MAX_CALL_CONTEXT_BYTES = 2048
+_CALL_CONTEXT_KEY = re.compile(r'^[a-z0-9_]{1,40}$')
+
+
 class InitiateCallPayload(BaseModel):
     to_number: str = Field(..., description='Destination phone number (E.164 format)')
     from_number: Optional[str] = Field(
         None,
         description='Source phone number (optional, defaults to first configured number)',
     )
+    context: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            'What the caller system already knows about this caller (name, reason '
+            'for the call, ...). The agent gets it up front; tools can use it as '
+            '`outbound.<key>`. Keys: lowercase letters, digits and _ (up to 40); '
+            f'values: text; {MAX_CALL_CONTEXT_BYTES} bytes at most in total.'
+        ),
+    )
+
+    @field_validator('context')
+    @classmethod
+    def validate_context(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        if not v:
+            return v
+        bad_keys = [key for key in v if not _CALL_CONTEXT_KEY.match(key)]
+        if bad_keys:
+            raise ValueError(
+                f'context keys must be lowercase letters, digits or _: {bad_keys}'
+            )
+        if len(json.dumps(v).encode()) > MAX_CALL_CONTEXT_BYTES:
+            raise ValueError(f'context is over {MAX_CALL_CONTEXT_BYTES} bytes')
+        return v
 
 
 class CreateWebRTCRoomPayload(BaseModel):

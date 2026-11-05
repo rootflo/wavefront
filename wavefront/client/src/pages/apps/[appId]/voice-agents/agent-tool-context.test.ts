@@ -5,6 +5,7 @@ import {
   describeOnCall,
   effectiveMethod,
   fieldLabel,
+  parsePromptFields,
   isReusedInCall,
   prefetchBlockers,
   readToolContext,
@@ -86,11 +87,11 @@ describe('readToolContext', () => {
         timeout: 3,
         context: { bind: { mobile_number: 'caller.phone', x: 'caller.email' }, read_only: true, prefetch: true },
       })
-    ).toEqual({ bind: { mobile_number: 'caller.phone' }, readOnly: true, prefetch: true });
+    ).toEqual({ bind: { mobile_number: 'caller.phone' }, readOnly: true, prefetch: true, promptFields: [] });
   });
 
   it('defaults to nothing set', () => {
-    expect(readToolContext(undefined)).toEqual({ bind: {}, readOnly: false, prefetch: false });
+    expect(readToolContext(undefined)).toEqual({ bind: {}, readOnly: false, prefetch: false, promptFields: [] });
   });
 });
 
@@ -277,5 +278,37 @@ describe('nested fields (water helpline scenario)', () => {
   it('summarises the old object bind as not set', () => {
     const tool = { config: { method: 'POST' as const, url: 'https://x' }, parameter_schema: GET_BILL };
     expect(contextSummary(tool, { context: { bind: { request: 'caller.phone' } } })).toBeUndefined();
+  });
+});
+
+describe('prompt fields', () => {
+  it('reads saved paths and skips non-text entries', () => {
+    const overrides = { context: { prompt_fields: ['customer_name', 3, ' ', 'account.amount_due'] } };
+    expect(readToolContext(overrides).promptFields).toEqual(['customer_name', 'account.amount_due']);
+  });
+
+  it('parses one path per line', () => {
+    expect(parsePromptFields(' customer_name \n\naccount.amount_due\ncustomer_name')).toEqual([
+      'customer_name',
+      'account.amount_due',
+    ]);
+  });
+
+  it('saves them, removes them when emptied, and keeps them when not managed', () => {
+    const base = { bind: {}, readOnly: true, prefetch: true };
+    const saved = { context: { prompt_fields: ['customer_name'], prefetch: true, read_only: true } };
+    expect(writeToolContext(undefined, { ...base, promptFields: ['customer_name'] })).toEqual(saved);
+    expect(writeToolContext(saved, { ...base, promptFields: [] })).toEqual({
+      context: { prefetch: true, read_only: true },
+    });
+    expect(writeToolContext(saved, base)).toEqual(saved);
+  });
+
+  it('says what the AI gets up front, only when the lookup runs early', () => {
+    const settings = { bind: {}, readOnly: true, prefetch: true, promptFields: ['account.amount_due'] };
+    expect(describeOnCall('GET', settings, true)).toContainEqual(
+      expect.stringContaining('given account › amount_due up front')
+    );
+    expect(describeOnCall('GET', settings, false).join(' ')).not.toContain('up front');
   });
 });

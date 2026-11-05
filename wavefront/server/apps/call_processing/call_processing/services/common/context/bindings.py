@@ -21,12 +21,30 @@ from call_processing.log.logger import logger
 from call_processing.services.common.context.subject import CallSubject
 
 CALL_VARIABLES = ('caller.phone', 'call.id', 'call.direction', 'agent.id')
+# Plus outbound.<key>: a value the CRM sent with an outbound call (context)
+OUTBOUND_PREFIX = 'outbound.'
+
+
+def _is_call_variable(variable: Any) -> bool:
+    if not isinstance(variable, str):
+        return False
+    if variable.startswith(OUTBOUND_PREFIX):
+        return len(variable) > len(OUTBOUND_PREFIX)
+    return variable in CALL_VARIABLES
 
 
 def tool_context(tool: Dict[str, Any]) -> Dict[str, Any]:
     """The tool association's ``config_overrides.context`` settings ({} if none)."""
     overrides = (tool.get('association') or {}).get('config_overrides') or {}
     return overrides.get('context') or {}
+
+
+def tool_prompt_fields(tool: Dict[str, Any]) -> List[str]:
+    """Result fields (dotted paths) to give the AI up front, from ``prompt_fields``."""
+    fields = tool_context(tool).get('prompt_fields') or []
+    if not isinstance(fields, list):
+        return []
+    return [f for f in fields if isinstance(f, str) and f.strip()]
 
 
 def _schema_field(schema: Dict[str, Any], path: str) -> Optional[Dict[str, Any]]:
@@ -51,9 +69,10 @@ def tool_bindings(tool: Dict[str, Any]) -> Dict[str, str]:
     usable = {}
     for path, variable in bind.items():
         field = _schema_field(schema, path)
-        if variable not in CALL_VARIABLES:
+        if not _is_call_variable(variable):
             problem = (
-                f'unknown variable {variable!r}; expected one of {list(CALL_VARIABLES)}'
+                f'unknown variable {variable!r}; expected one of '
+                f'{list(CALL_VARIABLES)} or {OUTBOUND_PREFIX}<key>'
             )
         elif field is None:
             problem = 'no such field in the tool schema'
@@ -69,10 +88,15 @@ def tool_bindings(tool: Dict[str, Any]) -> Dict[str, str]:
 
 
 def resolve_bindings(
-    bind: Dict[str, str], subject: Optional[CallSubject], agent_id: Optional[str]
+    bind: Dict[str, str],
+    subject: Optional[CallSubject],
+    agent_id: Optional[str],
+    outbound: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
     """Argument name -> value, for the variables that have a value on this call."""
     values = {'agent.id': agent_id or ''}
+    for key, value in (outbound or {}).items():
+        values[f'{OUTBOUND_PREFIX}{key}'] = value
     if subject is not None:
         values.update(
             {

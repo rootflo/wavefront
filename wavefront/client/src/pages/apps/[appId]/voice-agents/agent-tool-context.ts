@@ -25,6 +25,11 @@ export interface ToolContextSettings {
   bind: Record<string, Exclude<ArgumentSource, 'ai'>>;
   readOnly: boolean;
   prefetch: boolean;
+  /**
+   * Result fields (dotted paths) the AI gets up front from a prefetch. Left
+   * undefined, saving keeps whatever is stored.
+   */
+  promptFields?: string[];
 }
 
 /** One field the AI (or the server) fills: a top-level argument, or one nested in an object argument. */
@@ -103,8 +108,21 @@ export const readToolContext = (overrides: Overrides): ToolContextSettings => {
       bind[arg] = source as Exclude<ArgumentSource, 'ai'>;
     }
   });
-  return { bind, readOnly: context.read_only === true, prefetch: context.prefetch === true };
+  const promptFields = Array.isArray(context.prompt_fields)
+    ? context.prompt_fields.filter((f): f is string => typeof f === 'string' && f.trim() !== '')
+    : [];
+  return { bind, readOnly: context.read_only === true, prefetch: context.prefetch === true, promptFields };
 };
+
+/** Prompt field paths typed one per line: trimmed, blank lines and repeats dropped. */
+export const parsePromptFields = (text: string): string[] => [
+  ...new Set(
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  ),
+];
 
 /**
  * New `config_overrides` with these settings. Other override keys, and other
@@ -120,6 +138,10 @@ export const writeToolContext = (overrides: Overrides, settings: ToolContextSett
   if (Object.keys(settings.bind).length > 0) context.bind = { ...settings.bind };
   if (settings.readOnly) context.read_only = true;
   if (settings.prefetch) context.prefetch = true;
+  if (settings.promptFields !== undefined) {
+    delete context.prompt_fields;
+    if (settings.promptFields.length > 0) context.prompt_fields = [...settings.promptFields];
+  }
   return Object.keys(context).length > 0 ? { ...rest, context } : rest;
 };
 
@@ -191,6 +213,12 @@ export const describeOnCall = (method: string, settings: ToolContextSettings, ca
   );
   if (settings.prefetch && canPrefetch) {
     lines.push('The lookup runs as the call starts, while the greeting plays, so the answer is ready when asked.');
+    if (settings.promptFields?.length) {
+      lines.push(
+        `The AI is given ${settings.promptFields.map(fieldLabel).join(', ')} up front, ` +
+          'so it can answer those without calling the tool.'
+      );
+    }
   }
   if (isReusedInCall(method, { ...settings, prefetch: settings.prefetch && canPrefetch })) {
     lines.push('If the same lookup is needed again in this call, the saved answer is reused (kept for 15 minutes).');

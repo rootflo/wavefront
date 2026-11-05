@@ -75,6 +75,11 @@ def context_key(
     return f'vctx/{tenant_id}/{agent_id}/{call_ref}/{tool_name}/{digest}'
 
 
+def outbound_key(agent_id: str, call_ref: str, tenant_id: str = _DEFAULT_TENANT) -> str:
+    """Where the context a CRM sent with an outbound call is kept."""
+    return f'vctx/{tenant_id}/{agent_id}/{call_ref}/outbound'
+
+
 def create_context_redis(
     *,
     host: str,
@@ -140,6 +145,45 @@ class CallContextStore:
         finally:
             self._in_flight.pop(key, None)
             future.set_result(result)
+
+    async def peek(self, key: str) -> Optional[Any]:
+        """The saved result, or None (missing, still fetching, or Redis down).
+
+        Never fetches and never waits: for building the prompt at call start.
+        """
+        saved = await self._read(key)
+        if isinstance(saved, dict) and 'result' in saved:
+            return saved['result']
+        return None
+
+    async def wait_saved(self, key: str, timeout_s: float) -> Optional[Any]:
+        """The saved result once it appears, or None after ``timeout_s``."""
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while True:
+            result = await self.peek(key)
+            if result is not None:
+                return result
+            if asyncio.get_running_loop().time() >= deadline:
+                return None
+            await asyncio.sleep(_POLL_INTERVAL_S)
+
+    async def save_outbound(
+        self, agent_id: str, call_ref: str, context: Dict[str, str]
+    ) -> bool:
+        """Keep a CRM's outbound context for the call (same TTL as results)."""
+        try:
+            await self._redis.set(
+                outbound_key(agent_id, call_ref), json.dumps(context), ex=self._ttl_s
+            )
+            return True
+        except Exception as e:
+            logger.warning(f'Call context: outbound context not saved: {e}')
+            return False
+
+    async def read_outbound(self, agent_id: str, call_ref: str) -> Dict[str, str]:
+        """The CRM's outbound context for the call ({} when none or Redis down)."""
+        saved = await self._read(outbound_key(agent_id, call_ref))
+        return saved if isinstance(saved, dict) else {}
 
     async def _resolve(self, key: str, fetch: Fetch) -> Tuple[Any, str]:
         saved = await self._read(key)

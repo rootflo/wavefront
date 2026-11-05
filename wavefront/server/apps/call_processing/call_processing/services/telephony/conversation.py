@@ -2,16 +2,28 @@
 
 from typing import Any, Dict, List, Optional
 
+from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.transports.base_transport import BaseTransport
 
 from call_processing.app_settings import CallProcessingAppSettings
+from call_processing.log.logger import logger
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.common.agent_stack_builder import StackOptions
 from call_processing.services.common.audio_config import TELEPHONY_SAMPLE_RATE
-from call_processing.services.common.context.compiler import start_prefetch
+from call_processing.services.common.context.caller_block import (
+    LATE_WAIT_S,
+    PendingFields,
+    caller_block,
+    late_caller_fields,
+    read_caller_fields,
+)
+from call_processing.services.common.context.compiler import (
+    run_in_background,
+    start_prefetch,
+)
 from call_processing.services.common.context.store import CallContextStore
 from call_processing.services.common.context.subject import CallSubject
-from call_processing.services.common.conversation import BaseConversation
+from call_processing.services.common.conversation import BaseConversation, BuildStack
 from call_processing.services.telephony.prompts import call_context
 
 
@@ -48,26 +60,82 @@ class TelephonyConversation(BaseConversation):
         self.call_subject = CallSubject.for_call(
             call_ref=call_id, direction=call_direction, raw_phone=customer_number
         )
+        # Filled in run(): the CRM's context, and the <caller_context> block
+        self.outbound_context: Dict[str, str] = {}
+        self._caller_block = ''
+        self._pending_fields: List[PendingFields] = []
 
     def stack_options(self) -> StackOptions:
         return StackOptions(
-            prompt_suffix=call_context(self.customer_number),
+            # The block goes last: after the phone number and time, never repeating them
+            prompt_suffix=call_context(self.customer_number) + self._caller_block,
             call_subject=self.call_subject,
             context_store=self.context_store,
+            outbound_context=self.outbound_context or None,
         )
 
     async def run(self, transport: BaseTransport, configs: Dict[str, Any]) -> None:
-        # Exotel / Smartflo (and Twilio, if its webhook pod didn't): fetch while
-        # the stack is built and the greeting plays
         agent_id = configs['agent'].get('id')
-        if self.context_store is not None and agent_id:
+        store = self.context_store
+        if store is not None and agent_id:
+            agent_id = str(agent_id)
+            tools = configs.get('tools') or []
+            if self.call_direction == 'outbound':
+                # Saved by /api/calls/prepare while the call rang
+                self.outbound_context = await store.read_outbound(
+                    agent_id, self.call_subject.call_ref
+                )
+            # Exotel / Smartflo (and Twilio, if its webhook pod didn't): fetch
+            # while the stack is built and the greeting plays
             start_prefetch(
-                configs.get('tools') or [],
-                self.call_subject,
-                str(agent_id),
-                self.context_store,
+                tools, self.call_subject, agent_id, store, self.outbound_context
+            )
+            fields, self._pending_fields = await read_caller_fields(
+                tools, self.call_subject, agent_id, store, self.outbound_context
+            )
+            self._caller_block = caller_block(fields, self.outbound_context)
+            logger.info(
+                f'Caller context for call {self.call_subject.call_ref}: '
+                f'{len(fields)} field(s) ready, {len(self.outbound_context)} from '
+                f'the CRM, {len(self._pending_fields)} tool(s) still fetching'
             )
         await super().run(transport, configs)
+
+    def on_task_created(
+        self,
+        task: Any,
+        shared: SharedSession,
+        stack: AgentStack,
+        build_stack: BuildStack,
+    ) -> None:
+        if self._pending_fields and self.context_store is not None:
+            run_in_background(
+                self._append_late_fields(task),
+                name=f'caller context for call {self.call_subject.call_ref}',
+            )
+
+    async def _append_late_fields(self, task: Any) -> None:
+        """Fields whose prefetch finished after the prompt was built: added once.
+
+        Appended as a message without an LLM run; the system prompt is never
+        rewritten, so its cached prefix stays intact.
+        """
+        fields = await late_caller_fields(
+            self.context_store, self._pending_fields, LATE_WAIT_S
+        )
+        # The CRM's context is in the prompt already; only the new fields go here
+        block = caller_block(fields, None).strip()
+        if not block:
+            return
+        await task.queue_frame(
+            LLMMessagesAppendFrame(
+                messages=[{'role': 'developer', 'content': block}], run_llm=False
+            )
+        )
+        logger.info(
+            f'Caller context for call {self.call_subject.call_ref}: '
+            f'{len(fields)} late field(s) appended'
+        )
 
     def build_pipeline(
         self, transport: BaseTransport, stack: AgentStack, shared: SharedSession

@@ -134,3 +134,37 @@ describe('AgentToolContextDialog on a nested schema (get_bill)', () => {
     );
   });
 });
+
+describe('AgentToolContextDialog prompt fields', () => {
+  beforeEach(() => saveMutate.mockReset());
+
+  it('saves the fields the AI gets up front once the lookup runs early', async () => {
+    renderDialog(makeTool('GET', { context: { bind: { mobile_number: 'caller.phone' }, prefetch: true } }));
+
+    await userEvent.type(
+      screen.getByLabelText('Give the AI these details up front (optional)'),
+      'customer_name{enter}account.amount_due'
+    );
+    expect(screen.getByText(/given customer_name, account › amount_due up front/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveMutate).toHaveBeenCalledWith(
+      {
+        toolId: 'tool-1',
+        configOverrides: {
+          context: {
+            bind: { mobile_number: 'caller.phone' },
+            prefetch: true,
+            prompt_fields: ['customer_name', 'account.amount_due'],
+          },
+        },
+      },
+      expect.anything()
+    );
+  });
+
+  it('hides the box while the lookup cannot run early', () => {
+    renderDialog(makeTool('GET'));
+    expect(screen.queryByLabelText('Give the AI these details up front (optional)')).not.toBeInTheDocument();
+  });
+});

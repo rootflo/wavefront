@@ -94,6 +94,8 @@ class StackOptions:
     call_subject: Optional[CallSubject] = None
     # Phone calls: saved read-only tool results (prefetched or repeated lookups)
     context_store: Optional[CallContextStore] = None
+    # Outbound calls: the context the CRM sent, for ``outbound.<key>`` binds
+    outbound_context: Optional[Dict[str, str]] = None
 
 
 def build_agent_stack(
@@ -265,6 +267,7 @@ def build_agent_stack(
                 call_subject=options.call_subject,
                 agent_id=str(agent_id) if agent_id else None,
                 context_store=options.context_store,
+                outbound=options.outbound_context,
             )
 
             # Register each tool with LLM

@@ -537,13 +537,14 @@ class ToolWrapperFactory:
         )
 
     @staticmethod
-    def prefetch_job(
+    def prefetch_spec(
         tool: Dict[str, Any],
         call_subject: CallSubject,
         agent_id: str,
-        context_store: CallContextStore,
-    ) -> Optional[Callable[[], Awaitable[Any]]]:
-        """The tool's lookup with server-filled arguments, or None if it can't prefetch.
+        outbound: Optional[Dict[str, str]] = None,
+        log: bool = True,
+    ) -> Optional[Tuple[ApiToolWrapper, Dict[str, Any]]]:
+        """The wrapper and arguments a prefetch sends, or None if it can't prefetch.
 
         Only read-only tools whose every required field, at every level, the
         server fills can prefetch: nobody has spoken yet, so nothing else is
@@ -558,26 +559,46 @@ class ToolWrapperFactory:
         if not isinstance(wrapper, ApiToolWrapper) or not (
             ToolWrapperFactory.is_read_only(tool, wrapper)
         ):
-            logger.warning(
-                f"Not prefetching tool '{name}': only read-only API tools can "
-                '(a GET, or marked read_only)'
-            )
+            if log:
+                logger.warning(
+                    f"Not prefetching tool '{name}': only read-only API tools can "
+                    '(a GET, or marked read_only)'
+                )
             return None
-        bound_values = resolve_bindings(tool_bindings(tool), call_subject, agent_id)
+        bound_values = resolve_bindings(
+            tool_bindings(tool), call_subject, agent_id, outbound
+        )
         unbound = unbound_required(tool.get('parameter_schema') or {}, bound_values)
         if unbound:
-            logger.warning(
-                f"Not prefetching tool '{name}': required fields {unbound} "
-                'are not server-filled'
-            )
+            if log:
+                logger.warning(
+                    f"Not prefetching tool '{name}': required fields {unbound} "
+                    'are not server-filled'
+                )
             return None
+        # What the AI's call becomes after the merge when it sends nothing else,
+        # so both land on the same key. Optional fields the AI adds (a language,
+        # say) give a different key: that call goes live.
+        return wrapper, merge_bound({}, bound_values)
+
+    @staticmethod
+    def prefetch_job(
+        tool: Dict[str, Any],
+        call_subject: CallSubject,
+        agent_id: str,
+        context_store: CallContextStore,
+        outbound: Optional[Dict[str, str]] = None,
+    ) -> Optional[Callable[[], Awaitable[Any]]]:
+        """The tool's lookup with server-filled arguments, or None if it can't."""
+        spec = ToolWrapperFactory.prefetch_spec(tool, call_subject, agent_id, outbound)
+        if spec is None:
+            return None
+        wrapper, prefetch_args = spec
+        name = tool.get('name')
         tool_cache = ToolCache(context_store, agent_id, call_subject.call_ref, name)
 
         async def job():
-            # What the AI's call becomes after the merge when it sends nothing
-            # else, so both land on the same key. Optional fields the AI adds
-            # (a language, say) give a different key: that call goes live.
-            args = merge_bound({}, bound_values)
+            args = dict(prefetch_args)
             fetch_ms: List[int] = []
 
             async def fetch():
@@ -613,6 +634,7 @@ class ToolWrapperFactory:
         call_subject: Optional[CallSubject] = None,
         agent_id: Optional[str] = None,
         context_store: Optional[CallContextStore] = None,
+        outbound: Optional[Dict[str, str]] = None,
     ) -> Tuple[List[FunctionSchema], List[Tuple[str, Callable]]]:
         """
         Create wrapper functions for all tools attached to an agent
@@ -622,6 +644,7 @@ class ToolWrapperFactory:
             call_subject: The phone call's identity, for server-filled arguments
             agent_id: The agent the tools belong to (the ``agent.id`` binding)
             context_store: Phone calls: where read-only tool results are saved
+            outbound: Outbound calls: the context the CRM sent (``outbound.<key>``)
             agent_tools: List of tool configurations from get_agent_tools()
                         Each dict contains: {id, name, description, tool_type,
                                             config, parameter_schema, is_enabled, association}
@@ -651,7 +674,7 @@ class ToolWrapperFactory:
                 ToolWrapperFactory.apply_config_overrides(tool, wrapper)
 
                 bound_values = resolve_bindings(
-                    tool_bindings(tool), call_subject, agent_id
+                    tool_bindings(tool), call_subject, agent_id, outbound
                 )
                 if bound_values:
                     logger.info(
