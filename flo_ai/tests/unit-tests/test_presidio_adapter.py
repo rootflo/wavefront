@@ -358,6 +358,63 @@ class TestOptionalRecognisers:
         assert precision['PERSON']['precision'] == 'nlp'
 
 
+class TestCustomRecognisers:
+    """Identifiers Presidio does not ship, registered by the adapter."""
+
+    async def test_emirates_id_is_available(self, adapter):
+        supported = await adapter.supported_entities()
+
+        assert 'AE_EMIRATES_ID' in supported
+
+    @pytest.mark.parametrize(
+        'value', ['784-1968-6570305-0', '784 1968 6570305 0', '784196865703050']
+    )
+    async def test_emirates_id_is_redacted_in_every_written_form(self, adapter, value):
+        result = await adapter.evaluate(
+            req(f'emirates id {value} on file', entities=['AE_EMIRATES_ID'])
+        )
+
+        assert result.action is PolicyAction.TRANSFORM
+        assert value not in result.transformed_content
+        assert '[AE_EMIRATES_ID]' in result.transformed_content
+
+    async def test_emirates_id_failing_the_checksum_is_ignored(self, adapter):
+        """Luhn is a gate: the right shape with a bad check digit is not an ID."""
+        result = await adapter.evaluate(
+            req('emirates id 784-1990-1234567-1', entities=['AE_EMIRATES_ID'])
+        )
+
+        assert result.action is PolicyAction.ALLOW
+
+    async def test_emirates_id_passing_the_checksum_scores_full(self, adapter):
+        result = await adapter.preview(
+            'emirates id 784-1968-6570305-0', {'entities': ['AE_EMIRATES_ID']}
+        )
+
+        assert result['findings'][0]['score'] == 1.0
+
+    async def test_numbers_without_the_emirates_id_shape_are_ignored(self, adapter):
+        result = await adapter.evaluate(
+            req(
+                'order 123456789012345 and ref 784-1750-1234567-1',
+                entities=['AE_EMIRATES_ID'],
+            )
+        )
+
+        assert result.action is PolicyAction.ALLOW
+
+    async def test_emirates_id_is_opt_in(self, adapter):
+        result = await adapter.evaluate(req('emirates id 784-1968-6570305-0'))
+
+        types = set(result.provider_metadata.get('entity_types') or ())
+        assert 'AE_EMIRATES_ID' not in types
+
+    async def test_emirates_id_reports_as_validated(self, adapter):
+        precision = await adapter.entity_precision()
+
+        assert precision['AE_EMIRATES_ID']['precision'] == 'validated'
+
+
 class TestRedactionStyle:
     async def test_keep_last_preserves_the_tail_across_lengths(self, adapter):
         """One operator map spans entities of differing length.
