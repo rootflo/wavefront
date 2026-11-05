@@ -131,3 +131,13 @@ export const useSetAgentToolEnabled = (appId: string | undefined, agentId: strin
     errorMessage: 'Failed to toggle tool',
     invalidate: () => [appId && agentId && getAgentToolsKey(appId, agentId)],
   });
+
+/** Saves the association's whole `config_overrides` (call context settings included). */
+export const useSetAgentToolOverrides = (appId: string | undefined, agentId: string | undefined) =>
+  useResourceMutation({
+    mutationFn: ({ toolId, configOverrides }: { toolId: string; configOverrides: Record<string, unknown> }) =>
+      floConsoleService.toolService.updateAgentTool(agentId!, toolId, { config_overrides: configOverrides }),
+    successMessage: 'Call context saved',
+    errorMessage: 'Failed to save call context',
+    invalidate: () => [appId && agentId && getAgentToolsKey(appId, agentId)],
+  });
