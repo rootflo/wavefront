@@ -22,7 +22,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-10-22T15:20:00.000000Z"
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -154,7 +154,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.20" },
+    { name = "flo-ai", specifier = "==1.1.21" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1313,7 +1313,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.20" },
+    { name = "flo-ai", specifier = "==1.1.21" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -2083,7 +2083,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.20"
+version = "1.1.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2108,9 +2108,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "xlrd" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/7d/94d82b41c183d063647739b52a30b9d85c7dfc11547329a97ad213081f9e/flo_ai-1.1.20.tar.gz", hash = "sha256:d8cfbf2aeea5d3bb678820244b50151eac5e06f62350c38f0ceff58b9fd9ab19", size = 183231, upload-time = "2026-10-26T12:47:07.336Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/78/187ed6bf2cece9bcc553d213af09428592e8f9439f3413c1507fd9bb7f85/flo_ai-1.1.21.tar.gz", hash = "sha256:8424a9eea64db03c71e60fe60b98ab6abfce0c8d08c0e90b074a221c8ef3f2b7", size = 185172, upload-time = "2026-11-04T12:45:27.203Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/4a/cf5439df5aa1197edd7330bd765f323c71b2acc636d589523b57bb8eaa38/flo_ai-1.1.20-py3-none-any.whl", hash = "sha256:a6b4ce0230d03d35b2506d1fb6b9146cd0de335cb148924f94ed307bf9cece6f", size = 220897, upload-time = "2026-10-26T12:47:06.195Z" },
+    { url = "https://files.pythonhosted.org/packages/84/5e/c418e6b2adf1f1710a5bd83644d83a616e3ff31a8b0e05dea2aa18dc9e8c/flo_ai-1.1.21-py3-none-any.whl", hash = "sha256:4bcd1fa29c407ff8d10890db97a3188551b6b57f8ec4e8922c93ef373c75dee7", size = 223365, upload-time = "2026-11-04T12:45:25.955Z" },
 ]
 
 [package.optional-dependencies]
@@ -2937,7 +2937,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.40.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.20" },
+    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.21" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -3413,7 +3413,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.20" },
+    { name = "flo-ai", specifier = "==1.1.21" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
@@ -7062,7 +7062,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", extras = ["video"], specifier = "==1.1.20" },
+    { name = "flo-ai", extras = ["video"], specifier = "==1.1.21" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
