@@ -69,6 +69,12 @@ const buildFormValues = (config: LLMInferenceConfig): ModelForm => ({
   aws_region: (config.parameters?.aws_region as string) || '',
 });
 
+/** The stored key is never returned, only whether one is set. */
+const apiKeyPlaceholder = (label: string, hasApiKey: boolean, editing: boolean) => {
+  if (hasApiKey) return editing ? `${label} set — enter a new one to replace` : '••••••••';
+  return editing ? `Enter the ${label.toLowerCase()}` : 'Not set';
+};
+
 /** The saved settings the saved model accepts. */
 const savedParameters = (config: LLMInferenceConfig) =>
   filterParameters(config.type, config.llm_model, config.parameters).kept;
@@ -433,7 +439,11 @@ const ModelDetail: React.FC = () => {
                                   type="password"
                                   autoComplete="off"
                                   disabled={!editing}
-                                  placeholder={editing ? 'Leave blank to keep the current key' : '••••••••'}
+                                  placeholder={apiKeyPlaceholder(
+                                    type === 'bedrock' ? 'Secret access key' : 'API key',
+                                    config.has_api_key,
+                                    editing
+                                  )}
                                   {...field}
                                 />
                               </FormControl>
