@@ -12,6 +12,39 @@ from psycopg2 import sql
 logger = logging.getLogger(__name__)
 
 
+# One scan over the query for :name placeholders. Literals (including E'' escape
+# strings), quoted identifiers, dollar-quoted strings, comments and :: casts are
+# matched first and kept as they are, so a ':MI' inside 'HH24:MI' is not a
+# placeholder. psycopg2 formats the whole query when params are given, so a bare %
+# must become %%, while %(name)s, %s and %% the query already has are kept
+# (inside a literal, an existing %% is kept too).
+_NAMED_PARAM_SCAN = re.compile(
+    r"(?P<keep>(?<![A-Za-z0-9_])[Ee]'(?:[^'\\]|\\.|'')*'"
+    r"|'(?:[^']|'')*'"
+    r'|"(?:[^"]|"")*"'
+    r'|--[^\r\n]*'
+    # A tag takes any non-ASCII character, as PostgreSQL's lexer does.
+    r'|(?P<tag>\$(?:[A-Za-z_\x80-\U0010ffff][A-Za-z0-9_\x80-\U0010ffff]*)?\$).*?(?P=tag)'
+    r'|::)'
+    r'|(?P<block>/\*)'
+    r'|(?P<pyformat>%\([A-Za-z_][A-Za-z0-9_]*\)s|%s|%%)'
+    r'|:(?P<name>[A-Za-z_][A-Za-z0-9_]*)'
+    r'|(?P<percent>%)',
+    re.DOTALL,
+)
+_BLOCK_COMMENT_MARK = re.compile(r'/\*|\*/')
+
+
+def _block_comment_end(query: str, start: int) -> int:
+    # PostgreSQL nests block comments, so /* a /* b */ c */ is one comment.
+    depth = 0
+    for mark in _BLOCK_COMMENT_MARK.finditer(query, start):
+        depth += 1 if mark.group() == '/*' else -1
+        if depth == 0:
+            return mark.end()
+    return len(query)
+
+
 class NoRowsMatchedError(Exception):
     """An atomic multi-table update had an entry whose filter matched nothing.
 
@@ -106,8 +139,31 @@ class PostgresClient:
         """Convert :name style placeholders to %(name)s for psycopg2."""
         if not params:
             return query, params
-        converted = re.sub(r'(?<!:):([A-Za-z_][A-Za-z0-9_]*)', r'%(\1)s', query)
-        return converted, params
+
+        def replace(match: re.Match) -> str:
+            name = match.group('name')
+            if name is not None:
+                # Only names the caller passes are placeholders.
+                return f'%({name})s' if name in params else match.group(0)
+            if match.group('pyformat') is not None:
+                return match.group('pyformat')
+            if match.group('percent') is not None:
+                return '%%'
+            return re.sub(r'%%?', '%%', match.group('keep'))
+
+        # A loop instead of sub(), since a nested block comment ends past the match.
+        out = []
+        pos = 0
+        while (match := _NAMED_PARAM_SCAN.search(query, pos)) is not None:
+            out.append(query[pos : match.start()])
+            if match.group('block') is not None:
+                pos = _block_comment_end(query, match.start())
+                out.append(re.sub(r'%%?', '%%', query[match.start() : pos]))
+            else:
+                out.append(replace(match))
+                pos = match.end()
+        out.append(query[pos:])
+        return ''.join(out), params
 
     @contextmanager
     def get_connection(self):
