@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from urllib.parse import quote
 from uuid import UUID
 
 # from floconsole.constants.app import AppDeploymentType
 from floconsole.constants.auth import RootfloHeaders
 import flo_lib.http as httpx
 from fastapi import Request
-from fastapi.responses import Response, StreamingResponse
+from common_module.response_formatter import ResponseFormatter
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from floconsole.services.token_service import TokenService
 from floconsole.services.app_service import AppService
@@ -68,6 +68,15 @@ class FlowareProxyService:
         5. Forward request to floware with app-specific key + Authorization headers
         6. Return floware response directly
         """
+
+        if 'include_secrets' in request.query_params:
+            return JSONResponse(
+                status_code=403,
+                content=ResponseFormatter().buildErrorResponse(
+                    'include_secrets is not allowed through the console'
+                ),
+            )
+
         # Step 1: Get user session from middleware (already validated)
         session = request.state.session
         # Parse user_id with explicit error handling
@@ -110,9 +119,11 @@ class FlowareProxyService:
 
         app_base_url = await self._get_app_base_url(app.private_url, app_id)
 
-        # Step 3: Prepare request to floware
-        encoded_path = quote(path, safe="/:@!$&'()*+,;=")
-        floware_url = f'{app_base_url}/floware/{encoded_path}'
+        # Step 3: Prepare request to floware. The route hands over the decoded
+        # path, so an encoded '?' arrives as a real one: drop anything after it,
+        # query params only come from request.query_params
+        path = path.split('?', 1)[0].split('#', 1)[0]
+        floware_url = f'{app_base_url}/floware/{path}'
 
         # Copy headers from original request, excluding Authorization
         headers = {
@@ -129,13 +140,8 @@ class FlowareProxyService:
         if self.app_env != 'production' and self.passthrough_secret:
             headers[RootfloHeaders.PASSTHROUGH] = self.passthrough_secret
 
-        # Copy query parameters, except include_secrets: floware returns plaintext
-        # secrets with it to internal services, and console users are not one
-        query_params = {
-            key: value
-            for key, value in request.query_params.items()
-            if key != 'include_secrets'
-        }
+        # Copy query parameters
+        query_params = dict(request.query_params)
 
         # Step 5: Detect if streaming (SSE) is needed
         is_streaming = 'text/event-stream' in request.headers.get('accept', '').lower()
