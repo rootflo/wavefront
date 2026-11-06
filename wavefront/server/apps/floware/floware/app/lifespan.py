@@ -11,6 +11,7 @@ from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
 from db_repo_module.database.connection import DatabaseClient
 from fastapi import FastAPI
 from floware.app.channels import start_redis_listener
+from floware.app_migrations.startup import check_app_migrations
 from floware.di import application_container
 from knowledge_base_module.services.kb_index_status_consumer import (
     KbIndexStatusConsumer,
@@ -38,6 +39,11 @@ async def lifespan(app: FastAPI):
             raise TypeError('db_client is not an instance of DatabaseClient')
 
         db_client.run_migration()
+        # App migrations run as a separate step (floware.app_migrations);
+        # serving before a blocking one has run would fail on its data.
+        await check_app_migrations(
+            db_client, application_container.common.feature_flags()
+        )
 
         # Load the safety providers' models before the first request needs
         # them. Presidio builds a spaCy model on first use, which takes longer
