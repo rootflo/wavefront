@@ -37,3 +37,9 @@ def test_guardrails_reads_spacy_model_settings(monkeypatch):
     guardrails = configuration()['guardrails']
     assert guardrails['spacy_model_url'] == 'https://example.test/model.tar.gz'
     assert guardrails['model_cache_dir'] == '/models/spacy'
+
+
+def test_config_has_no_kms_or_encryption_flag():
+    # Only floware decrypts secrets; the worker reads plaintext from it.
+    assert 'kms_encryption' not in settings.CONFIG
+    assert 'feature_flags' not in settings.CONFIG

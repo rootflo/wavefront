@@ -56,3 +56,29 @@ def test_get_services_requires_application_bucket():
         services.get_services()
 
     assert services._services is None
+
+
+def test_worker_reads_llm_configs_from_floware_and_holds_no_cipher():
+    from common_module.security.secret_cipher import UnavailableSecretCipher
+    from llm_inference_config_module.clients.floware_llm_config_client import (
+        FlowareLlmConfigClient,
+    )
+
+    container = services.ApplicationContainer()
+    container.config.from_dict(
+        {
+            'env_config': {
+                'base_url': 'http://floware:8001',
+                'passthrough_secret': 'shh',
+                'app_env': 'dev',
+            }
+        }
+    )
+
+    client = container.llm_config_client()
+    assert isinstance(client, FlowareLlmConfigClient)
+    assert client.base_url == 'http://floware:8001'
+    assert client.passthrough_secret == 'shh'
+    assert client.app_env == 'dev'
+    assert isinstance(container.plugins.secret_cipher(), UnavailableSecretCipher)
+    assert isinstance(container.api_services.secret_cipher(), UnavailableSecretCipher)

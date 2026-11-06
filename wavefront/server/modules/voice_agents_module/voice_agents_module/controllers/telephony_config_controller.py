@@ -2,11 +2,12 @@ import json
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 from fastapi.responses import JSONResponse
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from user_management_module.authorization.secret_access import require_secret_access
 from voice_agents_module.models.telephony_schemas import (
     CreateTelephonyConfigPayload,
     UpdateTelephonyConfigPayload,
@@ -43,7 +44,7 @@ async def create_telephony_config(
         payload: Configuration details including provider, connection_type, credentials, etc.
 
     Returns:
-        JSONResponse: Created configuration (credentials excluded)
+        JSONResponse: Id of the created configuration
     """
     config = await telephony_config_service.create_config(
         display_name=payload.display_name,
@@ -80,7 +81,7 @@ async def list_telephony_configs(
     List all telephony configurations
 
     Returns:
-        JSONResponse: List of configurations (credentials excluded)
+        JSONResponse: List of configurations (secret credentials masked)
     """
     configs_data = await telephony_config_service.list_configs()
 
@@ -95,7 +96,12 @@ async def list_telephony_configs(
 @telephony_config_router.get('/v1/telephony-configs/{config_id}')
 @inject
 async def get_telephony_config(
+    request: Request,
     config_id: UUID = Path(..., description='The ID of the telephony configuration'),
+    include_secrets: bool = Query(
+        False,
+        description='Return the credentials in plaintext (internal services only)',
+    ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -108,11 +114,18 @@ async def get_telephony_config(
 
     Args:
         config_id: UUID of the configuration to retrieve
+        include_secrets: Return the credentials in plaintext. Only internal
+            service callers may set it. Used by call_processing.
 
     Returns:
-        JSONResponse: Configuration details (credentials excluded)
+        JSONResponse: Configuration details (secret credentials masked, unless
+        include_secrets)
     """
-    config_dict = await telephony_config_service.get_config(config_id)
+    if include_secrets:
+        require_secret_access(request)
+        config_dict = await telephony_config_service.get_runtime_config(config_id)
+    else:
+        config_dict = await telephony_config_service.get_config(config_id)
 
     if not config_dict:
         return JSONResponse(
@@ -144,7 +157,8 @@ async def update_telephony_config(
     Update a telephony configuration
 
     Updates specified fields of a telephony configuration.
-    Only provided fields will be updated.
+    Only provided fields will be updated. With the provider unchanged, credentials
+    are merged into the stored ones: a secret sent as '********' or left out is kept.
 
     Args:
         config_id: UUID of the configuration to update
@@ -196,7 +210,7 @@ async def update_telephony_config(
                 ),
             )
     if payload.credentials is not UNSET:
-        update_data['credentials'] = json.dumps(payload.credentials)
+        update_data['credentials'] = payload.credentials
     if payload.webhook_config is not UNSET:
         update_data['webhook_config'] = (
             json.dumps(payload.webhook_config.model_dump())
@@ -214,9 +228,15 @@ async def update_telephony_config(
             content=response_formatter.buildErrorResponse('No fields to update'),
         )
 
-    updated_config = await telephony_config_service.update_config(
-        config_id, **update_data
-    )
+    try:
+        updated_config = await telephony_config_service.update_config(
+            config_id, **update_data
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     if not updated_config:
         return JSONResponse(

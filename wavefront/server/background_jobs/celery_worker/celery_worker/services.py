@@ -19,13 +19,16 @@ from agents_module.services.workflow_inference_service import (
 )
 from common_module.common_container import CommonContainer
 from common_module.config_loader import is_truthy
+from common_module.security.secret_cipher import UnavailableSecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from flo_cloud.cloud_storage import CloudStorageManager
 from guardrails_module.bootstrap import start_presidio_regex_timeout
 from guardrails_module.container import GuardrailsContainer
-from llm_inference_config_module.container import LlmInferenceConfigContainer
+from llm_inference_config_module.clients.floware_llm_config_client import (
+    FlowareLlmConfigClient,
+)
 from plugins_module.plugins_container import PluginsContainer
 from tools_module.tools_container import ToolsContainer
 
@@ -39,6 +42,7 @@ class WorkerServices:
     cloud_storage: CloudStorageManager
     cache: CacheManager
     execution_bucket: str
+    llm_config_client: FlowareLlmConfigClient
     # None when [guardrails] enabled is false
     guardrails_engine: Optional[Any] = None
 
@@ -76,9 +80,12 @@ def _guardrails_engine(selected):
 class ApplicationContainer(containers.DeclarativeContainer):
     """Parent of the module containers the worker actually uses.
 
-    Email OAuth and KMS are not used here (no trigger tasks). Those
-    dependencies are stubbed so PluginsContainer still builds the message
-    processor repository that agents and tools need.
+    The worker has no KMS access: LLM configs come from floware with their
+    plaintext api_key, and API services run through floware's execute
+    endpoint. Email OAuth is not used here either (no trigger tasks). Those
+    dependencies are stubbed, and the secret cipher raises if anything uses
+    it, so PluginsContainer still builds the message processor repository
+    that agents and tools need.
     """
 
     config = providers.Configuration()
@@ -99,6 +106,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         config=config,
         cache_manager=db.cache_manager,
     )
+    secret_cipher = providers.Singleton(UnavailableSecretCipher)
     guardrails = providers.Selector(
         providers.Callable(_guardrails_mode, config.guardrails.enabled),
         on=providers.Container(
@@ -115,6 +123,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cloud_storage_manager=common.cloud_storage_manager,
         kms_cipher=providers.Object(None),
+        secret_cipher=secret_cipher,
         dynamic_query_repository=db.dynamic_query_repository,
         cache_manager=db.cache_manager,
         namespace_repository=db.namespace_repository,
@@ -129,10 +138,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ApiServicesContainer,
         config=config,
         api_services_repository=db.api_services_repository,
+        secret_repository=db.secret_repository,
         cloud_storage_manager=common.cloud_storage_manager,
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         response_formatter=providers.Object(None),
+        secret_cipher=secret_cipher,
     )
     tools = providers.Container(
         ToolsContainer,
@@ -145,12 +156,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
         floware_base_url=config.env_config.base_url,
         passthrough_secret=config.env_config.passthrough_secret,
     )
-    llm_inference_config = providers.Container(
-        LlmInferenceConfigContainer,
-        config=config,
-        db_client=db.db_client,
-        cache_manager=db.cache_manager,
-        call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+    llm_config_client = providers.Singleton(
+        FlowareLlmConfigClient,
+        base_url=config.env_config.base_url,
+        passthrough_secret=config.env_config.passthrough_secret,
+        app_env=config.env_config.app_env,
     )
     agents = providers.Container(
         AgentsContainer,
@@ -169,7 +179,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         api_services_manager=api_services.api_service_manager,
         async_agentic_execution_repository=db.async_agentic_execution_repository,
         executions_bucket=config.storage.application_bucket,
-        llm_inference_config_service=llm_inference_config.llm_inference_config_service,
+        # Only get_runtime_config is called on it, which the client provides.
+        llm_inference_config_service=llm_config_client,
         guardrails_engine=providers.Callable(_guardrails_engine, guardrails),
     )
 
@@ -199,6 +210,7 @@ def get_services() -> WorkerServices:
             cloud_storage=container.common.cloud_storage_manager(),
             cache=container.db.cache_manager(),
             execution_bucket=bucket_name,
+            llm_config_client=container.llm_config_client(),
             guardrails_engine=_guardrails_engine(container.guardrails()),
         )
 

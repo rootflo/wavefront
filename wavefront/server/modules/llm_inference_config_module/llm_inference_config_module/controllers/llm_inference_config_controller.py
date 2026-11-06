@@ -15,6 +15,7 @@ from llm_inference_config_module.models.schemas import (
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
+from user_management_module.authorization.secret_access import require_secret_access
 from user_management_module.utils.user_utils import check_is_admin
 
 llm_inference_config_router = APIRouter()
@@ -109,6 +110,7 @@ async def get_llm_inference_configs(
 async def get_llm_inference_config(
     request: Request,
     config_id: uuid.UUID,
+    include_secrets: bool = False,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -116,8 +118,19 @@ async def get_llm_inference_config(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
 ):
+    if include_secrets:
+        require_secret_access(request)
+
     try:
-        config_dict = await llm_inference_config_service.get_config(config_id)
+        # include_secrets returns the plaintext api_key to internal services
+        if include_secrets:
+            config_dict = await llm_inference_config_service.get_runtime_config(
+                config_id
+            )
+        else:
+            config_dict = await llm_inference_config_service.get_public_config(
+                config_id
+            )
         if not config_dict:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,

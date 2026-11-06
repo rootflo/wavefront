@@ -7,6 +7,7 @@ from uuid import UUID
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.authenticator import Authenticator
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from plugins_module.plugins_container import PluginsContainer
@@ -48,6 +49,7 @@ async def create_authenticator(
     authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
         Provide[PluginsContainer.authenticator_repository]
     ),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Create a new authenticator configuration."""
     role_id = request.state.session.role_id
@@ -66,6 +68,7 @@ async def create_authenticator(
             auth_desc=payload.auth_desc,
             config=payload.config,
             authenticator_repository=authenticator_repository,
+            secret_cipher=secret_cipher,
         )
 
         return JSONResponse(
@@ -198,6 +201,7 @@ async def update_authenticator(
     authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
         Provide[PluginsContainer.authenticator_repository]
     ),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Update authenticator configuration."""
     role_id = request.state.session.role_id
@@ -216,6 +220,7 @@ async def update_authenticator(
             config=payload.config,
             auth_desc=payload.auth_desc,
             authenticator_repository=authenticator_repository,
+            secret_cipher=secret_cipher,
         )
 
         if not authenticator:

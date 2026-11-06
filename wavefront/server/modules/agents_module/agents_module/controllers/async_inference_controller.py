@@ -162,19 +162,19 @@ async def async_agent_inference(
         )
     resolved_version = agent_data['version']
 
-    llm_config: Optional[dict] = None
+    # Only the id is enqueued; the worker fetches the config, key included,
+    # from floware when it runs. Checked here so a bad id is a 404, not a
+    # failed execution.
     if payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
+        if not await llm_inference_config_service.get_public_config(
             payload.llm_inference_config_id
-        )
-        if not llm_config_dict:
+        ):
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content=response_formatter.buildErrorResponse(
                     f'LLM inference configuration not found: {payload.llm_inference_config_id}'
                 ),
             )
-        llm_config = llm_config_dict
 
     try:
         result = await async_agentic_execution_service.create_and_enqueue_agent(
@@ -184,7 +184,7 @@ async def async_agent_inference(
             output_json_enabled=payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,
-            llm_config=llm_config,
+            llm_inference_config_id=payload.llm_inference_config_id,
             version=resolved_version,
         )
     except QueueBackpressure as e:
