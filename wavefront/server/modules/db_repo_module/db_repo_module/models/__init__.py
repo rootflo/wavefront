@@ -13,6 +13,7 @@ from db_repo_module.models.agentic_configuration import AgenticConfiguration
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
 from db_repo_module.models.api_services import ApiServices
+from db_repo_module.models.app_migration import AppMigration
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.authenticator import Authenticator
@@ -78,6 +79,7 @@ __all__ = [
     'AgenticTrigger',
     'AgenticTriggerEvent',
     'ApiServices',
+    'AppMigration',
     'AsyncAgenticExecution',
     'AuthSecrets',
     'Authenticator',
