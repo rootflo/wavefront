@@ -19,6 +19,7 @@ from api_services_module.utils.api_change_publisher import (
 from api_services_module.secrets.references import (
     find_literal_secrets,
     find_service_refs,
+    find_unsupported_refs,
     mask_definition,
     restore_masked_secrets,
 )
@@ -413,7 +414,8 @@ class ApiProxy:
         """Check the secrets of an incoming definition; return the YAML to store.
 
         - A field sent back masked keeps its stored value.
-        - Every `${secrets.NAME}` must exist.
+        - Every `${secrets.NAME}` must exist, and appear only where it is
+          resolved (auth credentials and headers).
         - With envelope encryption on, secret fields and sensitive headers must
           use references, not literal values.
         """
@@ -430,6 +432,14 @@ class ApiProxy:
             )
         if merged != document:
             service_yaml = yaml.safe_dump(merged, sort_keys=False)
+
+        unsupported = find_unsupported_refs(merged)
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail='Secret references are only supported in auth credentials '
+                f'and headers, not in: {", ".join(unsupported)}',
+            )
 
         names = find_service_refs(merged)
         if names:

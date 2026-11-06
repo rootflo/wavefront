@@ -14,6 +14,7 @@ from api_services_module.secrets.references import (
     find_literal_secrets,
     find_refs,
     find_service_refs,
+    find_unsupported_refs,
     is_literal_secret,
     is_sensitive_header,
     mask_definition,
@@ -181,6 +182,34 @@ def test_find_literal_secrets_flags_literal_text_next_to_a_reference():
     assert find_literal_secrets(document) == [
         ('service.auth.token', 'sk-live-abc ${secrets.T}')
     ]
+
+
+def test_find_unsupported_refs_lists_refs_outside_honoured_fields():
+    document = {
+        'service': {
+            'base_url': 'https://acme.test/${secrets.TENANT}',
+            'auth': {
+                'token': '${secrets.T}',
+                'additional_headers': {'X-Client': '${secrets.C}'},
+            },
+            'apis': [
+                {
+                    'id': 'a',
+                    'backend_path': '/v1?key=${secrets.KEY}',
+                    'additional_headers': {'Authorization': 'Bearer ${secrets.A}'},
+                }
+            ],
+        }
+    }
+
+    assert find_unsupported_refs(document) == [
+        'service.base_url',
+        'service.apis[0].backend_path',
+    ]
+
+
+def test_find_unsupported_refs_is_empty_for_honoured_fields_only():
+    assert find_unsupported_refs(_document()) == []
 
 
 def test_find_literal_secrets_accepts_the_service_mapping():

@@ -358,6 +358,28 @@ async def test_create_rejects_unknown_reference(enabled):
     assert manager.yaml_by_id == {}
 
 
+@pytest.mark.parametrize('operation', ['create', 'update'])
+async def test_refs_outside_auth_and_headers_are_rejected(operation):
+    original = _service_yaml()
+    proxy, manager = await _proxy(
+        enabled=True, yaml_by_id={'acme': original} if operation == 'update' else {}
+    )
+    document = yaml.safe_load(_service_yaml())
+    document['service']['base_url'] = 'https://${secrets.ACME_TOKEN}.acme.test'
+
+    with pytest.raises(HTTPException) as error:
+        if operation == 'create':
+            await proxy.create_api_services(yaml.safe_dump(document))
+        else:
+            await proxy.update_api_services('acme', yaml.safe_dump(document))
+
+    assert error.value.status_code == 400
+    assert 'service.base_url' in error.value.detail
+    assert manager.yaml_by_id.get('acme') == (
+        original if operation == 'update' else None
+    )
+
+
 async def test_create_rejects_literal_when_encryption_enabled():
     proxy, manager = await _proxy(enabled=True)
     service_yaml = _service_yaml(api_headers={'X-Api-Key': 'literal-key'})

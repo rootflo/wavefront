@@ -41,6 +41,7 @@ __all__ = [
     'find_literal_secrets',
     'find_refs',
     'find_service_refs',
+    'find_unsupported_refs',
     'is_literal_secret',
     'is_sensitive_header',
     'iter_secret_fields',
@@ -174,6 +175,32 @@ def find_service_refs(service_yaml_dict: Mapping[str, Any]) -> Set[str]:
     for _path, parent, key, _sensitive in iter_secret_fields(service_yaml_dict):
         names |= find_refs(parent[key])
     return names
+
+
+def find_unsupported_refs(service_yaml_dict: Mapping[str, Any]) -> List[str]:
+    """Paths outside the honoured fields whose value mentions `${secrets.`.
+
+    Those are never resolved, so the text would reach the backend as is.
+    """
+    document = copy.deepcopy(dict(service_yaml_dict))
+    for _path, parent, key, _sensitive in iter_secret_fields(document):
+        parent[key] = None
+
+    paths: List[str] = []
+
+    def _walk(value: Any, path: str):
+        if isinstance(value, str):
+            if '${secrets.' in value:
+                paths.append(path)
+        elif isinstance(value, Mapping):
+            for name, item in value.items():
+                _walk(item, f'{path}.{name}' if path else str(name))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                _walk(item, f'{path}[{index}]')
+
+    _walk(document, '')
+    return paths
 
 
 def find_literal_secrets(service_yaml_dict: Mapping[str, Any]) -> List[Tuple[str, Any]]:
