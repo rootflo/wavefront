@@ -13,6 +13,7 @@ export * from './message-processors';
 export * from './namespaces';
 export * from './oauth-apps';
 export * from './scheduled-jobs';
+export * from './secrets';
 export * from './telephony-configs';
 export * from './tools';
 export * from './triggers';

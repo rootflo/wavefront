@@ -278,8 +278,8 @@ class VoiceAgentService:
         """
         logger.info(f'Generating welcome message audio for agent {agent_id}')
 
-        # Fetch TTS config (credentials only)
-        tts_config = await self.tts_config_service.get_config(tts_config_id)
+        # Fetch TTS config with the plaintext api_key (credentials only)
+        tts_config = await self.tts_config_service.get_runtime_config(tts_config_id)
         if not tts_config:
             raise ValueError(f'TTS config {tts_config_id} not found')
 

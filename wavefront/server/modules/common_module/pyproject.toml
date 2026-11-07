@@ -21,6 +21,7 @@ dependencies = [
     "opentelemetry-instrumentation-redis>=0.49b0",
     "opentelemetry-instrumentation-httpx>=0.49b0",
     "flo-lib",
+    "flo-utils",
 ]
 
 [dependency-groups]
@@ -32,6 +33,7 @@ dev = [
 
 [tool.uv.sources]
 flo-lib = { workspace = true }
+flo-utils = { workspace = true }
 
 [tool.uv]
 package = true

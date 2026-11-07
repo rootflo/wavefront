@@ -4,6 +4,7 @@ from agents_module.controllers.agent_controller import agents_router
 from agents_module.controllers.async_inference_controller import async_router
 from agents_module.controllers.namespace_controller import namespace_router
 from agents_module.controllers.workflow_controller import workflows_router
+from api_services_module.secrets.secret_controller import secret_router
 from auth_module.controllers.hmac_controller import hmac_router
 from auth_module.controllers.superset_controller import superset_controller
 from chatbots_module.controllers.chatbot_controller import chatbot_router
@@ -87,6 +88,7 @@ FLOWARE_ROUTERS = [
     product_analysis_router,
     rag_retrieval_router,
     scheduled_job_router,
+    secret_router,
     stt_config_router,
     superset_controller,
     telephony_config_router,

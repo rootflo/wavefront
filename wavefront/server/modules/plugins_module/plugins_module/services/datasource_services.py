@@ -1,5 +1,7 @@
 import collections
 
+from common_module.common_container import CommonContainer
+from common_module.security.secret_cipher import SecretCipher
 from common_module.utils.validators import is_valid_uuid
 from datasource import (
     DataSourceType,
@@ -9,21 +11,27 @@ from datasource import (
     MSSQLConfig,
     FileStorageConfig,
     build_file_storage_config,
+    get_datasource_secret_fields,
     is_file_storage_type,
 )
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import Provide
+from dependency_injector.wiring import inject
 from fastapi import Depends
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.utils.helper import AddDatasourcePayload
 
 
+# @inject so callers outside the wired packages (scheduled jobs) that hold an
+# imported reference still get secret_cipher injected.
+@inject
 async def get_datasource_config(
     datasource_id: str,
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide(PluginsContainer.datasource_repository)
     ),
+    secret_cipher: SecretCipher = Depends(Provide(CommonContainer.secret_cipher)),
 ) -> tuple[
     DataSourceType,
     BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig | FileStorageConfig,
@@ -40,18 +48,22 @@ async def get_datasource_config(
     if not datasource:
         return None, None
 
+    config = await secret_cipher.areveal_fields(
+        datasource.config, get_datasource_secret_fields(datasource.type)
+    )
+
     if is_file_storage_type(datasource.type):
         return DataSourceType(datasource.type), build_file_storage_config(
-            datasource.type, datasource.config
+            datasource.type, config
         )
     elif datasource.type == DataSourceType.GCP_BIGQUERY:
-        return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**datasource.config)
+        return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**config)
     elif datasource.type == DataSourceType.AWS_REDSHIFT:
-        return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)
+        return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**config)
     elif datasource.type == DataSourceType.POSTGRES:
-        return DataSourceType.POSTGRES, PostgresConfig(**datasource.config)
+        return DataSourceType.POSTGRES, PostgresConfig(**config)
     elif datasource.type == DataSourceType.MSSQL:
-        return DataSourceType.MSSQL, MSSQLConfig(**datasource.config)
+        return DataSourceType.MSSQL, MSSQLConfig(**config)
     else:
         raise ValueError(f'Invalid datasource type: {datasource.type}')
 

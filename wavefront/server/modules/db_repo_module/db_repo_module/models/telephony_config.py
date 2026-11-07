@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -34,13 +34,18 @@ class TelephonyConfig(Base):
     def get_table_name():
         return (TelephonyConfig()).__tablename__
 
-    def to_dict(self, exclude_credentials: bool = True):
+    def to_dict(self, secret_fields: Optional[Iterable[str]] = None):
+        """Public form for API responses, with the secret credentials masked.
+
+        `secret_fields` are the provider's secret credential keys; without them
+        every credential value is masked.
+        """
+        return self.public_dict(self.to_stored_dict(), secret_fields)
+
+    def to_stored_dict(self):
+        """Every column as stored, so secret credentials are ciphertext when encryption is on."""
         result = {}
         for column in self.__table__.columns:
-            # Skip credentials in responses for security
-            if exclude_credentials and column.name == 'credentials':
-                continue
-
             value = getattr(self, column.name)
             if isinstance(value, uuid.UUID):
                 result[column.name] = str(value)
@@ -56,4 +61,22 @@ class TelephonyConfig(Base):
                     result[column.name] = value
             else:
                 result[column.name] = value
+        return result
+
+    @staticmethod
+    def public_dict(
+        stored: dict, secret_fields: Optional[Iterable[str]] = None
+    ) -> dict:
+        """Public form of a stored dict (e.g. one read back from the cache)."""
+        # Imported here so loading the models does not pull in the crypto stack
+        from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
+
+        result = dict(stored)
+        credentials = result.get('credentials')
+        if isinstance(credentials, dict):
+            fields = credentials.keys() if secret_fields is None else secret_fields
+            result['credentials'] = SecretCipher.mask_fields(credentials, fields)
+        elif credentials:
+            # Unparseable credentials cannot be masked field by field
+            result['credentials'] = SECRET_MASK
         return result

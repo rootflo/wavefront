@@ -50,6 +50,7 @@ GROUP_ORDER: Tuple[str, ...] = (
     'Sweden',
     'Thailand',
     'Turkey',
+    'United Arab Emirates',
     'United Kingdom',
     'United States',
     GROUP_OTHER,
@@ -487,6 +488,16 @@ ENTITY_CATALOG: Dict[str, EntityMeta] = {
         'T.C. Kimlik No, checksum validated.',
         'Turkey',
         'TR',
+    ),
+    # -- United Arab Emirates -------------------------------------------
+    'AE_EMIRATES_ID': _m(
+        'Emirates ID number',
+        'UAE national identity card number (784-YYYY-NNNNNNN-C). Matches '
+        'the 784 prefix and birth-year shape, and requires a valid Luhn '
+        'check digit.',
+        'United Arab Emirates',
+        'AE',
+        example='784-1968-6570305-0',
     ),
     # -- United Kingdom -------------------------------------------------
     'UK_DRIVING_LICENCE': _m(

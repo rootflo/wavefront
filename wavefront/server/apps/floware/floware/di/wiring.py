@@ -52,6 +52,7 @@ def wire_containers() -> None:
     )
 
     common_packages = [
+        'api_services_module.secrets',
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
@@ -126,7 +127,7 @@ def wire_containers() -> None:
         modules=['api_services_module.api_services_container'],
         packages=[
             'api_services_module.core',
-            'api_services_module.execution',
+            'api_services_module.secrets',
         ],
     )
 
