@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 
 import pytest
+from pipecat.processors.aggregators.llm_context import LLMContext
 
 from call_processing.services.common.context import compiler
 from call_processing.services.common.context.compiler import start_prefetch
@@ -178,15 +180,24 @@ def test_log_safe_headers_redacts_secrets():
 
 
 class _Params:
-    """What Pipecat hands a tool function: the AI's arguments and its call id."""
+    """What Pipecat hands a tool function: arguments, call id and the LLM context."""
 
-    def __init__(self, arguments, tool_call_id):
+    def __init__(self, arguments, tool_call_id, context=None):
         self.arguments = arguments
         self.tool_call_id = tool_call_id
+        self.context = context if context is not None else LLMContext()
         self.sent = []
 
     async def result_callback(self, result, properties=None):
         self.sent.append(result)
+        # As Pipecat's aggregator does once the result frame reaches it
+        self.context.add_message(
+            {
+                'role': 'tool',
+                'tool_call_id': self.tool_call_id,
+                'content': json.dumps(result),
+            }
+        )
 
 
 async def test_ai_call_after_prefetch_logs_a_hit_with_the_same_key(api_calls, caplog):
@@ -209,8 +220,9 @@ async def test_ai_call_after_prefetch_logs_a_hit_with_the_same_key(api_calls, ca
 async def test_repeated_identical_result_is_sent_as_a_short_reference(api_calls):
     store = CallContextStore(FakeRedis())
     fn = _ai_tool([_tool({'read_only': True})], store)['find_account']
-    first = _Params({'mobile_number': '+911234567890'}, 'call_1')
-    second = _Params({'mobile_number': '+911234567890'}, 'call_2')
+    context = LLMContext()
+    first = _Params({'mobile_number': '+911234567890'}, 'call_1', context)
+    second = _Params({'mobile_number': '+911234567890'}, 'call_2', context)
 
     await fn(first)
     await fn(second)
@@ -237,3 +249,56 @@ async def test_different_arguments_still_get_the_full_result(api_calls):
 
     assert other.sent == [{'name': 'Jane Doe'}]
     assert len(api_calls) == 2
+
+
+@pytest.mark.parametrize('earlier', ['CANCELLED', 'IN_PROGRESS', None])
+async def test_a_result_the_ai_never_got_is_sent_in_full(api_calls, earlier):
+    store = CallContextStore(FakeRedis())
+    fn = _ai_tool([_tool({'read_only': True})], store)['find_account']
+    context = LLMContext()
+    first = _Params({'mobile_number': '+911234567890'}, 'call_1', LLMContext())
+    await fn(first)
+    if earlier is not None:
+        # Interrupted before the result landed; None: trimmed from the context
+        context.add_message(
+            {'role': 'tool', 'tool_call_id': 'call_1', 'content': earlier}
+        )
+    second = _Params({'mobile_number': '+911234567890'}, 'call_2', context)
+
+    await fn(second)
+
+    assert second.sent == [{'name': 'Jane Doe'}]
+
+
+def _write_tool():
+    return {**_tool(method='POST', name='record_payment'), 'description': 'Pay'}
+
+
+async def test_reads_after_a_write_fetch_current_data_then_reuse_it(api_calls):
+    store = CallContextStore(FakeRedis())
+    fns = _ai_tool([_tool({'read_only': True}), _write_tool()], store)
+    context = LLMContext()
+    args = {'mobile_number': '+911234567890'}
+
+    await fns['find_account'](_Params(args, 'call_1', context))
+    await fns['record_payment'](_Params(args, 'call_2', context))
+    after_write = _Params(args, 'call_3', context)
+    await fns['find_account'](after_write)
+    again = _Params(args, 'call_4', context)
+    await fns['find_account'](again)
+
+    # read, write, a fresh read; the repeat after it reuses the fresh one
+    assert len(api_calls) == 3
+    assert after_write.sent == [{'name': 'Jane Doe'}]
+    assert again.sent[0]['same_as_tool_call_id'] == 'call_3'
+
+
+async def test_lowercase_method_override_still_prefetches(api_calls):
+    tool = _tool(PREFETCH, method='POST')
+    tool['association']['config_overrides']['method'] = 'get'
+
+    store = CallContextStore(FakeRedis())
+
+    assert start_prefetch([tool], SUBJECT, 'agent-1', store) == 1
+    await _drain()
+    assert len(api_calls) == 1

@@ -24,6 +24,7 @@ from call_processing.services.common.context.bindings import (
 )
 from call_processing.services.common.context.store import (
     CallContextStore,
+    CallWrites,
     ToolCache,
     is_failure,
 )
@@ -59,6 +60,32 @@ def repeat_reference(tool_name: str, earlier_call_id: str) -> Dict[str, Any]:
 def _result_digest(result: Any) -> str:
     canonical = json.dumps(result, sort_keys=True, separators=(',', ':'), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+# What Pipecat leaves in a tool message while a call runs, or once it is cancelled
+_UNFINISHED_RESULTS = ('IN_PROGRESS', 'CANCELLED')
+
+
+def result_in_context(context: Any, tool_call_id: str) -> bool:
+    """Whether the LLM context holds the finished result of ``tool_call_id``.
+
+    A reference is only safe when it is: an interruption can cancel a call after
+    its result was produced, and old turns can be trimmed from the context.
+    """
+    if context is None or not tool_call_id:
+        return False
+    try:
+        messages = context.get_messages()
+    except Exception:
+        return False
+    for message in messages:
+        if (
+            isinstance(message, dict)
+            and message.get('role') == 'tool'
+            and message.get('tool_call_id') == tool_call_id
+        ):
+            return message.get('content') not in _UNFINISHED_RESULTS
+    return False
 
 
 def log_safe_keys(params: Any) -> Any:
@@ -351,6 +378,7 @@ class ToolWrapperFactory:
         wrapper,
         bound_values: Optional[Dict[str, str]] = None,
         tool_cache: Optional[ToolCache] = None,
+        writes: Optional[CallWrites] = None,
     ) -> Tuple[FunctionSchema, Callable]:
         """
         Create a Pipecat FunctionSchema and callable function for a tool
@@ -362,6 +390,8 @@ class ToolWrapperFactory:
                 hidden from the AI's schema and merged in before the tool runs
             tool_cache: Read-only tools only: the call's saved results
                 (context/store.py), so a repeat or prefetched lookup is reused
+            writes: Tools that may change data: the call's counter, bumped
+                after each run so later reads fetch current data
 
         Returns:
             Tuple of (FunctionSchema, callable_function)
@@ -428,7 +458,12 @@ class ToolWrapperFactory:
                         tool_params, lambda: wrapper.execute(tool_params)
                     )
                 else:
-                    result = await wrapper.execute(tool_params)
+                    try:
+                        result = await wrapper.execute(tool_params)
+                    finally:
+                        # Counted as soon as it ran, before the AI can read again
+                        if writes is not None:
+                            writes.count += 1
 
                 logger.info(
                     f"Tool '{tool_name}' execution result: {log_safe_result(result)}"
@@ -438,7 +473,12 @@ class ToolWrapperFactory:
                     key = tool_cache.key(tool_params)
                     digest = _result_digest(result)
                     earlier = delivered.get(key)
-                    if earlier and earlier[1] == digest:
+                    llm_context = getattr(params, 'context', None)
+                    if (
+                        earlier
+                        and earlier[1] == digest
+                        and result_in_context(llm_context, earlier[0])
+                    ):
                         logger.info(
                             f"Tool '{tool_name}': same result already in the "
                             f'conversation (tool call {earlier[0]}); sent a short '
@@ -505,6 +545,9 @@ class ToolWrapperFactory:
                 for key, value in config_overrides.items():
                     if key in allowed_attrs:
                         if hasattr(wrapper, key):
+                            if key == 'method' and isinstance(value, str):
+                                # As the constructor does; prefetch needs 'GET'
+                                value = value.upper()
                             setattr(wrapper, key, value)
                             # Key only: values can be tokens, passwords or headers
                             logger.debug(
@@ -668,6 +711,9 @@ class ToolWrapperFactory:
             f'Creating wrapper functions for {len(enabled_tools)} enabled tools'
         )
 
+        # Phone calls with saved results: reads after a write fetch current data
+        writes = CallWrites() if context_store is not None else None
+
         for tool in enabled_tools:
             try:
                 # Create wrapper based on tool type
@@ -691,13 +737,22 @@ class ToolWrapperFactory:
                     and ToolWrapperFactory.is_read_only(tool, wrapper)
                 ):
                     tool_cache = ToolCache(
-                        context_store, agent_id, call_subject.call_ref, tool['name']
+                        context_store,
+                        agent_id,
+                        call_subject.call_ref,
+                        tool['name'],
+                        writes=writes,
                     )
 
                 # Create Pipecat FunctionSchema and callable function
                 function_schema, callable_func = (
                     ToolWrapperFactory.create_pipecat_function(
-                        tool, wrapper, bound_values, tool_cache
+                        tool,
+                        wrapper,
+                        bound_values,
+                        tool_cache,
+                        # Not read-only: may change data, so it counts as a write
+                        writes=writes if tool_cache is None else None,
                     )
                 )
 

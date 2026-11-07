@@ -208,15 +208,33 @@ export const prefetchBlockers = (
   return blockers;
 };
 
-const PHONE_NAME = /(phone|mobile|msisdn|contact_?(no|num|number)|cell)/i;
-const CALL_ID_NAME = /call_?(id|sid|ref)/i;
+// Matched against whole name parts, so `automobile_make` or `cancellation_reason` never look like phones
+const PHONE_PART = /^(tele|cell)?(phone|mobile|msisdn|cell)(no|num|number)?$/;
+const CONTACT_NUMBER_PART = /^contact(no|num|number)$/;
+const NUMBER_PART = /^(no|num|number)$/;
+const CALL_ID_PART = /^call(id|sid|ref)$/;
+const ID_PART = /^(id|sid|ref)$/;
+
+/** `customerPhone_no` -> ['customer', 'phone', 'no']. */
+const nameParts = (name: string): string[] =>
+  name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+
+/** Whether `parts` has `first` followed by `second`, or both written as one part. */
+const hasPair = (parts: string[], first: string, second: RegExp, joined: RegExp): boolean =>
+  parts.some((part, i) => joined.test(part) || (part === first && second.test(parts[i + 1] ?? '')));
 
 /** A likely server source for a text field, from its own name. */
 export const suggestedSource = (arg: ToolArgument): Exclude<ArgumentSource, 'ai'> | undefined => {
   if (!arg.bindable) return undefined;
-  const ownName = arg.name.split('.').pop() ?? arg.name;
-  if (PHONE_NAME.test(ownName)) return 'caller.phone';
-  if (CALL_ID_NAME.test(ownName)) return 'call.id';
+  const parts = nameParts(arg.name.split('.').pop() ?? arg.name);
+  if (parts.some((part) => PHONE_PART.test(part)) || hasPair(parts, 'contact', NUMBER_PART, CONTACT_NUMBER_PART)) {
+    return 'caller.phone';
+  }
+  if (hasPair(parts, 'call', ID_PART, CALL_ID_PART)) return 'call.id';
   return undefined;
 };
 

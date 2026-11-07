@@ -197,6 +197,16 @@ describe('suggestedSource', () => {
     ['contact_no', 'caller.phone'],
     ['call_sid', 'call.id'],
     ['service', undefined],
+    // Whole name parts only, camelCase included
+    ['phoneNumber', 'caller.phone'],
+    ['telephone', 'caller.phone'],
+    ['contactNumber', 'caller.phone'],
+    ['CallSid', 'call.id'],
+    ['callid', 'call.id'],
+    ['automobile_make', undefined],
+    ['cancellation_reason', undefined],
+    ['recall_id', undefined],
+    ['microphone_model', undefined],
   ])('%s -> %s', (name, expected) => {
     expect(suggestedSource({ name, required: false, bindable: true, parents: [] })).toBe(expected);
   });

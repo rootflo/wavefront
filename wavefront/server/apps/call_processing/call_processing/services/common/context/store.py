@@ -262,6 +262,18 @@ class CallContextStore:
             logger.warning(f'Call context delete failed: {e}')
 
 
+class CallWrites:
+    """How many tools that may change data have run on this call.
+
+    Read results saved before such a tool are not reused after it: the cache
+    key moves on with the count, so the next read fetches current data (and
+    saves that). Tools not marked read-only count, since any of them may write.
+    """
+
+    def __init__(self) -> None:
+        self.count = 0
+
+
 @dataclass(frozen=True)
 class ToolCache:
     """One read-only tool on one call."""
@@ -270,9 +282,14 @@ class ToolCache:
     agent_id: str
     call_ref: str
     tool_name: str
+    # The AI's lookups pass the call's counter; prefetch runs before any write
+    writes: Optional[CallWrites] = None
 
     def key(self, args: Dict[str, Any]) -> str:
-        return context_key(self.agent_id, self.call_ref, self.tool_name, args)
+        key = context_key(self.agent_id, self.call_ref, self.tool_name, args)
+        count = self.writes.count if self.writes is not None else 0
+        # Count 0 keeps the prefetch's key, so the first lookup still reuses it
+        return f'{key}/w{count}' if count else key
 
     async def run(self, args: Dict[str, Any], fetch: Fetch) -> Any:
         result, _ = await self.lookup(args, fetch)
