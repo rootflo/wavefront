@@ -42,10 +42,14 @@ from call_processing.services.common.prompts import (
     LANGUAGE_TOOL_INTENT_DESCRIPTION,
     USER_IDLE_CHECK_IN_PROMPT,
     USER_IDLE_GOODBYE_PROMPT,
-    language_instruction,
     language_switching_rules,
     language_tool_description,
     language_tool_target_description,
+)
+from call_processing.services.common.prompt_layout import (
+    PromptParts,
+    build_system_prompt,
+    language_packs,
 )
 from call_processing.services.common.providers.llm_service import LLMServiceFactory
 from call_processing.services.common.providers.stt_service import STTServiceFactory
@@ -144,6 +148,8 @@ def build_agent_stack(
         'current_language': default_language,
         'switch_count': 0,
         'original_system_prompt': '',
+        # Multi-language phone calls: the prompt's parts, for switching (prompt_layout)
+        'prompt_parts': None,
     }
 
     # Create LLM service (language-agnostic)
@@ -228,14 +234,25 @@ def build_agent_stack(
         # Non-empty marks the agent as multi-language for the browser messenger
         language_state['original_system_prompt'] = system_content
     elif is_multi_language:
-        language_rules = language_switching_rules(
-            supported_language_names,
-            LANGUAGE_DISPLAY_NAMES.get(default_language, default_language),
+        # Laid out for prompt caching; a language switch rebuilds it from these
+        # parts with the new pack and language line (prompt_layout.py)
+        prompt_parts = PromptParts(
+            main=base_system_prompt,
+            rules=language_switching_rules(supported_language_names),
+            suffix=call_context,
+            packs=language_packs(agent_config, supported_languages),
         )
-        system_content = f'{language_instruction(default_language)}\n\n{base_system_prompt}{language_rules}{call_context}'
-        # Store base prompt without language instruction for switching (rules persist across switches)
+        system_content = build_system_prompt(prompt_parts, default_language)
+        language_state['prompt_parts'] = prompt_parts
+        # Browser test rooms still rebuild from this when a step overlay is
+        # applied (webrtc/app_messages.py); it also marks the agent multi-language
         language_state['original_system_prompt'] = (
-            base_system_prompt + language_rules + call_context
+            base_system_prompt
+            + language_switching_rules(
+                supported_language_names,
+                LANGUAGE_DISPLAY_NAMES.get(default_language, default_language),
+            )
+            + call_context
         )
     else:
         system_content = base_system_prompt + call_context

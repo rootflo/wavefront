@@ -1,7 +1,7 @@
 import json
 import re
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from typing import Optional, Union, Any, Dict, List
 from enum import Enum
 from datetime import datetime
@@ -9,6 +9,38 @@ import uuid
 
 # Sentinel value for partial updates
 UNSET = object()
+
+MAX_LANGUAGE_PROMPT_CHARS = 20_000
+
+
+def check_language_prompts(conversation_config: Any, supported_languages: Any) -> None:
+    """``conversation_config.language_prompts``: {language code: text} only.
+
+    Each pack is added to the system prompt while the call is in that language
+    (call_processing's prompt_layout.py). Keys must be supported languages when
+    those are known in the same request; values are text, size-capped.
+    """
+    if not isinstance(conversation_config, dict):
+        return
+    packs = conversation_config.get('language_prompts')
+    if packs is None:
+        return
+    if not isinstance(packs, dict):
+        raise ValueError('conversation_config.language_prompts must be an object')
+    for language, text in packs.items():
+        if not isinstance(text, str):
+            raise ValueError(f'language_prompts.{language} must be text')
+        if len(text) > MAX_LANGUAGE_PROMPT_CHARS:
+            raise ValueError(
+                f'language_prompts.{language} is over '
+                f'{MAX_LANGUAGE_PROMPT_CHARS} characters'
+            )
+    if isinstance(supported_languages, list):
+        unknown = sorted(set(packs) - set(supported_languages))
+        if unknown:
+            raise ValueError(
+                f'language_prompts has languages the agent does not support: {unknown}'
+            )
 
 
 class VoiceAgentStatus(str, Enum):
@@ -102,6 +134,11 @@ class CreateVoiceAgentPayload(BaseModel):
 
         return v
 
+    @model_validator(mode='after')
+    def validate_language_prompts(self):
+        check_language_prompts(self.conversation_config, self.supported_languages)
+        return self
+
 
 class UpdateVoiceAgentPayload(BaseModel):
     name: Union[str, Any] = Field(default=UNSET)
@@ -121,6 +158,11 @@ class UpdateVoiceAgentPayload(BaseModel):
     outbound_numbers: Union[List[str], Any] = Field(default=UNSET)
     supported_languages: Union[List[str], Any] = Field(default=UNSET)
     default_language: Union[str, Any] = Field(default=UNSET)
+
+    @model_validator(mode='after')
+    def validate_language_prompts(self):
+        check_language_prompts(self.conversation_config, self.supported_languages)
+        return self
 
 
 class VoiceAgentListItem(BaseModel):

@@ -569,6 +569,8 @@ class ClientSessionMessenger(SessionEvents):
             # from ``original_system_prompt``, so the overlay must live there too.
             new_original = apply_step_overlay(original, overlay)
             self._language_state['original_system_prompt'] = new_original
+            # The overlay lives in the stored base only: switch from it from now on
+            self._language_state.pop('prompt_parts', None)
             language = self._resolve_language(ctx.language)
             if self._room_context_language:
                 # The overlay already states the language; no extra instruction
