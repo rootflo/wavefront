@@ -88,22 +88,25 @@ def pick_fields(result: Any, paths: List[str], tool_name: str = '') -> List[Fiel
 
 def caller_block(fields: List[Field], outbound: Optional[Dict[str, str]]) -> str:
     """The fenced block for the end of the prompt, or '' when there is nothing."""
-    # Cleaned here, whatever the source, so no value can close the fence
-    lines = [f'{_one_line(label)}: {_one_line(value)}' for label, value in fields]
-    lines += [
+    # Cleaned here, whatever the source, so no value can close the fence.
+    # The CRM's lines go first: the late block adds tool fields only, so a CRM
+    # line left out here would never reach the AI.
+    lines = [
         f'crm › {key}: {_one_line(value)}' for key, value in (outbound or {}).items()
     ]
+    lines += [f'{_one_line(label)}: {_one_line(value)}' for label, value in fields]
     kept: List[str] = []
     used = 0
     for line in lines:
-        if used + len(line) + 1 > MAX_BLOCK_CHARS:
-            logger.warning(
-                f'Caller context over {MAX_BLOCK_CHARS} chars: '
-                f'{len(lines) - len(kept)} field(s) left out'
-            )
-            break
-        kept.append(line)
-        used += len(line) + 1
+        # A line that doesn't fit is skipped; shorter ones after it may still fit
+        if used + len(line) + 1 <= MAX_BLOCK_CHARS:
+            kept.append(line)
+            used += len(line) + 1
+    if len(kept) < len(lines):
+        logger.warning(
+            f'Caller context over {MAX_BLOCK_CHARS} chars: '
+            f'{len(lines) - len(kept)} field(s) left out'
+        )
     if not kept:
         return ''
     body = '\n'.join(kept)

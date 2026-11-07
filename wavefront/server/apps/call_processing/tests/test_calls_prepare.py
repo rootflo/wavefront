@@ -119,6 +119,13 @@ def test_context_keys_and_size_are_checked():
         _request({'nested': {'a': 'b'}})
 
 
+def test_context_size_counts_utf8_bytes():
+    # 600 Devanagari characters: 1,800 UTF-8 bytes, but 3,600 as \u escapes
+    assert _request({'notes': 'क' * 600}).context == {'notes': 'क' * 600}
+    with pytest.raises(ValidationError):
+        _request({'notes': 'क' * 700})  # 2,100 bytes
+
+
 # ------------------------------------------------------------ what it keeps
 
 

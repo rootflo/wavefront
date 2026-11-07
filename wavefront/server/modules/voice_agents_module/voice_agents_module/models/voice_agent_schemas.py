@@ -235,7 +235,10 @@ class InitiateCallPayload(BaseModel):
             raise ValueError(
                 f'context keys must be lowercase letters, digits or _: {bad_keys}'
             )
-        if len(json.dumps(v).encode()) > MAX_CALL_CONTEXT_BYTES:
+        # UTF-8 bytes of compact JSON, as the client counts them (a Hindi
+        # character is 3 bytes, not a 6-byte \uXXXX escape)
+        size = len(json.dumps(v, ensure_ascii=False, separators=(',', ':')).encode())
+        if size > MAX_CALL_CONTEXT_BYTES:
             raise ValueError(f'context is over {MAX_CALL_CONTEXT_BYTES} bytes')
         return v
 

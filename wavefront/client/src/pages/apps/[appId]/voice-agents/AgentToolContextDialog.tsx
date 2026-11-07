@@ -18,7 +18,6 @@ import { VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { Sparkles } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import {
-  ARGUMENT_SOURCES,
   ArgumentSource,
   argumentSource,
   describeOnCall,
@@ -27,6 +26,8 @@ import {
   parsePromptFields,
   prefetchBlockers,
   readToolContext,
+  sourceOption,
+  sourceOptions,
   suggestedSource,
   toolArguments,
   ToolContextSettings,
@@ -40,8 +41,6 @@ interface AgentToolContextDialogProps {
   tool: VoiceAgentToolWithAssociation;
   onOpenChange: (open: boolean) => void;
 }
-
-const sourceLabel = (source: ArgumentSource) => ARGUMENT_SOURCES.find((s) => s.value === source)!;
 
 const Section: React.FC<{ step: number; title: string; hint: string; children: React.ReactNode }> = ({
   step,
@@ -154,7 +153,7 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
                             onClick={() => setSource(arg.name, suggestion)}
                           >
                             <Sparkles className="mr-1 h-3 w-3" />
-                            Use {sourceLabel(suggestion).label.toLowerCase()}
+                            Use {sourceOption(suggestion).label.toLowerCase()}
                           </Button>
                         )}
                       </div>
@@ -173,14 +172,14 @@ const AgentToolContextDialog: React.FC<AgentToolContextDialogProps> = ({ appId, 
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {ARGUMENT_SOURCES.map((s) => (
+                                {sourceOptions(source).map((s) => (
                                   <SelectItem key={s.value} value={s.value}>
                                     {s.label}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
-                            <p className="frost-text-muted mt-1 text-xs">{sourceLabel(source).example}</p>
+                            <p className="frost-text-muted mt-1 text-xs">{sourceOption(source).example}</p>
                           </>
                         )}
                       </div>

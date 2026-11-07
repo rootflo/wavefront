@@ -252,6 +252,8 @@ class CallContextStore:
             await self._redis.set(key, json.dumps({'result': result}), ex=self._ttl_s)
         except Exception as e:
             logger.warning(f'Call context write failed: {e}')
+            # Don't leave the pending marker: lookups would wait on it for nothing
+            await self._delete(key)
 
     async def _delete(self, key: str) -> None:
         try:

@@ -121,6 +121,25 @@ async def test_failed_result_is_not_saved():
     assert KEY not in redis.data
 
 
+class FailingWriteRedis(FakeRedis):
+    """Claims work; saving the result times out."""
+
+    async def set(self, key, value, nx=False, ex=None):
+        if not nx:
+            raise TimeoutError('redis write timed out')
+        return await super().set(key, value, nx=nx, ex=ex)
+
+
+async def test_failed_save_clears_the_pending_marker():
+    redis = FailingWriteRedis()
+
+    result = await CallContextStore(redis).get_or_fetch(KEY, CountingFetch())
+
+    assert result == {'name': 'Jane Doe'}
+    # Otherwise the next lookup would wait for a result that never comes
+    assert KEY not in redis.data
+
+
 async def test_waits_for_a_fetch_running_on_another_pod():
     redis = FakeRedis()
     redis.data[KEY] = json.dumps({'pending': True})

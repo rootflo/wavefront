@@ -36,7 +36,9 @@ def _is_call_variable(variable: Any) -> bool:
 def tool_context(tool: Dict[str, Any]) -> Dict[str, Any]:
     """The tool association's ``config_overrides.context`` settings ({} if none)."""
     overrides = (tool.get('association') or {}).get('config_overrides') or {}
-    return overrides.get('context') or {}
+    context = overrides.get('context') if isinstance(overrides, dict) else None
+    # Saved through the API without a schema: a malformed value means no settings
+    return context if isinstance(context, dict) else {}
 
 
 def tool_prompt_fields(tool: Dict[str, Any]) -> List[str]:
@@ -65,6 +67,12 @@ def tool_bindings(tool: Dict[str, Any]) -> Dict[str, str]:
     that can't apply are logged and left to the AI; the tool still loads.
     """
     bind = tool_context(tool).get('bind') or {}
+    if not isinstance(bind, dict):
+        logger.warning(
+            f"Ignoring binds for tool '{tool.get('name')}': expected a map of "
+            f'field -> variable, got {type(bind).__name__}'
+        )
+        return {}
     schema = tool.get('parameter_schema') or {}
     usable = {}
     for path, variable in bind.items():

@@ -55,10 +55,17 @@ class TelephonyConversation(BaseConversation):
         self.provider = provider
         self.customer_number = customer_number
         self.agent_number = agent_number
+        if context_store is not None and call_id in ('', None, 'unknown'):
+            # Without the provider's call id every such call would share one
+            # cache key, so these calls run their tools live, as before
+            logger.warning(
+                f'No call id from {provider}; caller context and caching are off'
+            )
+            context_store = None
         self.context_store = context_store
         # Tools get the normalised number; the prompt keeps the raw one
         self.call_subject = CallSubject.for_call(
-            call_ref=call_id, direction=call_direction, raw_phone=customer_number
+            call_ref=call_id or '', direction=call_direction, raw_phone=customer_number
         )
         # Filled in run(): the CRM's context, and the <caller_context> block
         self.outbound_context: Dict[str, str] = {}
@@ -78,28 +85,40 @@ class TelephonyConversation(BaseConversation):
         agent_id = configs['agent'].get('id')
         store = self.context_store
         if store is not None and agent_id:
-            agent_id = str(agent_id)
-            tools = configs.get('tools') or []
-            if self.call_direction == 'outbound':
-                # Saved by /api/calls/prepare while the call rang
-                self.outbound_context = await store.read_outbound(
-                    agent_id, self.call_subject.call_ref
+            try:
+                await self._load_caller_context(store, str(agent_id), configs)
+            except Exception as e:
+                # Never worse than before: the call goes ahead without the block
+                logger.error(
+                    f'Caller context for call {self.call_subject.call_ref} '
+                    f'failed, continuing without it: {e}',
+                    exc_info=True,
                 )
-            # Exotel / Smartflo (and Twilio, if its webhook pod didn't): fetch
-            # while the stack is built and the greeting plays
-            start_prefetch(
-                tools, self.call_subject, agent_id, store, self.outbound_context
-            )
-            fields, self._pending_fields = await read_caller_fields(
-                tools, self.call_subject, agent_id, store, self.outbound_context
-            )
-            self._caller_block = caller_block(fields, self.outbound_context)
-            logger.info(
-                f'Caller context for call {self.call_subject.call_ref}: '
-                f'{len(fields)} field(s) ready, {len(self.outbound_context)} from '
-                f'the CRM, {len(self._pending_fields)} tool(s) still fetching'
-            )
+                self._caller_block = ''
+                self._pending_fields = []
         await super().run(transport, configs)
+
+    async def _load_caller_context(
+        self, store: CallContextStore, agent_id: str, configs: Dict[str, Any]
+    ) -> None:
+        tools = configs.get('tools') or []
+        if self.call_direction == 'outbound':
+            # Saved by /api/calls/prepare while the call rang
+            self.outbound_context = await store.read_outbound(
+                agent_id, self.call_subject.call_ref
+            )
+        # Exotel / Smartflo (and Twilio, if its webhook pod didn't): fetch
+        # while the stack is built and the greeting plays
+        start_prefetch(tools, self.call_subject, agent_id, store, self.outbound_context)
+        fields, self._pending_fields = await read_caller_fields(
+            tools, self.call_subject, agent_id, store, self.outbound_context
+        )
+        self._caller_block = caller_block(fields, self.outbound_context)
+        logger.info(
+            f'Caller context for call {self.call_subject.call_ref}: '
+            f'{len(fields)} field(s) ready, {len(self.outbound_context)} from '
+            f'the CRM, {len(self._pending_fields)} tool(s) still fetching'
+        )
 
     def on_task_created(
         self,

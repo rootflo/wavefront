@@ -7,10 +7,15 @@
  */
 import { ApiToolConfig, VoiceAgentTool } from '@app/types/tool';
 
-/** Who fills an argument: the AI, or a value the server takes from the call. */
-export type ArgumentSource = 'ai' | 'caller.phone' | 'call.id' | 'call.direction' | 'agent.id';
+/** A value the CRM sent with an outbound call (`context` on initiate). Set through the API; the dialog keeps it. */
+export type OutboundSource = `outbound.${string}`;
 
-export const ARGUMENT_SOURCES: { value: ArgumentSource; label: string; example: string }[] = [
+/** Who fills an argument: the AI, or a value the server takes from the call. */
+export type ArgumentSource = 'ai' | 'caller.phone' | 'call.id' | 'call.direction' | 'agent.id' | OutboundSource;
+
+type SourceOption = { value: ArgumentSource; label: string; example: string };
+
+export const ARGUMENT_SOURCES: SourceOption[] = [
   { value: 'ai', label: 'The AI, from the conversation', example: 'asked or inferred during the call' },
   { value: 'caller.phone', label: "Caller's phone number", example: 'sent as +91XXXXXXXXXX' },
   { value: 'call.id', label: 'Call ID', example: "the telephony provider's call id" },
@@ -19,6 +24,24 @@ export const ARGUMENT_SOURCES: { value: ArgumentSource; label: string; example: 
 ];
 
 const SERVER_SOURCES = new Set<string>(ARGUMENT_SOURCES.filter((s) => s.value !== 'ai').map((s) => s.value));
+const OUTBOUND_PREFIX = 'outbound.';
+
+const isOutboundSource = (source: string): source is OutboundSource =>
+  source.startsWith(OUTBOUND_PREFIX) && source.length > OUTBOUND_PREFIX.length;
+
+/** How a source reads in the UI. An outbound value has no fixed entry, so it is described from its key. */
+export const sourceOption = (source: ArgumentSource): SourceOption =>
+  isOutboundSource(source)
+    ? {
+        value: source,
+        label: `CRM context: ${source.slice(OUTBOUND_PREFIX.length)}`,
+        example: 'sent by your CRM with an outbound call',
+      }
+    : ARGUMENT_SOURCES.find((s) => s.value === source)!;
+
+/** The choices for one field: the fixed sources, plus its saved outbound value so it stays selectable. */
+export const sourceOptions = (current: ArgumentSource): SourceOption[] =>
+  isOutboundSource(current) ? [...ARGUMENT_SOURCES, sourceOption(current)] : ARGUMENT_SOURCES;
 
 export interface ToolContextSettings {
   /** Field path -> server source. Fields not listed are filled by the AI. */
@@ -104,7 +127,7 @@ export const readToolContext = (overrides: Overrides): ToolContextSettings => {
   const context = asRecord(asRecord(overrides).context);
   const bind: ToolContextSettings['bind'] = {};
   Object.entries(asRecord(context.bind)).forEach(([arg, source]) => {
-    if (typeof source === 'string' && SERVER_SOURCES.has(source)) {
+    if (typeof source === 'string' && (SERVER_SOURCES.has(source) || isOutboundSource(source))) {
       bind[arg] = source as Exclude<ArgumentSource, 'ai'>;
     }
   });
@@ -197,18 +220,21 @@ export const suggestedSource = (arg: ToolArgument): Exclude<ArgumentSource, 'ai'
   return undefined;
 };
 
-const SOURCE_PHRASES: Record<Exclude<ArgumentSource, 'ai'>, string> = {
+const SOURCE_PHRASES: Record<Exclude<ArgumentSource, 'ai' | OutboundSource>, string> = {
   'caller.phone': "the caller's phone number",
   'call.id': 'the call ID',
   'call.direction': 'the call direction',
   'agent.id': "this agent's ID",
 };
 
+const sourcePhrase = (source: Exclude<ArgumentSource, 'ai'>) =>
+  isOutboundSource(source) ? `the CRM's "${source.slice(OUTBOUND_PREFIX.length)}" value` : SOURCE_PHRASES[source];
+
 /** What happens on a phone call with these settings, one plain sentence per effect. */
 export const describeOnCall = (method: string, settings: ToolContextSettings, canPrefetch: boolean): string[] => {
   const lines = Object.entries(settings.bind).map(
     ([arg, source]) =>
-      `The server sends ${SOURCE_PHRASES[source]} as "${fieldLabel(arg)}". ` +
+      `The server sends ${sourcePhrase(source)} as "${fieldLabel(arg)}". ` +
       `The AI doesn't see this detail and won't ask for it.`
   );
   if (settings.prefetch && canPrefetch) {

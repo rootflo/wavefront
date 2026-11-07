@@ -1,7 +1,11 @@
 """Who a call is about: the identity the server fills into tool arguments."""
 
+import re
 from dataclasses import dataclass
 from typing import Optional
+
+# E.164: + then 8 to 15 digits, no leading zero
+_E164 = re.compile(r'^\+[1-9]\d{7,14}$')
 
 
 def normalize_indian_phone_number(phone_number: str) -> str:
@@ -43,7 +47,10 @@ class CallSubject:
     """One phone call's identity.
 
     ``phone`` is always normalised, so every provider hands tools the same
-    ``+91…`` format. The prompt keeps the raw number the provider sent.
+    ``+91…`` format, or empty when the number is withheld or not a valid number
+    (``anonymous``, Twilio's ``+266696687``): a caller.phone bind then stays
+    with the AI, which can ask for it. The prompt keeps the raw number the
+    provider sent.
     """
 
     call_ref: str
@@ -54,8 +61,9 @@ class CallSubject:
     def for_call(
         cls, *, call_ref: str, direction: str, raw_phone: Optional[str]
     ) -> 'CallSubject':
+        phone = normalize_indian_phone_number(raw_phone or '')
         return cls(
             call_ref=call_ref,
             direction=direction,
-            phone=normalize_indian_phone_number(raw_phone or ''),
+            phone=phone if _E164.match(phone) else '',
         )

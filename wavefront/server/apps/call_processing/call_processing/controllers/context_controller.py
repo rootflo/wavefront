@@ -96,7 +96,11 @@ class PrepareCallRequest(BaseModel):
         bad_keys = [key for key in context if not _CONTEXT_KEY.match(key)]
         if bad_keys:
             raise ValueError(f'context keys must match [a-z0-9_]{{1,40}}: {bad_keys}')
-        if len(json.dumps(context).encode()) > MAX_CONTEXT_BYTES:
+        # UTF-8 bytes of compact JSON, counted the same way floware and the client do
+        size = len(
+            json.dumps(context, ensure_ascii=False, separators=(',', ':')).encode()
+        )
+        if size > MAX_CONTEXT_BYTES:
             raise ValueError(f'context is over {MAX_CONTEXT_BYTES} bytes')
         return context
 

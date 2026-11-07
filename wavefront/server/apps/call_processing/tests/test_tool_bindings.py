@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from call_processing.services.common.context.bindings import (
     resolve_bindings,
     tool_bindings,
@@ -43,6 +45,21 @@ class _RecordingWrapper:
 
 def test_no_bind_config_means_no_bindings():
     assert tool_bindings(_tool()) == {}
+
+
+@pytest.mark.parametrize('bind', ['caller.phone', ['mobile_number'], 42])
+def test_malformed_bind_is_ignored_and_logged(bind, caplog):
+    # Saved through the API: the tool still loads, its fields stay with the AI
+    with caplog.at_level(logging.WARNING, logger='call_processing'):
+        assert tool_bindings(_tool(bind)) == {}
+    assert 'expected a map' in caplog.text
+
+
+@pytest.mark.parametrize('context', ['bind', ['bind'], None])
+def test_malformed_context_means_no_bindings(context):
+    tool = _tool()
+    tool['association']['config_overrides'] = {'context': context}
+    assert tool_bindings(tool) == {}
 
 
 def test_unknown_variable_is_ignored_and_logged(caplog):

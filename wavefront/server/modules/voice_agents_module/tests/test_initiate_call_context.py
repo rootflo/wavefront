@@ -68,6 +68,11 @@ class TestInitiateCallPayload:
         )
         assert payload.context == {'reason_for_call': 'overdue bill'}
 
+    def test_size_counts_utf8_bytes(self):
+        # 600 Devanagari characters: 1,800 UTF-8 bytes, but 3,600 as \u escapes
+        context = {'notes': 'क' * 600}
+        assert InitiateCallPayload(to_number=PHONE, context=context).context == context
+
     @pytest.mark.parametrize(
         'context',
         [

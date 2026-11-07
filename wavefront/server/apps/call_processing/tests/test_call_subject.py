@@ -37,6 +37,29 @@ def test_subject_tolerates_missing_phone():
     assert subject.phone == ''
 
 
+@pytest.mark.parametrize(
+    'raw',
+    [
+        'anonymous',
+        '+266696687',  # Twilio's blocked caller id: would become +91+266696687
+        'Restricted',
+        '12345',
+        '+0123456789',
+    ],
+)
+def test_subject_drops_withheld_or_invalid_numbers(raw):
+    # Empty, so a caller.phone bind stays with the AI instead of a junk lookup
+    subject = CallSubject.for_call(call_ref='CA123', direction='inbound', raw_phone=raw)
+    assert subject.phone == ''
+
+
+def test_subject_keeps_valid_non_indian_numbers():
+    subject = CallSubject.for_call(
+        call_ref='CA123', direction='inbound', raw_phone='+14155550100'
+    )
+    assert subject.phone == '+14155550100'
+
+
 def test_telephony_prompt_keeps_raw_number_and_tools_get_normalised():
     conversation = TelephonyConversation(
         None,

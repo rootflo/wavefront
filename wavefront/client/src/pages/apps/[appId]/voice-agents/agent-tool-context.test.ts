@@ -9,6 +9,8 @@ import {
   isReusedInCall,
   prefetchBlockers,
   readToolContext,
+  sourceOption,
+  sourceOptions,
   suggestedSource,
   toolArguments,
   usableBind,
@@ -90,6 +92,12 @@ describe('readToolContext', () => {
     ).toEqual({ bind: { mobile_number: 'caller.phone' }, readOnly: true, prefetch: true, promptFields: [] });
   });
 
+  it('keeps outbound.<key> binds set through the API', () => {
+    expect(readToolContext({ context: { bind: { loan_id: 'outbound.loan_id', x: 'outbound.' } } }).bind).toEqual({
+      loan_id: 'outbound.loan_id',
+    });
+  });
+
   it('defaults to nothing set', () => {
     expect(readToolContext(undefined)).toEqual({ bind: {}, readOnly: false, prefetch: false, promptFields: [] });
   });
@@ -115,6 +123,25 @@ describe('writeToolContext', () => {
         { bind: {}, readOnly: false, prefetch: false }
       )
     ).toEqual({ timeout: 3 });
+  });
+});
+
+describe('outbound binds round trip', () => {
+  const saved = { context: { bind: { loan_id: 'outbound.loan_id', mobile_number: 'caller.phone' } } };
+
+  it('saving the dialog keeps them', () => {
+    expect(writeToolContext(saved, readToolContext(saved))).toEqual(saved);
+  });
+
+  it('are shown as CRM context and stay selectable', () => {
+    expect(sourceOption('outbound.loan_id').label).toBe('CRM context: loan_id');
+    expect(sourceOptions('outbound.loan_id').map((s) => s.value)).toContain('outbound.loan_id');
+    expect(sourceOptions('caller.phone').some((s) => s.value.startsWith('outbound.'))).toBe(false);
+  });
+
+  it('are described in plain words', () => {
+    const settings = { bind: { loan_id: 'outbound.loan_id' as const }, readOnly: false, prefetch: false };
+    expect(describeOnCall('GET', settings, false)[0]).toContain(`the CRM's "loan_id" value`);
   });
 });
 
