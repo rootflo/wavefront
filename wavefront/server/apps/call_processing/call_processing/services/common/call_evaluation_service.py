@@ -24,6 +24,8 @@ import flo_lib.http as http
 from call_processing.log.logger import logger
 from opentelemetry import context as otel_context, trace
 
+from call_processing.services.common.turn_latency import latency_summary
+
 if TYPE_CHECKING:
     from call_processing.app_settings import CallProcessingAppSettings
 
@@ -116,6 +118,8 @@ class CallEvaluationService:
                     'call.transcript_turns': len(transcript_log),
                     'call.total_words_user': total_words_user,
                     'call.total_words_assistant': total_words_assistant,
+                    # --- Answer latency (fillers excluded) ---
+                    **latency_summary(stats.get('turn_latencies') or []),
                 },
             ) as span:
                 # Add one span event per turn — no raw content to avoid PII in OTel

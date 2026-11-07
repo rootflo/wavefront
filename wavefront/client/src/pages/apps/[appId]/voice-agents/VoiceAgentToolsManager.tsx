@@ -10,8 +10,10 @@ import {
   useSetAgentToolEnabled,
 } from '@app/hooks';
 import { VoiceAgentToolWithAssociation } from '@app/types/tool';
-import { Plus, X } from 'lucide-react';
-import React from 'react';
+import { Plus, SlidersHorizontal, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { contextSummary } from './agent-tool-context';
+import AgentToolContextDialog from './AgentToolContextDialog';
 
 /** A tool picked before the agent exists; it is attached once the agent is created. */
 export interface PendingAgentTool {
@@ -35,6 +37,8 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
   const setToolEnabled = useSetAgentToolEnabled(appId, agentId);
   const attachTool = useAttachToolToAgent(appId, agentId);
   const detachTool = useDetachToolFromAgent(appId, agentId);
+  /** The attached tool whose call context dialog is open. */
+  const [contextToolId, setContextToolId] = useState<string | null>(null);
   /** The tool whose attach, detach or toggle is in flight, to disable just its controls. */
   const loadingToolId =
     (attachTool.isPending && attachTool.variables) ||
@@ -56,6 +60,8 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
     : savedAgentTools;
 
   const attachedToolIds = new Set(agentTools.map((t) => t.id));
+  const contextTool = agentTools.find((t) => t.id === contextToolId);
+  const contextStatus = new Map(agentTools.map((t) => [t.id, contextSummary(t, t.association.config_overrides)]));
   const availableTools = allTools.filter((t) => !attachedToolIds.has(t.id));
 
   const handleToggleEnabled = (toolId: string, currentEnabled: boolean) => {
@@ -127,6 +133,24 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Call context needs a saved association, and only API tools use it */}
+                  {!pending && tool.tool_type === 'api' && (
+                    <>
+                      {contextStatus.get(tool.id) && (
+                        <Badge className={toneClass.success}>{contextStatus.get(tool.id)}</Badge>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setContextToolId(tool.id)}
+                        title="Who fills this tool's details, and whether it runs early on calls"
+                      >
+                        <SlidersHorizontal className="mr-1 h-4 w-4" />
+                        Call context
+                      </Button>
+                    </>
+                  )}
                   <div className="flex items-center gap-2">
                     <span className="frost-text-muted text-sm">
                       {tool.association.is_enabled ? 'Enabled' : 'Disabled'}
@@ -193,6 +217,16 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
           </div>
         )}
       </div>
+
+      {contextTool && agentId && (
+        <AgentToolContextDialog
+          key={contextTool.id}
+          appId={appId}
+          agentId={agentId}
+          tool={contextTool}
+          onOpenChange={(open) => !open && setContextToolId(null)}
+        />
+      )}
     </div>
   );
 };

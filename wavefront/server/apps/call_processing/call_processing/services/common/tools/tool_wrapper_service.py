@@ -6,10 +6,29 @@ functions that can be registered with the LLM for function calling.
 """
 
 import base64
-from typing import Dict, Any, List, Tuple, Callable, Optional
+import hashlib
+import json
+import re
+import time
+from typing import Dict, Any, List, Tuple, Callable, Optional, Awaitable
 import flo_lib.http as httpx
 
 from call_processing.log.logger import logger
+from call_processing.services.common.context.bindings import (
+    hidden_schema,
+    merge_bound,
+    resolve_bindings,
+    tool_bindings,
+    tool_context,
+    unbound_required,
+)
+from call_processing.services.common.context.store import (
+    CallContextStore,
+    CallWrites,
+    ToolCache,
+    is_failure,
+)
+from call_processing.services.common.context.subject import CallSubject
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import FunctionCallResultProperties
 
@@ -18,6 +37,74 @@ _SHARED_HTTP_CLIENT: Optional[httpx.AsyncClient] = None
 # Voice budget: keep tool waits short so the user is not muted for long.
 _DEFAULT_API_TIMEOUT_S = 4.0
 _DEFAULT_APP_ACK_TIMEOUT_S = 3.0
+# Header names whose values are never logged
+_SECRET_HEADER = re.compile(r'auth|token|key|secret|cookie|password|signature', re.I)
+
+
+def repeat_reference(tool_name: str, earlier_call_id: str) -> Dict[str, Any]:
+    """Sent instead of a read-only result the AI already has in this conversation.
+
+    Every tool result stays in the LLM context for the rest of the call, so a
+    repeated lookup would add the same (often large) result again each time.
+    """
+    return {
+        'unchanged': True,
+        'same_as_tool_call_id': earlier_call_id,
+        'note': (
+            f'Same result as the earlier {tool_name} call in this conversation. '
+            'Answer from that result.'
+        ),
+    }
+
+
+def _result_digest(result: Any) -> str:
+    canonical = json.dumps(result, sort_keys=True, separators=(',', ':'), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+# What Pipecat leaves in a tool message while a call runs, or once it is cancelled
+_UNFINISHED_RESULTS = ('IN_PROGRESS', 'CANCELLED')
+
+
+def result_in_context(context: Any, tool_call_id: str) -> bool:
+    """Whether the LLM context holds the finished result of ``tool_call_id``.
+
+    A reference is only safe when it is: an interruption can cancel a call after
+    its result was produced, and old turns can be trimmed from the context.
+    """
+    if context is None or not tool_call_id:
+        return False
+    try:
+        messages = context.get_messages()
+    except Exception:
+        return False
+    for message in messages:
+        if (
+            isinstance(message, dict)
+            and message.get('role') == 'tool'
+            and message.get('tool_call_id') == tool_call_id
+        ):
+            return message.get('content') not in _UNFINISHED_RESULTS
+    return False
+
+
+def log_safe_keys(params: Any) -> Any:
+    """Argument names only: values can be the caller's phone number or account ids."""
+    if isinstance(params, dict):
+        return sorted(params)
+    return type(params).__name__
+
+
+def log_safe_result(result: Any) -> str:
+    """Outcome and the shape of a tool result, without customer data."""
+    if not isinstance(result, dict):
+        return type(result).__name__
+    data = result.get('data')
+    data_keys = sorted(data) if isinstance(data, dict) else type(data).__name__
+    return (
+        f"success={result.get('success')} status_code={result.get('status_code')} "
+        f'data_keys={data_keys}'
+    )
 
 
 def _shared_http_client() -> httpx.AsyncClient:
@@ -123,6 +210,18 @@ class ApiToolWrapper:
                 encoded = base64.b64encode(credentials.encode()).decode()
                 headers['Authorization'] = f'Basic {encoded}'
         return headers
+
+    def log_safe_headers(self) -> Dict[str, str]:
+        """The headers a request sends, with secret values redacted, for debugging."""
+        api_key_header = str(self.auth_credentials.get('key_name', '')).lower()
+        return {
+            name: (
+                '<redacted>'
+                if _SECRET_HEADER.search(name) or name.lower() == api_key_header
+                else value
+            )
+            for name, value in self._apply_auth(self.headers.copy()).items()
+        }
 
     async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -275,7 +374,11 @@ class ToolWrapperFactory:
 
     @staticmethod
     def create_pipecat_function(
-        tool: Dict[str, Any], wrapper
+        tool: Dict[str, Any],
+        wrapper,
+        bound_values: Optional[Dict[str, str]] = None,
+        tool_cache: Optional[ToolCache] = None,
+        writes: Optional[CallWrites] = None,
     ) -> Tuple[FunctionSchema, Callable]:
         """
         Create a Pipecat FunctionSchema and callable function for a tool
@@ -283,6 +386,12 @@ class ToolWrapperFactory:
         Args:
             tool: Tool configuration dictionary
             wrapper: Tool wrapper instance (ApiToolWrapper or PythonToolWrapper)
+            bound_values: Arguments the server fills in (context/bindings.py);
+                hidden from the AI's schema and merged in before the tool runs
+            tool_cache: Read-only tools only: the call's saved results
+                (context/store.py), so a repeat or prefetched lookup is reused
+            writes: Tools that may change data: the call's counter, bumped
+                after each run so later reads fetch current data
 
         Returns:
             Tuple of (FunctionSchema, callable_function)
@@ -296,6 +405,12 @@ class ToolWrapperFactory:
         # Extract properties and required fields from parameter_schema
         properties = parameter_schema.get('properties', {})
         required = parameter_schema.get('required', [])
+        bound_values = bound_values or {}
+        if bound_values:
+            # Bound fields can be nested (request.phone): drop just them
+            hidden = hidden_schema(parameter_schema, bound_values)
+            properties = hidden.get('properties', {})
+            required = hidden.get('required', [])
 
         # Create FunctionSchema object (Pipecat's official way)
         function_schema = FunctionSchema(
@@ -304,6 +419,10 @@ class ToolWrapperFactory:
             properties=properties,
             required=required,
         )
+
+        # Read-only results already given to the AI in this stack's context:
+        # cache key -> (tool call id, result digest)
+        delivered: Dict[str, Tuple[str, str]] = {}
 
         async def tool_function(params):
             """
@@ -315,7 +434,8 @@ class ToolWrapperFactory:
             result_callback = None
             try:
                 logger.info(
-                    f"Executing tool '{tool_name}' with params: {params.arguments if hasattr(params, 'arguments') else params}"
+                    f"Executing tool '{tool_name}' with params: "
+                    f"{log_safe_keys(params.arguments if hasattr(params, 'arguments') else params)}"
                 )
 
                 # Handle different parameter formats from Pipecat
@@ -328,10 +448,46 @@ class ToolWrapperFactory:
                     tool_params = params
                     result_callback = None
 
-                # Execute the tool wrapper
-                result = await wrapper.execute(tool_params)
+                if bound_values:
+                    # The server's values win over anything the AI sent
+                    tool_params = merge_bound(tool_params, bound_values)
 
-                logger.info(f"Tool '{tool_name}' execution result: {result}")
+                # Execute the tool wrapper
+                if tool_cache is not None:
+                    result, _ = await tool_cache.lookup(
+                        tool_params, lambda: wrapper.execute(tool_params)
+                    )
+                else:
+                    try:
+                        result = await wrapper.execute(tool_params)
+                    finally:
+                        # Counted as soon as it ran, before the AI can read again
+                        if writes is not None:
+                            writes.count += 1
+
+                logger.info(
+                    f"Tool '{tool_name}' execution result: {log_safe_result(result)}"
+                )
+
+                if tool_cache is not None and not is_failure(result):
+                    key = tool_cache.key(tool_params)
+                    digest = _result_digest(result)
+                    earlier = delivered.get(key)
+                    llm_context = getattr(params, 'context', None)
+                    if (
+                        earlier
+                        and earlier[1] == digest
+                        and result_in_context(llm_context, earlier[0])
+                    ):
+                        logger.info(
+                            f"Tool '{tool_name}': same result already in the "
+                            f'conversation (tool call {earlier[0]}); sent a short '
+                            'reference instead of repeating it'
+                        )
+                        result = repeat_reference(tool_name, earlier[0])
+                    else:
+                        call_id = getattr(params, 'tool_call_id', '') or ''
+                        delivered[key] = (call_id, digest)
 
                 # Return result via callback if available
                 if result_callback:
@@ -368,15 +524,172 @@ class ToolWrapperFactory:
         return function_schema, tool_function
 
     @staticmethod
+    def apply_config_overrides(tool: Dict[str, Any], wrapper) -> None:
+        """Apply the agent↔tool association's ``config_overrides`` to a wrapper."""
+        config_overrides = tool.get('association', {}).get('config_overrides')
+        if config_overrides:
+            if isinstance(wrapper, AppToolWrapper):
+                for key in ('ack_timeout_s', 'speak_on_success'):
+                    if key in config_overrides:
+                        setattr(wrapper, key, config_overrides[key])
+            elif isinstance(wrapper, ApiToolWrapper):
+                # For ApiToolWrapper, set attributes directly
+                allowed_attrs = {
+                    'url',
+                    'method',
+                    'headers',
+                    'auth_type',
+                    'auth_credentials',
+                    'timeout',
+                }
+                for key, value in config_overrides.items():
+                    if key in allowed_attrs:
+                        if hasattr(wrapper, key):
+                            if key == 'method' and isinstance(value, str):
+                                # As the constructor does; prefetch needs 'GET'
+                                value = value.upper()
+                            setattr(wrapper, key, value)
+                            # Key only: values can be tokens, passwords or headers
+                            logger.debug(
+                                f"Applied config override for tool '{tool['name']}': {key}"
+                            )
+                    else:
+                        logger.debug(
+                            f"Ignoring unknown config override key for tool '{tool['name']}': {key}"
+                        )
+            elif hasattr(wrapper, 'config'):
+                # For wrappers with config dict (e.g., PythonToolWrapper)
+                wrapper.config.update(config_overrides)
+                logger.debug(
+                    f"Applied config overrides for tool '{tool['name']}': "
+                    f'{log_safe_keys(config_overrides)}'
+                )
+
+    @staticmethod
+    def is_read_only(tool: Dict[str, Any], wrapper) -> bool:
+        """Opted in to per-call caching (context/store.py).
+
+        ``read_only: true`` marks any tool safe to reuse. ``prefetch: true`` on a
+        GET API tool implies it. Tools without either are never cached.
+        """
+        settings = tool_context(tool)
+        if settings.get('read_only') is True:
+            return True
+        return (
+            settings.get('prefetch') is True
+            and isinstance(wrapper, ApiToolWrapper)
+            and wrapper.method == 'GET'
+        )
+
+    @staticmethod
+    def prefetch_spec(
+        tool: Dict[str, Any],
+        call_subject: CallSubject,
+        agent_id: str,
+        outbound: Optional[Dict[str, str]] = None,
+        log: bool = True,
+    ) -> Optional[Tuple[ApiToolWrapper, Dict[str, Any]]]:
+        """The wrapper and arguments a prefetch sends, or None if it can't prefetch.
+
+        Only read-only tools whose every required field, at every level, the
+        server fills can prefetch: nobody has spoken yet, so nothing else is
+        known, and the AI's later call must produce the same arguments (and
+        key) to get the prefetched result.
+        """
+        if not tool_context(tool).get('prefetch'):
+            return None
+        wrapper = ToolWrapperFactory.create_wrapper(tool)
+        ToolWrapperFactory.apply_config_overrides(tool, wrapper)
+        name = tool.get('name')
+        if not isinstance(wrapper, ApiToolWrapper) or not (
+            ToolWrapperFactory.is_read_only(tool, wrapper)
+        ):
+            if log:
+                logger.warning(
+                    f"Not prefetching tool '{name}': only read-only API tools can "
+                    '(a GET, or marked read_only)'
+                )
+            return None
+        bound_values = resolve_bindings(
+            tool_bindings(tool), call_subject, agent_id, outbound
+        )
+        unbound = unbound_required(tool.get('parameter_schema') or {}, bound_values)
+        if unbound:
+            if log:
+                logger.warning(
+                    f"Not prefetching tool '{name}': required fields {unbound} "
+                    'are not server-filled'
+                )
+            return None
+        # What the AI's call becomes after the merge when it sends nothing else,
+        # so both land on the same key. Optional fields the AI adds (a language,
+        # say) give a different key: that call goes live.
+        return wrapper, merge_bound({}, bound_values)
+
+    @staticmethod
+    def prefetch_job(
+        tool: Dict[str, Any],
+        call_subject: CallSubject,
+        agent_id: str,
+        context_store: CallContextStore,
+        outbound: Optional[Dict[str, str]] = None,
+    ) -> Optional[Callable[[], Awaitable[Any]]]:
+        """The tool's lookup with server-filled arguments, or None if it can't."""
+        spec = ToolWrapperFactory.prefetch_spec(tool, call_subject, agent_id, outbound)
+        if spec is None:
+            return None
+        wrapper, prefetch_args = spec
+        name = tool.get('name')
+        tool_cache = ToolCache(context_store, agent_id, call_subject.call_ref, name)
+
+        async def job():
+            args = dict(prefetch_args)
+            fetch_ms: List[int] = []
+
+            async def fetch():
+                started = time.monotonic()
+                try:
+                    return await wrapper.execute(args)
+                finally:
+                    fetch_ms.append(round((time.monotonic() - started) * 1000))
+
+            result = await tool_cache.run(args, fetch)
+            phone = call_subject.phone
+            request = (
+                f'fetched {wrapper.method} {wrapper.url.split("?")[0]} in {fetch_ms[0]}ms'
+                if fetch_ms
+                else 'reused a saved or running fetch'
+            )
+            logger.info(
+                f"Prefetch done: tool '{name}', call {call_subject.call_ref} "
+                f'({call_subject.direction}), agent {agent_id}, '
+                f"phone ***{phone[-4:] if len(phone) > 4 else ''}: {request}; "
+                f'result {log_safe_result(result)}; args {log_safe_keys(args)}; '
+                f'timeout {wrapper.timeout}s; auth {wrapper.auth_type}; '
+                f'headers {wrapper.log_safe_headers()}; key {tool_cache.key(args)}'
+            )
+            return result
+
+        return job
+
+    @staticmethod
     def create_all_tool_functions(
         agent_tools: List[Dict[str, Any]],
         messenger_getter: Optional[Callable[[], Any]] = None,
+        call_subject: Optional[CallSubject] = None,
+        agent_id: Optional[str] = None,
+        context_store: Optional[CallContextStore] = None,
+        outbound: Optional[Dict[str, str]] = None,
     ) -> Tuple[List[FunctionSchema], List[Tuple[str, Callable]]]:
         """
         Create wrapper functions for all tools attached to an agent
 
         Args:
             messenger_getter: Returns the live browser messenger, for app tools
+            call_subject: The phone call's identity, for server-filled arguments
+            agent_id: The agent the tools belong to (the ``agent.id`` binding)
+            context_store: Phone calls: where read-only tool results are saved
+            outbound: Outbound calls: the context the CRM sent (``outbound.<key>``)
             agent_tools: List of tool configurations from get_agent_tools()
                         Each dict contains: {id, name, description, tool_type,
                                             config, parameter_schema, is_enabled, association}
@@ -398,49 +711,49 @@ class ToolWrapperFactory:
             f'Creating wrapper functions for {len(enabled_tools)} enabled tools'
         )
 
+        # Phone calls with saved results: reads after a write fetch current data
+        writes = CallWrites() if context_store is not None else None
+
         for tool in enabled_tools:
             try:
                 # Create wrapper based on tool type
                 wrapper = ToolWrapperFactory.create_wrapper(tool, messenger_getter)
 
-                # Apply config overrides if present
-                config_overrides = tool.get('association', {}).get('config_overrides')
-                if config_overrides:
-                    if isinstance(wrapper, AppToolWrapper):
-                        for key in ('ack_timeout_s', 'speak_on_success'):
-                            if key in config_overrides:
-                                setattr(wrapper, key, config_overrides[key])
-                    elif isinstance(wrapper, ApiToolWrapper):
-                        # For ApiToolWrapper, set attributes directly
-                        allowed_attrs = {
-                            'url',
-                            'method',
-                            'headers',
-                            'auth_type',
-                            'auth_credentials',
-                            'timeout',
-                        }
-                        for key, value in config_overrides.items():
-                            if key in allowed_attrs:
-                                if hasattr(wrapper, key):
-                                    setattr(wrapper, key, value)
-                                    logger.debug(
-                                        f"Applied config override for tool '{tool['name']}': {key}={value}"
-                                    )
-                            else:
-                                logger.debug(
-                                    f"Ignoring unknown config override key for tool '{tool['name']}': {key}"
-                                )
-                    elif hasattr(wrapper, 'config'):
-                        # For wrappers with config dict (e.g., PythonToolWrapper)
-                        wrapper.config.update(config_overrides)
-                        logger.debug(
-                            f"Applied config overrides for tool '{tool['name']}': {config_overrides}"
-                        )
+                ToolWrapperFactory.apply_config_overrides(tool, wrapper)
+
+                bound_values = resolve_bindings(
+                    tool_bindings(tool), call_subject, agent_id, outbound
+                )
+                if bound_values:
+                    logger.info(
+                        f"Server fills arguments {sorted(bound_values)} for tool '{tool['name']}'"
+                    )
+
+                tool_cache = None
+                if (
+                    context_store is not None
+                    and call_subject is not None
+                    and agent_id
+                    and ToolWrapperFactory.is_read_only(tool, wrapper)
+                ):
+                    tool_cache = ToolCache(
+                        context_store,
+                        agent_id,
+                        call_subject.call_ref,
+                        tool['name'],
+                        writes=writes,
+                    )
 
                 # Create Pipecat FunctionSchema and callable function
                 function_schema, callable_func = (
-                    ToolWrapperFactory.create_pipecat_function(tool, wrapper)
+                    ToolWrapperFactory.create_pipecat_function(
+                        tool,
+                        wrapper,
+                        bound_values,
+                        tool_cache,
+                        # Not read-only: may change data, so it counts as a write
+                        writes=writes if tool_cache is None else None,
+                    )
                 )
 
                 # Add to both lists

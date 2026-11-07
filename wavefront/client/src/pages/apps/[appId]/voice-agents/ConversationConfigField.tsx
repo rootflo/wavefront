@@ -16,12 +16,12 @@ import {
   ConfigSectionDoc,
   ConversationConfig,
   DEFAULT_CONVERSATION_CONFIG,
-  DEFAULT_EDITOR_TEXT,
   isDeepEqual,
   isOutOfRange,
   isPlainObject,
   splitSectionOptions,
 } from './conversation-config';
+import { resetKeepingLanguagePrompts } from './form/language-prompts';
 
 type PhraseMap = Record<string, string[]>;
 
@@ -89,7 +89,12 @@ function ConversationConfigField<T extends FieldValues>({
         <FormItem className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <FormLabel>Conversation Configuration</FormLabel>
-            <Button type="button" variant="outline" size="sm" onClick={() => setText(DEFAULT_EDITOR_TEXT)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setText(resetKeepingLanguagePrompts(form.getValues(name) as string | undefined))}
+            >
               Reset to defaults
             </Button>
           </div>
