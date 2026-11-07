@@ -34,22 +34,29 @@ context_router = APIRouter(prefix='/calls')
 
 MAX_CONTEXT_BYTES = 2048
 _CONTEXT_KEY = re.compile(r'^[a-z0-9_]{1,40}$')
-_SPIFFE_ID = re.compile(r'URI=(spiffe://[^;,]+)')
+_SPIFFE_ID = re.compile(r'URI=(spiffe://[^;,"]+)')
 
 
 def allowed_principal_prefixes(namespaces: Optional[str]) -> tuple:
-    """SPIFFE ID prefixes for a comma-separated namespace list (as floware)."""
+    """SPIFFE ID prefixes for a comma-separated namespace list (as floware).
+
+    The trailing '/' stops namespace ``api`` from also admitting ``api-evil``.
+    """
     names = [n.strip() for n in (namespaces or '').split(',') if n.strip()]
-    return tuple(f'spiffe://cluster.local/ns/{name}' for name in names)
+    return tuple(f'spiffe://cluster.local/ns/{name}/' for name in names)
 
 
 def mtls_principal(xfcc: Optional[str]) -> Optional[str]:
-    """The SPIFFE ID in an ``X-Forwarded-Client-Cert`` header, if any."""
+    """The SPIFFE ID in an ``X-Forwarded-Client-Cert`` header, if any.
+
+    The sidecar appends the peer it authenticated as the last entry; earlier
+    entries arrived as request headers and can be forged (as floware).
+    """
     if not xfcc:
         return None
-    match = _SPIFFE_ID.search(xfcc)
-    if match:
-        return match.group(1)
+    uris = _SPIFFE_ID.findall(xfcc)
+    if uris:
+        return uris[-1]
     return xfcc if xfcc.startswith('spiffe://') else None
 
 

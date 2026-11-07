@@ -87,9 +87,27 @@ def test_principal_and_prefix_parsing():
     )
     assert mtls_principal('Hash=abc') is None
     assert allowed_principal_prefixes(' a, ,b ') == (
-        'spiffe://cluster.local/ns/a',
-        'spiffe://cluster.local/ns/b',
+        'spiffe://cluster.local/ns/a/',
+        'spiffe://cluster.local/ns/b/',
     )
+
+
+def test_a_forged_first_entry_does_not_count():
+    # The client sends a floware identity; the sidecar appends the real peer last
+    forged = 'By=x;URI=spiffe://cluster.local/ns/wavefront-api/sa/floware'
+    real = 'By=y;URI=spiffe://cluster.local/ns/attacker/sa/x'
+    assert mtls_principal(f'{forged},{real}') == (
+        'spiffe://cluster.local/ns/attacker/sa/x'
+    )
+    with pytest.raises(HTTPException):
+        _verify(x_forwarded_client_cert=f'{forged},{real}')
+    assert _verify(x_forwarded_client_cert=f'{real},{FLOWARE_XFCC}') is None
+
+
+def test_a_lookalike_namespace_is_rejected():
+    with pytest.raises(HTTPException):
+        lookalike = 'URI=spiffe://cluster.local/ns/wavefront-api-evil/sa/x'
+        _verify(x_forwarded_client_cert=lookalike)
 
 
 # ---------------------------------------------------------------- validation

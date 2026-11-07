@@ -142,9 +142,14 @@ async def read_caller_fields(
         if not paths:
             continue
         name = tool.get('name') or ''
-        spec = ToolWrapperFactory.prefetch_spec(
-            tool, subject, agent_id, outbound, log=False
-        )
+        try:
+            spec = ToolWrapperFactory.prefetch_spec(
+                tool, subject, agent_id, outbound, log=False
+            )
+        except Exception as e:
+            # One broken tool must not cost the call every other tool's fields
+            logger.warning(f"Prompt fields of tool '{name}' ignored: {e}")
+            continue
         if spec is None:
             logger.warning(
                 f"Prompt fields of tool '{name}' ignored: it can't be fetched "

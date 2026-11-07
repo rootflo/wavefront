@@ -145,12 +145,14 @@ class TestInitiateCall:
                 'telephony_config_id': 'tel-1',
             }
         )
-        voice_agent_service.telephony_config_service.get_config = AsyncMock(
-            return_value={
-                'provider': 'twilio',
-                'credentials': {'account_sid': 'AC1', 'auth_token': 't'},
-            }
-        )
+        telephony_config = {
+            'provider': 'twilio',
+            'credentials': {'account_sid': 'AC1', 'auth_token': 't'},
+        }
+        # get_config before develop's #481, get_runtime_config after it
+        telephony = voice_agent_service.telephony_config_service
+        telephony.get_config = AsyncMock(return_value=telephony_config)
+        telephony.get_runtime_config = AsyncMock(return_value=telephony_config)
         twilio_service = Mock()
         twilio_service.initiate_call = Mock(
             side_effect=lambda **kw: order.append('dial')

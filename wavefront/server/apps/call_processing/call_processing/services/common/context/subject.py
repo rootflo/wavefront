@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from call_processing.log.logger import logger
+
 # E.164: + then 8 to 15 digits, no leading zero
 _E164 = re.compile(r'^\+[1-9]\d{7,14}$')
 
@@ -62,8 +64,15 @@ class CallSubject:
         cls, *, call_ref: str, direction: str, raw_phone: Optional[str]
     ) -> 'CallSubject':
         phone = normalize_indian_phone_number(raw_phone or '')
+        if raw_phone and not _E164.match(phone):
+            # Masked: say why caller.phone binds stay with the AI on this call
+            logger.warning(
+                f'Caller number for call {call_ref} is not a valid phone number '
+                f'(…{raw_phone.strip()[-4:]}); caller.phone stays with the AI'
+            )
+            phone = ''
         return cls(
             call_ref=call_ref,
             direction=direction,
-            phone=phone if _E164.match(phone) else '',
+            phone=phone,
         )

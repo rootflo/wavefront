@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from call_processing.services.common.context.subject import (
@@ -47,10 +49,14 @@ def test_subject_tolerates_missing_phone():
         '+0123456789',
     ],
 )
-def test_subject_drops_withheld_or_invalid_numbers(raw):
+def test_subject_drops_withheld_or_invalid_numbers(raw, caplog):
     # Empty, so a caller.phone bind stays with the AI instead of a junk lookup
-    subject = CallSubject.for_call(call_ref='CA123', direction='inbound', raw_phone=raw)
+    with caplog.at_level(logging.WARNING, logger='call_processing'):
+        subject = CallSubject.for_call(
+            call_ref='CA123', direction='inbound', raw_phone=raw
+        )
     assert subject.phone == ''
+    assert 'not a valid phone number' in caplog.text
 
 
 def test_subject_keeps_valid_non_indian_numbers():

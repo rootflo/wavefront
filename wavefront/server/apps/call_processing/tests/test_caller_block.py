@@ -19,6 +19,9 @@ from call_processing.services.common.context.store import (
 )
 from call_processing.services.common.context.subject import CallSubject
 from call_processing.services.common.conversation import BaseConversation
+from call_processing.services.common.tools.tool_wrapper_service import (
+    ToolWrapperFactory,
+)
 from call_processing.services.telephony.conversation import TelephonyConversation
 
 from tests.test_call_context_store import FakeRedis
@@ -141,6 +144,26 @@ async def test_saved_prefetch_feeds_the_block_at_call_start():
 
     assert ready == [('customer_name', 'Jane Doe'), ('account › amount_due', '1250')]
     assert pending == []
+
+
+async def test_one_broken_tool_keeps_the_other_tools_fields(monkeypatch):
+    real_spec = ToolWrapperFactory.prefetch_spec
+
+    def spec(tool, *args, **kwargs):
+        if tool['name'] == 'broken_tool':
+            raise ValueError('bad tool config')
+        return real_spec(tool, *args, **kwargs)
+
+    monkeypatch.setattr(ToolWrapperFactory, 'prefetch_spec', staticmethod(spec))
+    redis = FakeRedis()
+    _save(redis, RESULT)
+    broken = {**_tool(['customer_name']), 'name': 'broken_tool'}
+
+    ready, _ = await read_caller_fields(
+        [broken, _tool(['customer_name'])], SUBJECT, 'agent-1', CallContextStore(redis)
+    )
+
+    assert ready == [('customer_name', 'Jane Doe')]
 
 
 async def test_unsaved_prefetch_is_pending_then_arrives_late():
