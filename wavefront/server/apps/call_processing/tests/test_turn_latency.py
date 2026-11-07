@@ -41,7 +41,9 @@ def test_filler_audio_does_not_count_as_the_answer():
     t.llm_text()
     t.audio(11.2)
 
-    assert t.close().answer_secs == pytest.approx(1.2)
+    turn = t.close()
+
+    assert turn.answer_secs == pytest.approx(1.2)
 
 
 def test_tool_turn_is_timed_to_audio_after_the_last_tool_result():
@@ -72,7 +74,9 @@ def test_repeated_tool_time_is_summed():
     t.llm_text()
     t.audio(1.2)
 
-    assert t.close().tool_secs == {'lookup': pytest.approx(0.7)}
+    turn = t.close()
+
+    assert turn.tool_secs == {'lookup': pytest.approx(0.7)}
 
 
 def test_unanswered_turn_is_dropped():
@@ -80,7 +84,9 @@ def test_unanswered_turn_is_dropped():
     t.user_stopped(0.0)
     t.audio(0.5)  # filler only, then the caller talks again
 
-    assert t.close() is None
+    turn = t.close()
+
+    assert turn is None
     assert not t.turn_open
 
 
@@ -89,7 +95,9 @@ def test_tool_started_outside_a_turn_is_ignored():
     t.tool_started('x', 'lookup', 0.0)
     t.tool_finished('x', 1.0)
 
-    assert t.close() is None
+    turn = t.close()
+
+    assert turn is None
 
 
 def test_new_user_turn_closes_the_previous_one():

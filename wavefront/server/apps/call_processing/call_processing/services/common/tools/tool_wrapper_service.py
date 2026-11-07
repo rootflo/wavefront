@@ -506,8 +506,9 @@ class ToolWrapperFactory:
                     if key in allowed_attrs:
                         if hasattr(wrapper, key):
                             setattr(wrapper, key, value)
+                            # Key only: values can be tokens, passwords or headers
                             logger.debug(
-                                f"Applied config override for tool '{tool['name']}': {key}={value}"
+                                f"Applied config override for tool '{tool['name']}': {key}"
                             )
                     else:
                         logger.debug(
@@ -517,7 +518,8 @@ class ToolWrapperFactory:
                 # For wrappers with config dict (e.g., PythonToolWrapper)
                 wrapper.config.update(config_overrides)
                 logger.debug(
-                    f"Applied config overrides for tool '{tool['name']}': {config_overrides}"
+                    f"Applied config overrides for tool '{tool['name']}': "
+                    f'{log_safe_keys(config_overrides)}'
                 )
 
     @staticmethod

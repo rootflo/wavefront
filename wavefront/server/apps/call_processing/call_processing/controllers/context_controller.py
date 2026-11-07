@@ -8,7 +8,9 @@ stream reports, so no extra parameter travels through the telephony provider.
 Auth is floware's: in production the caller must present the service mesh's
 mTLS identity (``X-Forwarded-Client-Cert``) from an allowed namespace; outside
 production, the passthrough secret. Unlike ``/api/cache``, production is never
-left open, because call_processing is public for the telephony webhooks.
+left open, because call_processing is public for the telephony webhooks. The
+header is only as trustworthy as the sidecar that appends to it, so production
+must not expose this port outside the mesh (see ``mtls_allowed_namespaces``).
 """
 
 import json

@@ -63,7 +63,7 @@ export const withLanguagePrompt = (text: string | undefined, language: string, p
 export const resetKeepingLanguagePrompts = (text: string | undefined): string =>
   withPacks(DEFAULT_CONVERSATION_CONFIG, readLanguagePrompts(text) ?? {});
 
-/** New editor text without the packs of languages no longer supported (unchanged if none). */
+/** New editor text without the packs of languages no longer supported (unchanged if none). Applied on save. */
 export const keepLanguagePrompts = (text: string | undefined, languages: string[]): string | undefined => {
   const config = parseConfig(text);
   const packs = readLanguagePrompts(text);

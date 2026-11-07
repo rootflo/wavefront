@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 
 from call_processing.services.common.context.store import (
@@ -96,8 +95,8 @@ async def test_slow_running_fetch_falls_back_to_a_live_call():
     assert result == {'from': 'live'}
     assert live.calls == 1
     prefetch.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await prefetch
+    # Wait for the cancelled prefetch to finish; its CancelledError is returned
+    await asyncio.gather(prefetch, return_exceptions=True)
 
 
 async def test_redis_down_means_a_live_call_every_time():

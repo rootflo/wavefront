@@ -5,12 +5,7 @@ import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
 import { useFormContext } from 'react-hook-form';
-import {
-  MAX_LANGUAGE_PROMPT_CHARS,
-  keepLanguagePrompts,
-  readLanguagePrompts,
-  withLanguagePrompt,
-} from './language-prompts';
+import { MAX_LANGUAGE_PROMPT_CHARS, readLanguagePrompts, withLanguagePrompt } from './language-prompts';
 import { VoiceAgentInput } from './voice-agent-form';
 
 const LanguagesSection = ({ isEdit }: { isEdit: boolean }) => {
@@ -45,14 +40,9 @@ const LanguagesSection = ({ isEdit }: { isEdit: boolean }) => {
                       checked={field.value?.includes(lang.code)}
                       onCheckedChange={(checked) => {
                         const current = field.value || [];
-                        if (checked) {
-                          field.onChange([...current, lang.code]);
-                        } else {
-                          const remaining = current.filter((l) => l !== lang.code);
-                          field.onChange(remaining);
-                          // An unchecked language's pack would never be used
-                          setConfigText(keepLanguagePrompts(configText, remaining));
-                        }
+                        // An unchecked language's pack stays until save, so rechecking it brings the
+                        // text back; saving drops it (buildVoiceAgentFields)
+                        field.onChange(checked ? [...current, lang.code] : current.filter((l) => l !== lang.code));
                       }}
                     />
                     <label

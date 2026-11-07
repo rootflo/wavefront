@@ -1,6 +1,8 @@
 import logging
 
 from call_processing.services.common.tools.tool_wrapper_service import (
+    ApiToolWrapper,
+    PythonToolWrapper,
     ToolWrapperFactory,
     log_safe_keys,
     log_safe_result,
@@ -56,3 +58,25 @@ async def test_tool_function_logs_no_customer_data(caplog):
     assert PHONE not in caplog.text
     assert 'Jane Doe' not in caplog.text
     assert 'caller_phone' in caplog.text
+
+
+SECRET = 'sk-test-not-a-real-token'
+
+
+def test_config_override_debug_logs_name_keys_not_values(caplog):
+    overrides = {
+        'auth_credentials': {'token': SECRET},
+        'headers': {'X-Api-Key': SECRET},
+    }
+    api = ApiToolWrapper(url='https://example.test/accounts', method='GET')
+    python = PythonToolWrapper(config={})
+
+    tool = {'name': 'find_account', 'association': {'config_overrides': overrides}}
+    with caplog.at_level(logging.DEBUG, logger='call_processing'):
+        for wrapper in (api, python):
+            ToolWrapperFactory.apply_config_overrides(tool, wrapper)
+
+    assert api.auth_credentials == {'token': SECRET}  # still applied
+    assert python.config['headers'] == {'X-Api-Key': SECRET}
+    assert SECRET not in caplog.text
+    assert 'auth_credentials' in caplog.text

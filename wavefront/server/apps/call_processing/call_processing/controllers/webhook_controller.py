@@ -41,7 +41,11 @@ def _media_stream_websocket_url(base_url: str | None) -> str:
 
 
 def _stream_twiml(
-    base_url: str | None, voice_agent_id: str, customer_number: str, agent_number: str
+    base_url: str | None,
+    voice_agent_id: str,
+    customer_number: str,
+    agent_number: str,
+    call_direction: str,
 ) -> Response:
     """TwiML that connects the call to our media stream WebSocket."""
     websocket_url = _media_stream_websocket_url(base_url)
@@ -55,6 +59,8 @@ def _stream_twiml(
     stream.parameter(name='voice_agent_id', value=voice_agent_id)
     stream.parameter(name='customer_number', value=customer_number)
     stream.parameter(name='agent_number', value=agent_number)
+    # The stream can't tell otherwise; the webhook prefetch used the same value
+    stream.parameter(name='call_direction', value=call_direction)
 
     connect.append(stream)
     response.append(connect)
@@ -132,6 +138,7 @@ async def inbound_webhook(
         voice_agent_id=agent_id,
         customer_number=From,
         agent_number=To,
+        call_direction='inbound',
     )
 
 
@@ -161,6 +168,7 @@ async def twiml_endpoint(
         voice_agent_id=voice_agent_id,
         customer_number=To,
         agent_number=From,
+        call_direction='outbound',
     )
 
 

@@ -60,10 +60,13 @@ def _stream_params(transport_type: str, call_data: Dict[str, Any]) -> _StreamPar
     """Read the agent and the call's numbers from a provider's start message."""
     if transport_type == 'twilio':
         body_data = call_data.get('body', {})
+        direction = body_data.get('call_direction')
         return _StreamParams(
             voice_agent_id=body_data.get('voice_agent_id'),
             customer_number=body_data.get('customer_number'),
             agent_number=body_data.get('agent_number', ''),
+            # Set by our TwiML; calls started before it existed fall back to outbound
+            call_direction=direction if direction in ('inbound', 'outbound') else None,
         )
 
     if transport_type == 'exotel':

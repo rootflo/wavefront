@@ -22,6 +22,9 @@ from call_processing.services.webrtc.app_messages import (
     parse_switch_agent,
     strip_step_overlay,
 )
+from call_processing.services.common.language_switch import set_prompt_language
+from call_processing.services.common.prompt_layout import PromptParts
+from call_processing.services.common.prompts import current_language_line
 from call_processing.services.common.tools.tool_wrapper_service import (
     AppToolWrapper,
     ToolWrapperFactory,
@@ -294,6 +297,64 @@ async def test_multi_language_overlay_survives_in_original_prompt():
     assert system.startswith('Respond in Hindi')
     assert OVERLAY_START in state['original_system_prompt']
     assert state['current_language'] == 'hi'
+
+
+def _parts_state():
+    return {
+        'current_language': 'en',
+        'switch_count': 0,
+        'original_system_prompt': 'MAIN\n\nRULES\n\nCALL',
+        'prompt_parts': PromptParts(
+            main='MAIN',
+            rules='\n\nRULES',
+            suffix='\n\nCALL',
+            packs={'hi': 'HINDI PACK'},
+        ),
+    }
+
+
+async def test_overlay_keeps_the_language_pack_and_the_last_language_line():
+    state = _parts_state()
+    messenger, context, _ = _messenger(
+        language_state=state,
+        supported_languages=['en', 'hi'],
+        tts_provider='unknown-provider',
+        stt_provider='unknown-provider',
+    )
+
+    await messenger.handle_client_message(
+        _msg('set_context', {'step': 'identity', 'language': 'hi', 'instruction': 'X.'})
+    )
+
+    system = context.get_messages()[0]['content']
+    assert system.startswith('MAIN\n\nHINDI PACK\n\nRULES\n\nCALL')
+    assert OVERLAY_START in system
+    assert system.endswith(current_language_line('hi'))
+    assert OVERLAY_START in state['prompt_parts'].suffix  # kept for later switches
+
+
+async def test_language_switch_after_an_overlay_swaps_the_pack_and_keeps_the_step():
+    state = _parts_state()
+    messenger, context, _ = _messenger(
+        language_state=state,
+        supported_languages=['en', 'hi'],
+        tts_provider='unknown-provider',
+        stt_provider='unknown-provider',
+    )
+    await messenger.handle_client_message(
+        _msg('set_context', {'step': 'identity', 'language': 'hi', 'instruction': 'X.'})
+    )
+    await messenger.handle_client_message(
+        _msg('set_context', {'step': 'address', 'instruction': 'Y.'})
+    )
+
+    assert set_prompt_language(context, state, 'en')
+
+    system = context.get_messages()[0]['content']
+    assert 'HINDI PACK' not in system
+    assert system.count(OVERLAY_START) == 1
+    assert 'Y.' in system and 'X.' not in system
+    assert system.endswith(current_language_line('en'))
 
 
 async def test_room_context_language_adds_no_language_instruction_prefix():
