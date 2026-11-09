@@ -7,11 +7,11 @@ Provides LLM-callable language detection and switching capabilities
 from typing import Awaitable, Dict, Any, List, Callable, Optional
 from pipecat.services.llm_service import FunctionCallParams
 from call_processing.log.logger import logger
-from call_processing.services.common.language_switch import queue_language_update
-from call_processing.services.common.prompts import (
-    language_instruction,
-    unsupported_language_error,
+from call_processing.services.common.language_switch import (
+    queue_language_update,
+    set_prompt_language,
 )
+from call_processing.services.common.prompts import unsupported_language_error
 
 
 class LanguageDetectionToolFactory:
@@ -156,30 +156,20 @@ class LanguageDetectionToolFactory:
                     else:
                         logger.error(log_msg)
 
-                    # Get base prompt without language instruction (must exist for multi-language)
-                    base_prompt = language_state.get('original_system_prompt')
-                    if not base_prompt:
+                    # Base prompt without language instruction (must exist for
+                    # multi-language). Mutated in place: an LLMMessagesUpdateFrame
+                    # would snapshot messages BEFORE pipecat appends the tool
+                    # result, stripping it from context and causing a second
+                    # spurious tool call on LLM continuation.
+                    if not set_prompt_language(
+                        context, language_state, target_language
+                    ):
                         error_msg = 'Original system prompt not found in language state'
                         logger.error(error_msg)
                         await params.result_callback(
                             {'success': False, 'error': error_msg}
                         )
                         return
-
-                    # Append new language instruction to clean base prompt
-                    updated_content = (
-                        f'{language_instruction(target_language)}\n\n{base_prompt}'
-                    )
-
-                    # Mutate the system message in-place on the context object so
-                    # the full conversation history (including the current tool
-                    # call + result being appended by pipecat) is preserved.
-                    # Using LLMMessagesUpdateFrame would snapshot messages BEFORE
-                    # pipecat appends the tool result, stripping it from context
-                    # and causing a second spurious tool call on LLM continuation.
-                    current_messages = context.get_messages()
-                    current_messages[0] = {'role': 'system', 'content': updated_content}
-                    context.set_messages(current_messages)
 
                     logger.info(
                         f'Updated system prompt with {target_language} instruction'

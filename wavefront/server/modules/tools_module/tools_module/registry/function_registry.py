@@ -9,7 +9,7 @@ from typing import Callable, Dict
 
 from tools_module.floware_api import FlowareApiClient
 from tools_module.registry.registries.api_service_registry import (
-    API_SERVICE_REGISTRY,
+    build_api_service_registry,
 )
 from tools_module.registry.registries.configuration_registry import (
     build_configuration_registry,
@@ -49,6 +49,6 @@ def build_function_registry(api: FlowareApiClient) -> Dict[str, Callable]:
         build_email_registry(api),
         build_util_function_registry(api),
         build_message_processor_registry(api),
-        API_SERVICE_REGISTRY,
+        build_api_service_registry(api),
         build_configuration_registry(api),
     )

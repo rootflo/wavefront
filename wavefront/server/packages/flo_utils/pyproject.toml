@@ -8,8 +8,13 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "cryptography>=46.0.5",
+    "flo-cloud",
     "tiktoken>=0.9.0",
 ]
+
+[tool.uv.sources]
+flo-cloud = { workspace = true }
 
 [tool.uv]
 package = true

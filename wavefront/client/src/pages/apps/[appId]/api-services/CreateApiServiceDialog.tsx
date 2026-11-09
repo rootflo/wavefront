@@ -33,7 +33,7 @@ const defaultYamlContent = `service:
     version: v1
     type: basic
     username: your-username
-    password: your-password
+    password: \${secrets.MY_API_PASSWORD}
   apis:
     - id: get-users
       version: v1

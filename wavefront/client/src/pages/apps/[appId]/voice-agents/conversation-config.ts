@@ -18,6 +18,14 @@ export const DEFAULT_CONVERSATION_CONFIG = {
     vad_start_ms: 200,
     vad_stop_ms: 200,
     end_of_turn_timeout_ms: 3000,
+    transcript_turn_start: true,
+    idle_timeout_ms: 0,
+    idle_max_check_ins: 2,
+    idle_fixed_goodbye: false,
+    idle_goodbye_message: "It seems you're no longer there, so I'll end the call now. Goodbye!",
+  },
+  language_switch: {
+    direct_switch: false,
   },
   filler_speech: {
     thinking: false,
@@ -40,6 +48,18 @@ export const BUILT_IN_THINKING_PHRASES: Record<string, string[]> = {
   kn: ['ಹ್ಮ್', 'ಸರಿ', 'ನೋಡುತ್ತೇನೆ'],
 };
 
+/**
+ * Built-in language choice words from the call-processing service (`LANGUAGE_CHOICE_WORDS` in
+ * `constants/language_config.py`). Tamil, Telugu and Kannada are unreviewed guesses.
+ */
+export const BUILT_IN_CHOICE_WORDS: Record<string, string[]> = {
+  en: ['please', 'in', 'language', 'ok', 'okay', 'yes', 'speak', 'talk', 'continue'],
+  hi: ['mein', 'mai', 'me', 'bhasha', 'में', 'मे', 'भाषा', 'हाँ', 'हां'],
+  ta: ['la'],
+  te: ['lo'],
+  kn: ['alli', 'dalli'],
+};
+
 export const BUILT_IN_TOOL_CALL_PHRASES: Record<string, string[]> = {
   en: ['Please wait a moment', 'Just a second', 'Give me a moment', 'One moment please'],
   hi: ['कृपया एक पल प्रतीक्षा करें', 'बस एक सेकंड', 'मुझे एक पल दें', 'एक पल रुकिए'],
@@ -56,11 +76,23 @@ export interface ConfigOptionDoc {
   kind: 'boolean' | 'number' | 'text' | 'phrases';
   min?: number;
   max?: number;
+  /** 0 turns the option off; any other value below this is raised to it. */
+  minWhenOn?: number;
   step?: number;
   /** Boolean option in the same section that must be on for this one to matter. */
   requires?: string;
+  /** Number option in the same section that must be above 0 for this one to matter. */
+  requiresPositive?: string;
+  /** Boolean shown among the section's hidden settings, beside what it controls, not with the toggles. */
+  inSettings?: boolean;
   /** For phrases: what the service says for languages the bot does not customise. */
   builtInPhrases?: Record<string, string[]>;
+  /** For phrases: what one entry is called, singular and plural (default phrase / phrases). */
+  phraseNoun?: { one: string; many: string };
+  /** For phrases: an empty list is a real setting (nothing allowed), not a reset to the built-ins. */
+  keepEmpty?: boolean;
+  /** For phrases: which languages the built-ins apply to, shown under them (default: English fallback note). */
+  phrasesNote?: string;
   defaultValue: string;
   range: string;
   description: string;
@@ -169,6 +201,95 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
         description:
           'When the user pauses mid-sentence, how much silence makes the bot reply anyway. Lower feels snappier but can talk over users who pause to think.',
       },
+      {
+        key: 'transcript_turn_start',
+        label: 'Answer speech the voice detector missed',
+        kind: 'boolean',
+        inSettings: true,
+        defaultValue: 'true',
+        range: 'true / false',
+        description:
+          'The voice detector can miss a short or quiet reply (a single word such as "Hindi") that speech-to-text still transcribes. On: the transcript starts the user\'s turn and the bot answers. Off: the bot stays silent until the user speaks again, then answers both. With barge-in off, only words said while the bot is silent count. Has no effect when words needed to interrupt is above 0: those turns already start from transcripts.',
+      },
+      {
+        key: 'idle_timeout_ms',
+        label: 'Silence before checking in (ms)',
+        kind: 'number',
+        min: 0,
+        max: 60000,
+        minWhenOn: 2000,
+        step: 500,
+        defaultValue: '0',
+        range: '0 (off), 2000 – 60000',
+        description:
+          'When the user stays silent this long after the bot finishes speaking, the bot asks whether they are still there, in the language of the conversation. 0 turns this off. The countdown pauses while a tool runs. It starts only once the bot has spoken, so a bot without a welcome message waits for the user to speak first.',
+      },
+      {
+        key: 'idle_max_check_ins',
+        label: 'Check-ins before hanging up',
+        kind: 'number',
+        min: 0,
+        max: 5,
+        step: 1,
+        requiresPositive: 'idle_timeout_ms',
+        defaultValue: '2',
+        range: '0 – 5',
+        description:
+          'How many times the bot asks before saying goodbye and ending the call. Only words the bot understood count as an answer: a cough or background noise does not reset the count. 0 skips the check-ins: the bot says goodbye at the first silence.',
+      },
+      {
+        key: 'idle_fixed_goodbye',
+        label: 'Use a fixed goodbye',
+        kind: 'boolean',
+        inSettings: true,
+        requiresPositive: 'idle_timeout_ms',
+        defaultValue: 'false',
+        range: 'true / false',
+        description:
+          'Off: the AI says the goodbye to a silent user, in the language of the conversation. On: the bot says the goodbye message below, exactly as written.',
+      },
+      {
+        key: 'idle_goodbye_message',
+        label: 'Goodbye message',
+        kind: 'text',
+        requires: 'idle_fixed_goodbye',
+        requiresPositive: 'idle_timeout_ms',
+        defaultValue: "It seems you're no longer there, so I'll end the call now. Goodbye!",
+        range: 'text',
+        description: 'What the bot says before hanging up on a silent user, when a fixed goodbye is on.',
+      },
+    ],
+  },
+  {
+    section: 'language_switch',
+    title: 'Language switching',
+    summary:
+      'How a multi-language agent changes language when the user picks one. Only applies to agents with more than one supported language.',
+    options: [
+      {
+        key: 'direct_switch',
+        label: 'Switch language without an extra AI call',
+        kind: 'boolean',
+        defaultValue: 'false',
+        range: 'true / false',
+        description:
+          'Off: when the user picks a language, the AI first switches it and then makes a second call to reply, so the user waits for two AI calls (often 3 to 7 seconds). On: when the user says only a language name ("Hindi", "हिंदी", "Hindi please"), the bot switches straight away and the AI replies in one call, about 2 seconds sooner. Anything more than a language name ("can we talk in Hindi?") still goes through the AI as before.',
+      },
+      {
+        key: 'choice_words',
+        label: 'Words allowed around the language name',
+        kind: 'phrases',
+        requires: 'direct_switch',
+        builtInPhrases: BUILT_IN_CHOICE_WORDS,
+        phraseNoun: { one: 'word', many: 'words' },
+        keepEmpty: true,
+        phrasesNote:
+          'The language named decides the switch; the words around it only have to be allowed. A call allows the words of English plus every language the agent supports, all combined: an English, Hindi and Tamil agent switches to Tamil on "Tamil mein" and to Hindi on "Hindi please". Languages the agent does not support are ignored.',
+        defaultValue: 'built-in',
+        range: '{ "hi": ["mein", "chahiye"] }',
+        description:
+          'Optional. The only words a user may say alongside the language name for the switch to happen without the AI. Anything else ("not Hindi", "Hindi loan details") still goes through the AI. Adding a language starts from its built-in words: add your own or remove one that misfires, and your list replaces the built-ins for that language. Keep to words that change nothing on their own, such as "please" or "mein": a word like "not" would make the bot switch when the user did not ask. Language names are ignored here.',
+      },
     ],
   },
   {
@@ -257,6 +378,19 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
     ],
   },
 ];
+
+/** Toggles always show; the settings that tune them show when the section is opened. */
+export const splitSectionOptions = (options: ConfigOptionDoc[]) => ({
+  toggles: options.filter((option) => option.kind === 'boolean' && !option.inSettings),
+  settings: options.filter((option) => option.kind !== 'boolean' || option.inSettings),
+});
+
+/** Whether the service will clamp this value (numbers outside the option's range). */
+export const isOutOfRange = (option: ConfigOptionDoc, value: unknown): boolean => {
+  if (option.kind !== 'number' || typeof value !== 'number') return false;
+  if (option.minWhenOn !== undefined && value > 0 && value < option.minWhenOn) return true;
+  return (option.min !== undefined && value < option.min) || (option.max !== undefined && value > option.max);
+};
 
 export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Union
 
 from pipecat.frames.frames import (
     Frame,
@@ -140,11 +140,17 @@ class FillerSpeechProcessor(FrameProcessor):
         self._last_phrase = random.choice(choices)
         return self._last_phrase
 
-    async def arm_thinking_filler(self, phrases: Sequence[str]) -> None:
-        """Speak one of ``phrases`` unless the LLM starts answering first."""
+    async def arm_thinking_filler(
+        self, phrases: Union[Sequence[str], Callable[[], Sequence[str]]]
+    ) -> None:
+        """Speak one of ``phrases`` unless the LLM starts answering first.
+
+        A callable is read when the filler fires, so the phrase follows a
+        language switch made after arming (``direct_language_switch.py``).
+        """
         await self.cancel_thinking_filler()
         if phrases:
-            self._pending = self.create_task(self._speak_later(self._pick(phrases)))
+            self._pending = self.create_task(self._speak_later(phrases))
 
     async def cancel_thinking_filler(self) -> None:
         if self._pending:
@@ -157,10 +163,16 @@ class FillerSpeechProcessor(FrameProcessor):
                 TTSSpeakFrame(self._pick(phrases), append_to_context=False)
             )
 
-    async def _speak_later(self, text: str) -> None:
+    async def _speak_later(
+        self, phrases: Union[Sequence[str], Callable[[], Sequence[str]]]
+    ) -> None:
         await asyncio.sleep(self._delay_secs)
         self._pending = None
-        await self.push_frame(TTSSpeakFrame(text, append_to_context=False))
+        choices = phrases() if callable(phrases) else phrases
+        if choices:
+            await self.push_frame(
+                TTSSpeakFrame(self._pick(choices), append_to_context=False)
+            )
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)

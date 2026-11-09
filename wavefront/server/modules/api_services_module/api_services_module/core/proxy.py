@@ -1,12 +1,13 @@
 """Core proxy functionality for handling API requests."""
 
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+import yaml
 from fastapi import HTTPException
 from fastapi.responses import Response
 from common_module.log.logger import logger
 from ..models.pipeline import PipelineContext, PipelineException
 from ..models.service import ProxyResponse, ServiceDefinition, ApiConfig
-from ..config.registry import ServiceRegistry
+from ..config.registry import ServiceNotFoundError, ServiceRegistry
 from ..pipeline.builder import PipelineBuilder, PipelineCache
 from ..auth.manager import AuthManager
 from .manager import ApiServicesManager
@@ -15,6 +16,16 @@ from api_services_module.utils.api_change_publisher import (
     ApiChangePublisher,
     UpdateMessage,
 )
+from api_services_module.secrets.references import (
+    find_literal_secrets,
+    find_service_refs,
+    find_unsupported_refs,
+    mask_definition,
+    restore_masked_secrets,
+)
+
+if TYPE_CHECKING:
+    from api_services_module.secrets.secret_store_service import SecretStoreService
 
 
 class ApiProxy:
@@ -30,10 +41,12 @@ class ApiProxy:
         service_registry: ServiceRegistry,
         api_services_manager: Optional[ApiServicesManager] = None,
         api_change_publisher: Optional[ApiChangePublisher] = None,
+        secret_store: Optional['SecretStoreService'] = None,
     ):
         self.service_registry = service_registry
         self.api_services_manager = api_services_manager
         self.api_change_publisher = api_change_publisher
+        self.secret_store = secret_store
 
         self.auth_manager = AuthManager()
         self.pipeline_cache = PipelineCache()
@@ -48,6 +61,24 @@ class ApiProxy:
                 status_code=500,
                 detail='API services manager is not configured for this proxy',
             )
+
+    async def _load_missing_service(self, service_id: str):
+        """Load one service the in-memory registry does not have, from the database.
+
+        A replica that missed the create starts out without the service. Returns
+        None when it does not exist there either.
+        """
+        if not getattr(self.service_registry, 'api_service_manager', None):
+            return None
+        try:
+            await self.service_registry.load_service_from_db(service_id)
+        except ServiceNotFoundError:
+            return None
+        service_definition = self.service_registry.get_service(service_id)
+        if service_definition:
+            self.auth_manager.register_service_auth(service_definition)
+            logger.info(f'Loaded API service {service_id} on first use')
+        return service_definition
 
     def _initialize_auth_manager(self):
         """Initialize auth manager with all registered services."""
@@ -66,6 +97,7 @@ class ApiProxy:
         headers: Optional[Dict[str, str]] = None,
         body: Optional[Any] = None,
         trace: bool = False,
+        restrict_payload_to_schema: bool = False,
     ) -> Union[ProxyResponse, Response]:
         """
         Process an API request through the proxy pipeline.
@@ -80,6 +112,9 @@ class ApiProxy:
             query_params: Query parameters
             headers: Request headers
             body: Request body
+            restrict_payload_to_schema: When the API declares a payload_schema,
+                send only its declared fields. For internal callers whose body
+                is assembled from workflow state rather than written for this API.
 
         Returns:
             Union[ProxyResponse, Response] with standardized format (JSON/text via ProxyResponse, binary via fastapi.Response)
@@ -108,6 +143,8 @@ class ApiProxy:
             # Get service definition
             service_definition = self.service_registry.get_service(service_id)
             if not service_definition:
+                service_definition = await self._load_missing_service(service_id)
+            if not service_definition:
                 raise HTTPException(
                     status_code=404, detail=f'Service not found: {service_id}'
                 )
@@ -119,6 +156,16 @@ class ApiProxy:
                     status_code=404,
                     detail=f'API not found: {api_id} (version: {api_version}) in service: {service_id}',
                 )
+
+            if (
+                restrict_payload_to_schema
+                and api_config.payload_schema
+                and isinstance(context.body, dict)
+            ):
+                declared = {f.name for f in api_config.payload_schema.fields}
+                context.body = {
+                    k: v for k, v in context.body.items() if k in declared
+                } or None
 
             context.add_trace('proxy', 'Found service and API configuration')
 
@@ -288,17 +335,21 @@ class ApiProxy:
         """
         Get information about a service.
 
+        Built from the definition as stored, so `${secrets.NAME}` references
+        show as written; any literal secret is masked.
+
         Args:
             service_id: Service identifier
 
         Returns:
             Service information dictionary
         """
-        service_definition = self.service_registry.get_service(service_id)
-        if not service_definition:
+        stored_definition = self.service_registry.get_service_definition(service_id)
+        if not stored_definition:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
+        service_definition = mask_definition(stored_definition)
 
         return {
             'service_id': service_definition.id,
@@ -327,7 +378,7 @@ class ApiProxy:
     def get_all_services_info(self) -> Dict[str, Any]:
         """Get information about all registered services."""
         services = []
-        for service_id in self.service_registry.get_service_ids():
+        for service_id in self.service_registry.get_definition_ids():
             try:
                 services.append(self.get_service_info(service_id))
             except HTTPException as e:
@@ -357,6 +408,62 @@ class ApiProxy:
         except Exception as e:
             return {'status': 'unhealthy', 'error': str(e)}
 
+    async def _validate_secrets(
+        self, service_yaml: str, stored_yaml: Optional[str] = None
+    ) -> str:
+        """Check the secrets of an incoming definition; return the YAML to store.
+
+        - A field sent back masked keeps its stored value.
+        - Every `${secrets.NAME}` must exist, and appear only where it is
+          resolved (auth credentials and headers).
+        - With envelope encryption on, secret fields and sensitive headers must
+          use references, not literal values.
+        """
+        document = yaml.safe_load(service_yaml)
+        if not isinstance(document, dict):
+            return service_yaml
+
+        stored_document = yaml.safe_load(stored_yaml) if stored_yaml else None
+        merged, unmatched = restore_masked_secrets(document, stored_document)
+        if unmatched:
+            raise HTTPException(
+                status_code=400,
+                detail=f'No stored value to keep for masked field: {", ".join(unmatched)}',
+            )
+        if merged != document:
+            service_yaml = yaml.safe_dump(merged, sort_keys=False)
+
+        unsupported = find_unsupported_refs(merged)
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail='Secret references are only supported in auth credentials '
+                f'and headers, not in: {", ".join(unsupported)}',
+            )
+
+        names = find_service_refs(merged)
+        if names:
+            if not self.secret_store:
+                raise HTTPException(
+                    status_code=500, detail='Secret store is not configured'
+                )
+            missing = await self.secret_store.missing(names)
+            if missing:
+                raise HTTPException(
+                    status_code=400, detail=f'Unknown secret: {", ".join(missing)}'
+                )
+
+        if self.secret_store and self.secret_store.encryption_enabled:
+            literals = find_literal_secrets(merged)
+            if literals:
+                paths = ', '.join(path for path, _value in literals)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'Use ${{secrets.NAME}} instead of a literal value for {paths}',
+                )
+
+        return service_yaml
+
     async def create_api_services(self, service_yaml: str):
         self._require_api_services_manager()
         service_def: ServiceDefinition = ServiceDefinitionParser.parse_yaml_string(
@@ -370,6 +477,7 @@ class ApiProxy:
                 status_code=400,
                 detail=f'Service already exists: {service_id}, reloaded again',
             )
+        service_yaml = await self._validate_secrets(service_yaml)
         await self.api_services_manager.create_api_service(
             id=service_id, service_def_yaml=service_yaml
         )
@@ -397,10 +505,36 @@ class ApiProxy:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
+        stored_yaml = self.api_services_manager.fetch_service_def(service)
+        service_yaml = await self._validate_secrets(
+            service_yaml, stored_yaml=stored_yaml
+        )
+        # Resolve before saving, so a definition that can't run is never stored
+        try:
+            await self.service_registry.resolve_secrets(
+                ServiceDefinitionParser.parse_yaml_string(service_yaml)
+            )
+        except Exception as e:
+            logger.error(f'Failed to resolve secrets for {service_id}: {e}')
+            raise HTTPException(
+                status_code=500,
+                detail=f'Failed to resolve secrets for service {service_id}',
+            )
         await self.api_services_manager.update_api_service(
             id=service_id, service_def_yaml=service_yaml
         )
-        await self.reload_service(service_id)
+        try:
+            await self.reload_service(service_id)
+        except HTTPException:
+            # Put the previous definition back, in storage and in memory
+            await self.api_services_manager.update_api_service(
+                id=service_id, service_def_yaml=stored_yaml
+            )
+            try:
+                await self.reload_service(service_id)
+            except HTTPException:
+                logger.error(f'Failed to restore service {service_id}')
+            raise
         self.api_change_publisher.publish_message(
             UpdateMessage(
                 service_id=service_id,

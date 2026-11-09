@@ -343,7 +343,7 @@ class AsyncAgenticExecutionService:
         output_json_enabled: bool,
         access_token: Optional[str],
         app_key: Optional[str],
-        llm_config: Optional[Dict] = None,
+        llm_inference_config_id: Optional[UUID] = None,
         version: Optional[int] = None,
         enforce_queue_limit: bool = True,
     ) -> AsyncInferenceResponse:
@@ -378,7 +378,11 @@ class AsyncAgenticExecutionService:
             'entity_type': 'agent',
             'variables': with_execution_variables(variables, execution_id),
             'inputs': clean_inputs,
-            'llm_config': llm_config,
+            # The id only: the worker fetches the key from floware, so it is
+            # never stored in the broker.
+            'llm_inference_config_id': (
+                str(llm_inference_config_id) if llm_inference_config_id else None
+            ),
             'output_json_enabled': output_json_enabled,
             'access_token': access_token,
             'app_key': app_key,
@@ -458,7 +462,6 @@ class AsyncAgenticExecutionService:
             'namespace': namespace,
             'variables': with_execution_variables(variables, execution_id),
             'inputs': clean_inputs,
-            'llm_config': None,
             'output_json_enabled': output_json_enabled,
             'access_token': access_token,
             'app_key': app_key,

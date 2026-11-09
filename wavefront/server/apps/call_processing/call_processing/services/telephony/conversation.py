@@ -50,6 +50,7 @@ class TelephonyConversation(BaseConversation):
             transport.input(),  # Audio input from the telephony provider
             stack.stt,  # Speech-to-Text
             stack.context_aggregator.user(),  # Add user message to context
+            *stack.pre_llm_processors,  # Direct language switch
             stack.llm,  # LLM processing
             stack.filler,  # Thinking / tool-call fillers straight into TTS
             stack.tts,  # Text-to-Speech

@@ -28,6 +28,7 @@ COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 COPY wavefront/server/modules/common_module /app/modules/common_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
+COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
 COPY wavefront/server/packages/flo_lib /app/packages/flo_lib
 
 COPY wavefront/server/apps/floconsole /app/apps/floconsole

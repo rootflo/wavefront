@@ -8,6 +8,8 @@ export interface SttConfig {
   description: string | null;
   provider: SttProvider;
   region: string | null;
+  /** The api_key itself is never returned. */
+  has_api_key: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
