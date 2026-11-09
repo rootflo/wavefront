@@ -82,9 +82,6 @@ def test_principal_and_prefix_parsing():
     assert mtls_principal(FLOWARE_XFCC) == (
         'spiffe://cluster.local/ns/wavefront-api/sa/floware'
     )
-    assert mtls_principal('spiffe://cluster.local/ns/a/sa/b') == (
-        'spiffe://cluster.local/ns/a/sa/b'
-    )
     assert mtls_principal('Hash=abc') is None
     assert allowed_principal_prefixes(' a, ,b ') == (
         'spiffe://cluster.local/ns/a/',
@@ -102,6 +99,44 @@ def test_a_forged_first_entry_does_not_count():
     with pytest.raises(HTTPException):
         _verify(x_forwarded_client_cert=f'{forged},{real}')
     assert _verify(x_forwarded_client_cert=f'{real},{FLOWARE_XFCC}') is None
+
+
+FLOWARE_ID = 'spiffe://cluster.local/ns/wavefront-api/sa/floware'
+SUBJECT_WITH_COMMAS = 'Subject="CN=floware,OU=voice \\"ops\\",O=Acme"'
+
+
+@pytest.mark.parametrize(
+    'xfcc',
+    [
+        # A forged identity first; the last element (the sidecar's) has no URI
+        f'URI={FLOWARE_ID},By=proxy;Hash=abc',
+        # A bare SPIFFE ID is not an XFCC element
+        FLOWARE_ID,
+        # An open quote in a forged element swallows the sidecar's comma
+        f'URI={FLOWARE_ID};Subject="CN=x,By=proxy;Hash=abc',
+        # The last element must name exactly one peer
+        f'By=proxy;URI={FLOWARE_ID};URI=spiffe://cluster.local/ns/x/sa/y',
+        'By=proxy;URI=https://wavefront-api/floware',
+        '',
+        None,
+    ],
+)
+def test_only_one_spiffe_uri_in_the_last_element_counts(xfcc):
+    assert mtls_principal(xfcc) is None
+    with pytest.raises(HTTPException):
+        _verify(x_forwarded_client_cert=xfcc)
+
+
+def test_quoted_subject_with_commas_stays_in_one_element():
+    xfcc = (
+        'By=spiffe://cluster.local/ns/call-processing/sa/default;Hash=abc;'
+        f'{SUBJECT_WITH_COMMAS};URI={FLOWARE_ID};DNS=floware.local'
+    )
+    assert mtls_principal(xfcc) == FLOWARE_ID
+    assert mtls_principal(f'URI=spiffe://cluster.local/ns/x/sa/y,{xfcc}') == (
+        FLOWARE_ID
+    )
+    assert _verify(x_forwarded_client_cert=xfcc) is None
 
 
 def test_a_lookalike_namespace_is_rejected():

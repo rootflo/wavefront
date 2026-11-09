@@ -36,7 +36,6 @@ context_router = APIRouter(prefix='/calls')
 
 MAX_CONTEXT_BYTES = 2048
 _CONTEXT_KEY = re.compile(r'^[a-z0-9_]{1,40}$')
-_SPIFFE_ID = re.compile(r'URI=(spiffe://[^;,"]+)')
 
 
 def allowed_principal_prefixes(namespaces: Optional[str]) -> tuple:
@@ -48,18 +47,48 @@ def allowed_principal_prefixes(namespaces: Optional[str]) -> tuple:
     return tuple(f'spiffe://cluster.local/ns/{name}/' for name in names)
 
 
-def mtls_principal(xfcc: Optional[str]) -> Optional[str]:
-    """The SPIFFE ID in an ``X-Forwarded-Client-Cert`` header, if any.
+def _split_unquoted(text: str, sep: str) -> Optional[list]:
+    """Split on ``sep`` outside double quotes; None if a quote is left open.
 
-    The sidecar appends the peer it authenticated as the last entry; earlier
-    entries arrived as request headers and can be forged (as floware).
+    XFCC quotes Subject values, which can hold commas, and escapes quotes
+    inside them as ``\\"``.
     """
-    if not xfcc:
+    parts, start, quoted, escaped = [], 0, False, False
+    for i, ch in enumerate(text):
+        if escaped:
+            escaped = False
+        elif quoted and ch == '\\':
+            escaped = True
+        elif ch == '"':
+            quoted = not quoted
+        elif ch == sep and not quoted:
+            parts.append(text[start:i])
+            start = i + 1
+    if quoted:
         return None
-    uris = _SPIFFE_ID.findall(xfcc)
-    if uris:
-        return uris[-1]
-    return xfcc if xfcc.startswith('spiffe://') else None
+    parts.append(text[start:])
+    return parts
+
+
+def mtls_principal(xfcc: Optional[str]) -> Optional[str]:
+    """The SPIFFE ID of the peer the sidecar authenticated, if any.
+
+    The sidecar appends that peer as the last ``X-Forwarded-Client-Cert``
+    element; earlier elements arrived as request headers and can be forged.
+    Only the last element counts, and it must carry exactly one SPIFFE URI.
+    """
+    elements = _split_unquoted(xfcc or '', ',')
+    if not elements:
+        return None
+    pairs = _split_unquoted(elements[-1], ';') or []
+    uris = [
+        value.strip().strip('"')
+        for key, _, value in (pair.partition('=') for pair in pairs)
+        if key.strip().lower() == 'uri'
+    ]
+    if len(uris) != 1 or not uris[0].startswith('spiffe://'):
+        return None
+    return uris[0]
 
 
 @inject
