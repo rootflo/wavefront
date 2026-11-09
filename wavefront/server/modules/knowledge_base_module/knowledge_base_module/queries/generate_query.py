@@ -441,7 +441,11 @@ class QueryGenerator:
         true candidate count exceeded `max_candidates` (i.e.
         `len(rows) == max_candidates + 1`) without a separate `COUNT` query.
 
-        Deliberately has no `dino_score` threshold filter in this query --
+        The DINO similarity is returned as `primary_score` because these rows
+        go out unchanged in the API response, which names scores by role
+        rather than by embedding model.
+
+        Deliberately has no `primary_score` threshold filter in this query --
         that comparison is left to the caller so it can distinguish "no
         candidates matched" from "the candidate set was truncated" using the
         raw (pre-threshold) row count returned here.
@@ -476,7 +480,7 @@ class QueryGenerator:
             d.knowledge_base_id,
             d.metadata_value,
             d.document_date::text AS document_date,
-            1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
+            1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS primary_score
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id

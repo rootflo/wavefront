@@ -166,7 +166,7 @@ async def test_retrieve_image_exact_match_returns_document_date(
             'file_path': 'images/test.png',
             'file_name': 'test.png',
             'document_date': '2026-08-01T00:00:00',
-            'dino_score': 0.95,
+            'primary_score': 0.95,
         }
     ]
     kb_container.image_knowledge_base_retrieve.override(
