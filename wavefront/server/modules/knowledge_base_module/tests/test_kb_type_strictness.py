@@ -11,6 +11,7 @@ from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocument
 from db_repo_module.models.knowledge_bases import KnowledgeBase
 from fastapi import status
 from flo_testing import seed_user_session as create_session
+from kb_image_fixtures import image_bytes
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -162,11 +163,19 @@ async def test_update_rejects_unknown_types(seeded, test_client, auth_token):
 # --- upload -----------------------------------------------------------------
 
 
-def upload(test_client, auth_token, kb_id, content_type, filename='file'):
+def upload(test_client, auth_token, kb_id, content_type, filename='file', content=None):
+    if content is None:
+        # Image KBs check that an upload really is an image, so image types
+        # get a real one; anything else gets placeholder bytes.
+        content = (
+            image_bytes(content_type.split('/')[1].upper())
+            if content_type.startswith('image/') and content_type != 'image/svg+xml'
+            else b'content'
+        )
     return test_client.post(
         f'{KB_URL}/{kb_id}/documents',
         headers=auth(auth_token),
-        files={'file': (filename, b'content', content_type)},
+        files={'file': (filename, content, content_type)},
     )
 
 

@@ -20,6 +20,16 @@ Pillow already raises for unrecognised bytes, so callers need no new handling.
 
 SUPPORTED_PILLOW_FORMATS = ('JPEG', 'PNG', 'GIF', 'WEBP', 'BMP', 'TIFF')
 
+# Hard ceilings for an image sent to a service that decodes it. Compressed size
+# says little about decoded size -- a 1.5 MB solid-colour JPEG can declare
+# 10,000 x 10,000 pixels, ~300 MB once decoded to RGB -- so the pixel count is
+# checked from the header, before anything decodes. Pillow's own
+# decompression-bomb guard only warns below ~179 MP, so it is not enough.
+# 40 MP is larger than any current phone camera produces, and the embedding
+# models downscale to a few hundred pixels anyway.
+MAX_IMAGE_PIXELS = 40_000_000
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 # Mime types for the formats above, for rejecting an upload before its bytes
 # are shipped to a service that decodes with SUPPORTED_PILLOW_FORMATS.
 SUPPORTED_PILLOW_MIME_TYPES = frozenset(
