@@ -4,12 +4,33 @@ from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
 from common_module.telemetry import record_exception_on_span
+from datasource.executor import DATASOURCE_MAX_QUEUE_WAIT_SECONDS, DatasourceBusyError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from flo_ai.llm.guarded_llm import GuardrailBlocked
 
 
 def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
+    @app.exception_handler(DatasourceBusyError)
+    async def datasource_busy_handler(request: Request, exc: DatasourceBusyError):
+        """Every datasource thread on this worker is busy: overload, not a bug.
+
+        503 with Retry-After so clients back off and retry, and a warning rather
+        than a traceback, since the cause is a slow datasource, not this code.
+        """
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'Datasource busy on {request.method} {request.url.path} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': str(DATASOURCE_MAX_QUEUE_WAIT_SECONDS)},
+            content=ResponseFormatter().buildErrorResponse(
+                error='The datasource is busy. Please try again shortly.'
+            ),
+        )
+
     @app.exception_handler(GuardrailBlocked)
     async def guardrail_blocked_handler(request: Request, exc: GuardrailBlocked):
         """Turn a policy block into a plain error response.

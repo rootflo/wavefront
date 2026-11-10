@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from ..executor import run_blocking
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
 from .config import BigQueryConfig
@@ -12,6 +13,10 @@ import re
 # No dots: the name is appended to `project.dataset.`, so it is pinned there.
 _BQ_TABLE_NAME_RE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_-]*')
 _BQ_TABLE_NAME_MAX_LEN = 1024
+
+
+def _rows_as_dicts(query_job) -> List[Dict[str, Any]]:
+    return [dict(row.items()) for row in query_job.result()]
 
 
 class BigQueryPlugin(DataSourceABC):
@@ -177,8 +182,8 @@ class BigQueryPlugin(DataSourceABC):
                 # Await the async task to get the QueryJob
                 query_job = await task
 
-                query_result = list(query_job.result())
-                formatted_result = [dict(row.items()) for row in query_result]
+                # Iterating the result fetches pages over HTTP: keep it off the loop.
+                formatted_result = await run_blocking(_rows_as_dicts, query_job)
 
                 results[query_id] = {
                     'status': 'success',

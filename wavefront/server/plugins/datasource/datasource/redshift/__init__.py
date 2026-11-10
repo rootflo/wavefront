@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from ..executor import run_blocking, statement_timeout_limit
 from ..types import DataSourceABC
 from flo_cloud.aws.redshift import RedshiftClient as AWSRedshiftClient
 from .config import RedshiftConfig
@@ -15,11 +16,12 @@ class RedshiftPlugin(DataSourceABC):
             database=config.database,
             user=config.user,
             password=config.password,
+            statement_timeout=statement_timeout_limit.get(),
         )
         self.db_name = f'{config.database}.public'
 
     async def test_connection(self) -> bool:
-        return await asyncio.to_thread(self.client.test_connection)
+        return await run_blocking(self.client.test_connection)
 
     def get_schema(self) -> dict:
         table_names = self.client.list_tables()
@@ -68,7 +70,7 @@ class RedshiftPlugin(DataSourceABC):
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:
         params = kwargs.get('params')
-        return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
+        return await run_blocking(self.client.execute_query_as_dict, query, params)
 
     async def execute_dynamic_query(
         self,
@@ -116,7 +118,7 @@ class RedshiftPlugin(DataSourceABC):
             query_to_execute += f' LIMIT {limit} OFFSET {offset}'
 
             task = asyncio.create_task(
-                asyncio.to_thread(
+                run_blocking(
                     self.client.execute_query_as_dict,
                     query_to_execute,
                     params_to_execute,

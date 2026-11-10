@@ -12,6 +12,11 @@ from apscheduler.triggers.cron import CronTrigger
 from common_module.log.logger import logger
 from common_module.utils.serializer import serialize_values
 from datasource import DatasourcePlugin
+from datasource.executor import (
+    SCHEDULED_STATEMENT_TIMEOUT_SECONDS,
+    queue_wait_limit,
+    statement_timeout_limit,
+)
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from db_repo_module.database.connection import DatabaseClient
@@ -1487,6 +1492,11 @@ class ScheduledJobService:
             )
 
     async def process_due_jobs(self, batch_size: int = 10):
+        # A report should run late rather than be refused because the UI has the
+        # datasource threads busy, so scheduled runs wait for a thread, and heavy
+        # report queries get the long statement limit instead of the UI's.
+        queue_wait_limit.set(None)
+        statement_timeout_limit.set(SCHEDULED_STATEMENT_TIMEOUT_SECONDS)
         due_jobs = await self.claim_due_jobs(batch_size=batch_size)
         for job_row in due_jobs:
             await self._run_job(job_row)

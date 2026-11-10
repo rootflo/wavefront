@@ -29,6 +29,7 @@ class RedshiftClient:
         ssl: bool = True,
         tcp_keepalive: bool = True,
         timeout: int = 60,
+        statement_timeout: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -45,6 +46,8 @@ class RedshiftClient:
             region: AWS region
             ssl: Enable SSL connection (default: True)
             timeout: Connection timeout in seconds
+            statement_timeout: Seconds after which the server cancels a
+                statement; None leaves the server's own setting
             **kwargs: Additional connection parameters
         """
         self.host = host
@@ -57,6 +60,7 @@ class RedshiftClient:
         self.region = region
         self.ssl = ssl
         self.timeout = timeout
+        self.statement_timeout = statement_timeout
         self.connection_params = kwargs
         self.tcp_keepalive = tcp_keepalive
 
@@ -104,6 +108,14 @@ class RedshiftClient:
         try:
             redshift_connector.paramstyle = 'named'
             connection = redshift_connector.connect(**self._get_connection_params())
+            if self.statement_timeout is not None:
+                cursor = connection.cursor()
+                try:
+                    cursor.execute(
+                        f'SET statement_timeout TO {int(self.statement_timeout * 1000)}'
+                    )
+                finally:
+                    cursor.close()
             yield connection
         except RedshiftError as e:
             logger.error(f'Redshift connection error: {e}')

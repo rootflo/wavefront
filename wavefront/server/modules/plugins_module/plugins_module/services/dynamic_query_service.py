@@ -1,6 +1,7 @@
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 import yaml
 from common_module.log.logger import logger
+from datasource.executor import run_blocking
 from flo_cloud.cloud_storage import CloudStorageManager
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from typing import Optional
@@ -41,7 +42,8 @@ class DynamicQueryService:
             file_content = yaml_string.encode('utf-8')
 
             # storing to s3bucket
-            self.cloud_storage_manager.save_small_file(
+            await run_blocking(
+                self.cloud_storage_manager.save_small_file,
                 file_content=file_content,
                 bucket_name=self.bucket_name,
                 key=file_key,
@@ -74,8 +76,12 @@ class DynamicQueryService:
         Returns:
             dict: Contains yamls list, pagination info, and total count
         """
-        files_keys, has_more = self.cloud_storage_manager.list_files(
-            self.bucket_name, self.prefix, page_size, page_number
+        files_keys, has_more = await run_blocking(
+            self.cloud_storage_manager.list_files,
+            self.bucket_name,
+            self.prefix,
+            page_size,
+            page_number,
         )
         yamls = []
 
@@ -104,7 +110,9 @@ class DynamicQueryService:
             dict: Contains yaml query and their parameters
         """
         file_key = f'{self.prefix}/{query_id}.yaml'
-        file_content = self.cloud_storage_manager.read_file(self.bucket_name, file_key)
+        file_content = await run_blocking(
+            self.cloud_storage_manager.read_file, self.bucket_name, file_key
+        )
         yaml_query = yaml.safe_load(file_content.decode('utf-8'))
         if not yaml_query:
             raise ValueError('YAML file is invalid')
@@ -145,7 +153,11 @@ class DynamicQueryService:
                 raise ValueError(f'Query {query_id} not found')
 
             # deleting the file from the cloud storage
-            self.cloud_storage_manager.delete_file(self.bucket_name, query.file_path)
+            await run_blocking(
+                self.cloud_storage_manager.delete_file,
+                self.bucket_name,
+                query.file_path,
+            )
             # deleting the record from the database
             await self.dynamic_query_repo.delete_all(name=query_id)
 

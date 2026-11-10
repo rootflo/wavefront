@@ -2,6 +2,11 @@ import asyncio
 import re
 from typing import Any, Dict, List, Optional
 
+from ..executor import (
+    DATASOURCE_CONNECT_TIMEOUT_SECONDS,
+    run_blocking,
+    statement_timeout_limit,
+)
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
 from flo_cloud.postgres import PostgresClient, RowMutationResult
@@ -18,11 +23,13 @@ class PostgresPlugin(DataSourceABC):
             user=config.user,
             password=config.password,
             schema=config.schema,
+            timeout=DATASOURCE_CONNECT_TIMEOUT_SECONDS,
+            statement_timeout=statement_timeout_limit.get(),
         )
         self.db_name = f'{config.database}.{config.schema}'
 
     async def test_connection(self) -> bool:
-        return await asyncio.to_thread(self.client.test_connection)
+        return await run_blocking(self.client.test_connection)
 
     def validate_table_name(self, table_name: str) -> None:
         # The client uses a qualified name as given, so one is accepted only
@@ -114,7 +121,7 @@ class PostgresPlugin(DataSourceABC):
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:
         params = kwargs.get('params')
-        return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
+        return await run_blocking(self.client.execute_query_as_dict, query, params)
 
     @staticmethod
     def _apply_pagination(
@@ -198,7 +205,7 @@ class PostgresPlugin(DataSourceABC):
             query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
 
             task = asyncio.create_task(
-                asyncio.to_thread(
+                run_blocking(
                     self.client.execute_query_as_dict,
                     query_to_execute,
                     params_to_execute,

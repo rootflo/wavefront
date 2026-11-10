@@ -64,7 +64,11 @@ class PostgresClient:
         schema: str = 'public',
         ssl: bool = False,
         timeout: int = 60,
+        statement_timeout: Optional[int] = None,
     ):
+        """``timeout`` bounds connecting, in seconds. ``statement_timeout``, in
+        seconds, makes the server cancel any statement that runs longer; None
+        leaves the server's own setting (by default, no limit)."""
         self.host = host
         self.port = port
         self.database = database
@@ -73,6 +77,7 @@ class PostgresClient:
         self.schema = schema
         self.ssl = ssl
         self.timeout = timeout
+        self.statement_timeout = statement_timeout
 
     def _get_connection_params(self) -> Dict[str, Any]:
         params: Dict[str, Any] = {
@@ -82,6 +87,13 @@ class PostgresClient:
             'user': self.user,
             'password': self.password,
             'connect_timeout': self.timeout,
+            # Notice a dead network or crashed host in about a minute instead of
+            # waiting on the socket indefinitely. A frozen but reachable server
+            # still answers the probes, so this does not bound that case.
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 3,
         }
         if self.ssl:
             params['sslmode'] = 'require'
@@ -114,8 +126,13 @@ class PostgresClient:
         connection = None
         try:
             connection = psycopg2.connect(**self._get_connection_params())
-            if self.schema:
-                with connection.cursor() as cursor:
+            with connection.cursor() as cursor:
+                if self.statement_timeout is not None:
+                    cursor.execute(
+                        'SET statement_timeout = %s',
+                        (int(self.statement_timeout * 1000),),
+                    )
+                if self.schema:
                     cursor.execute(
                         sql.SQL('SET search_path TO {}').format(
                             sql.Identifier(self.schema)
