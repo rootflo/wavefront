@@ -254,3 +254,60 @@ async def test_bad_body_quotes_the_failing_response(http):
     assert (
         result == 'Unexpected response from floware user API: <html>proxy error</html>'
     )
+
+
+@pytest.mark.parametrize(
+    'path, body',
+    [
+        ('/floware/v1/groups/g-x', {'group': 'not-a-dict'}),
+        ('/floware/v1/groups/g-x', {'group': {'users': ['u1']}}),
+        ('/floware/v1/groups/g-x', {'group': {'users': {'id': 'u1'}}}),
+    ],
+)
+async def test_malformed_group_shapes_return_error_string(http, path, body):
+    http.reply = staticmethod(lambda r: ok(body))
+
+    result = await floware_list_users(API, group_id='g-x')
+
+    assert result.startswith('Unexpected response from floware user API:')
+
+
+async def test_malformed_user_entries_return_error_string(http):
+    http.reply = staticmethod(lambda r: ok({'users': [ALICE, 'oops']}))
+
+    result = await floware_list_users(API)
+
+    assert result.startswith('Unexpected response from floware user API:')
+
+
+async def test_malformed_groups_list_returns_error_string(http):
+    http.reply = staticmethod(lambda r: ok({'groups': 'nope'}))
+
+    result = await floware_list_users(API, group_name='Active')
+
+    assert result.startswith('Unexpected response from floware user API:')
+
+
+async def test_page_cap_is_an_error_not_a_partial_list(http, monkeypatch):
+    monkeypatch.setattr(user_api_tools, 'PAGE_SIZE', 1)
+    monkeypatch.setattr(user_api_tools, 'MAX_PAGES', 2)
+    http.reply = staticmethod(lambda r: ok({'users': [ALICE]}))  # always a full page
+
+    result = await floware_list_users(API)
+
+    assert result.startswith('Too many results: the user listing exceeded 2 pages')
+    assert len(http.requests) == 2
+
+
+async def test_group_search_cap_is_an_error(http, monkeypatch):
+    monkeypatch.setattr(user_api_tools, 'GROUP_PAGE_SIZE', 1)
+    monkeypatch.setattr(user_api_tools, 'MAX_PAGES', 2)
+    http.reply = staticmethod(
+        lambda r: ok({'groups': [{'id': 'x', 'name': 'Inactive'}]})
+    )
+
+    result = await floware_list_users(API, group_name='Active')
+
+    assert result.startswith(
+        "Too many results: the group search for 'Active' exceeded 2 pages"
+    )

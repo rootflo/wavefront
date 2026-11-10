@@ -45,6 +45,28 @@ def _data(response) -> dict:
     return data
 
 
+def _records(response, container: dict, key: str) -> list[dict]:
+    """container[key] as a list of dicts; anything else is a malformed response.
+
+    Missing or null is an empty list. Checking the shape here keeps a bad body
+    on the _BadResponse path instead of surfacing as AttributeError/TypeError.
+    """
+    value = container.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise _BadResponse(response)
+    return value
+
+
+class _TooManyPages(Exception):
+    """Paging hit MAX_PAGES with results still coming: refuse a partial answer."""
+
+    def __init__(self, what: str):
+        super().__init__(what)
+        self.what = what
+
+
 def _slim(user: dict) -> dict:
     """Only the identity fields: no roles or groups in a model's context."""
     return {key: user.get(key) for key in USER_FIELDS}
@@ -77,8 +99,12 @@ async def _group_members(client, api: FlowareApiClient, base: str, group_id: str
         return [], None
     if response.status_code != 200:
         return None, _failure('Group fetch', response)
-    group = _data(response).get('group') or {}
-    return group.get('users') or [], None
+    group = _data(response).get('group')
+    if group is None:
+        return [], None
+    if not isinstance(group, dict):
+        raise _BadResponse(response)
+    return _records(response, group, 'users'), None
 
 
 async def _find_group(client, api: FlowareApiClient, base: str, name: str):
@@ -94,14 +120,14 @@ async def _find_group(client, api: FlowareApiClient, base: str, name: str):
         )
         if response.status_code != 200:
             return None, _failure('Group lookup', response)
-        groups = _data(response).get('groups') or []
+        groups = _records(response, _data(response), 'groups')
         for group in groups:
             if group.get('name') == name and group.get('id'):
                 return group['id'], None
         if len(groups) < GROUP_PAGE_SIZE:
-            break
+            return None, None
         offset += GROUP_PAGE_SIZE
-    return None, None
+    raise _TooManyPages(f"group search for '{name}'")
 
 
 async def _list_users(client, api: FlowareApiClient, base: str, search, roles):
@@ -118,12 +144,12 @@ async def _list_users(client, api: FlowareApiClient, base: str, search, roles):
         )
         if response.status_code != 200:
             return None, _failure('User list', response)
-        page = _data(response).get('users') or []
+        page = _records(response, _data(response), 'users')
         users.extend(page)
         if len(page) < PAGE_SIZE:
-            break
+            return users, None
         offset += PAGE_SIZE
-    return users, None
+    raise _TooManyPages('user listing')
 
 
 async def floware_list_users(
@@ -213,3 +239,8 @@ async def floware_list_users(
             return f'Failed to reach floware user API: {e}'
         except _BadResponse as e:
             return f'Unexpected response from floware user API: {e.text}'
+        except _TooManyPages as e:
+            return (
+                f'Too many results: the {e.what} exceeded {MAX_PAGES} pages. '
+                'Narrow it with group_name, group_id, role or search.'
+            )
