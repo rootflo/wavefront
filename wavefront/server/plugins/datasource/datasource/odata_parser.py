@@ -711,6 +711,14 @@ class SQLODataParser(ODataParserABC):
         if not sql_expr:
             raise ValueError('Invalid filter expression')
 
+        # Reject leftovers instead of silently dropping part of the WHERE clause
+        # (e.g. a lowercase `and`, which the lexer reads as a field name).
+        if parser.current_token.type != TokenType.EOF:
+            raise ValueError(
+                f"Unexpected token '{parser.current_token.value}' at position "
+                f'{parser.current_token.position} in filter expression'
+            )
+
         return sql_expr, parser.params
 
     def prepare_odata_joins(
