@@ -32,7 +32,7 @@ from floware.services.config_service import ConfigService
 from floware.services.notification_service import NotificationService
 from floware.services.scheduled_job_service import ScheduledJobService
 from floware.services.scheduler_manager import SchedulerManager
-from gold_module.gold_container import GoldContainer
+from deprecated_api_module.deprecated_api_container import DeprecatedApiContainer
 from guardrails_module.container import GuardrailsContainer
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
@@ -119,11 +119,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
         rag_queue=common.rag_queue,
     )
 
-    gold = providers.Container(
-        GoldContainer,
-        config=config,
-        cloud_storage_manager=common.cloud_storage_manager,
-        gold_queue=common.gold_queue,
+    deprecated_api = providers.Container(
+        DeprecatedApiContainer,
+        floware_base_url=common.runtime_settings.provided.floware_base_url,
     )
 
     product_analysis = providers.Container(ProductAnalysisContainer, config=config)

@@ -11,7 +11,7 @@ dependencies = [
     "auth-module",
     "common-module",
     "db-repo-module",
-    "gold-module",
+    "deprecated-api-module",
     "knowledge-base-module",
     "user-management-module",
     "plugins-module",
@@ -46,7 +46,7 @@ flo-testing = { workspace = true }
 auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
-gold-module = { workspace = true }
+deprecated-api-module = { workspace = true }
 knowledge-base-module = { workspace = true }
 user-management-module = { workspace = true }
 plugins-module = {workspace = true}
