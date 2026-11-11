@@ -24,12 +24,10 @@ from PIL import Image
 # of a MAX_IMAGE_BYTES image, so the string can be rejected before decoding.
 _MAX_BASE64_CHARS = (MAX_IMAGE_BYTES + 2) // 3 * 4 + 64 * 1024
 
-IMAGE_TOO_LARGE_MESSAGE = (
-    f'Image exceeds the maximum allowed size of {MAX_IMAGE_BYTES // (1024 * 1024)} MB'
-)
-IMAGE_TOO_MANY_PIXELS_MESSAGE = (
-    f'Image dimensions exceed the maximum of {MAX_IMAGE_PIXELS:,} pixels'
-)
+# Deliberately generic: naming the exact limits tells a prober precisely how
+# large an image can be crafted to get through. The limits are logged instead.
+IMAGE_TOO_LARGE_MESSAGE = 'Image file is too large'
+IMAGE_TOO_MANY_PIXELS_MESSAGE = 'Image dimensions are too large'
 INVALID_BASE64_MESSAGE = 'Invalid base64 image data'
 UNSUPPORTED_IMAGE_MESSAGE = 'Image data is not a supported image'
 
@@ -45,6 +43,10 @@ def decode_base64_image(image_data: str) -> bytes:
     accepted there.
     """
     if len(image_data) > _MAX_BASE64_CHARS:
+        logger.warning(
+            f'Rejected base64 image of {len(image_data)} chars '
+            f'(limit {_MAX_BASE64_CHARS})'
+        )
         raise ImageValidationError(IMAGE_TOO_LARGE_MESSAGE)
     parts = image_data.split(',')
     base64_data = parts[1] if len(parts) == 2 else parts[0]
@@ -61,6 +63,9 @@ def validate_image_bytes(image_bytes: bytes) -> None:
     allocating the pixel buffer.
     """
     if len(image_bytes) > MAX_IMAGE_BYTES:
+        logger.warning(
+            f'Rejected image of {len(image_bytes)} bytes (limit {MAX_IMAGE_BYTES})'
+        )
         raise ImageValidationError(IMAGE_TOO_LARGE_MESSAGE)
     try:
         with warnings.catch_warnings():
@@ -70,13 +75,16 @@ def validate_image_bytes(image_bytes: bytes) -> None:
                 io.BytesIO(image_bytes), formats=SUPPORTED_PILLOW_FORMATS
             ) as image:
                 width, height = image.size
-    except Image.DecompressionBombError:
+    except Image.DecompressionBombError as e:
         # Pillow refuses past ~179 MP at open time.
+        logger.warning(f'Rejected image past Pillow bomb limit: {e}')
         raise ImageValidationError(IMAGE_TOO_MANY_PIXELS_MESSAGE)
     except Exception as e:
         logger.warning(f'Rejected unreadable query image: {e}')
         raise ImageValidationError(UNSUPPORTED_IMAGE_MESSAGE)
 
     if width * height > MAX_IMAGE_PIXELS:
-        logger.warning(f'Rejected query image of {width}x{height} pixels')
+        logger.warning(
+            f'Rejected image of {width}x{height} pixels (limit {MAX_IMAGE_PIXELS})'
+        )
         raise ImageValidationError(IMAGE_TOO_MANY_PIXELS_MESSAGE)
