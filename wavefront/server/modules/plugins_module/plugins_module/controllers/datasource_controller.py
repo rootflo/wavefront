@@ -622,7 +622,8 @@ async def query_datasource(
             order_by=order_by,
             group_by=group_by,
         )
-    except (InvalidResourceError, InvalidQueryError) as e:
+    except (InvalidResourceError, InvalidQueryError, ValueError) as e:
+        # ValueError: the OData parser rejects a malformed $filter.
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),
@@ -1393,14 +1394,21 @@ async def execute_dynamic_query(
                     json.loads(cached_result)
                 ),
             )
-    res = await datasource_plugin.execute_dynamic_query(
-        yaml_query,
-        rls_filter_str,
-        filter,
-        offset,
-        limit,
-        dynamic_query_params.params if dynamic_query_params else None,
-    )
+    try:
+        res = await datasource_plugin.execute_dynamic_query(
+            yaml_query,
+            rls_filter_str,
+            filter,
+            offset,
+            limit,
+            dynamic_query_params.params if dynamic_query_params else None,
+        )
+    except ValueError as e:
+        # The OData parser rejects a malformed $filter.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
     # Serialize date/datetime objects before JSON serialization
     serialized_res = serialize_values(res)
     # caching the result
