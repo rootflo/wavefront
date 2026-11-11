@@ -78,6 +78,52 @@ def test_forwards_exact_body_and_headers(client, upstream):
     assert response.json() == {'audit': 'ok'}
 
 
+AUDIT_RESULT = {
+    'meta': {'status': 'success', 'code': 1, 'error': None},
+    'data': {
+        'status': 'success',
+        'message_id': '2c3256e6-d117-4257-b088-6ea60c157fd4',
+    },
+}
+
+
+def test_unwraps_api_service_envelope(client, upstream):
+    upstream['respond'] = lambda req: httpx.Response(
+        200,
+        json={
+            'meta': {
+                'status': 'success',
+                'message': 'Request processed successfully',
+                'trace': None,
+            },
+            'data': AUDIT_RESULT,
+            'http_status_code': 200,
+        },
+    )
+
+    response = client.post('/floware/v1/image/analyse', json={'a': 1})
+
+    assert response.status_code == 200
+    assert response.json() == AUDIT_RESULT
+
+
+def test_envelope_status_code_is_returned(client, upstream):
+    failure = {'meta': {'status': 'failure', 'code': -1, 'error': 'bad'}, 'data': None}
+    upstream['respond'] = lambda req: httpx.Response(
+        200,
+        json={
+            'meta': {'status': 'success', 'message': '', 'trace': None},
+            'data': failure,
+            'http_status_code': 400,
+        },
+    )
+
+    response = client.post('/floware/v1/image/analyse', json={'a': 1})
+
+    assert response.status_code == 400
+    assert response.json() == failure
+
+
 def test_passes_upstream_errors_through(client, upstream):
     upstream['respond'] = lambda req: httpx.Response(422, json={'detail': 'bad'})
 

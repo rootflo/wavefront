@@ -42,8 +42,37 @@ async def process_image(
             ),
         )
 
+    unwrapped = _unwrap_api_service_envelope(upstream)
+    if unwrapped is not None:
+        return unwrapped
+
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
         media_type=upstream.headers.get('content-type'),
     )
+
+
+def _unwrap_api_service_envelope(upstream: httpx.Response) -> JSONResponse | None:
+    """Return the audit service's own response from inside the API services
+    envelope, so /analyse keeps its original ``{meta, data}`` shape.
+
+    API services wraps the upstream reply as
+    ``{meta, data: <upstream body>, http_status_code}``. Anything not in that
+    shape (e.g. an auth failure raised by floware before the call is made) is
+    left for the caller to pass through unchanged.
+    """
+    try:
+        body = upstream.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    inner = body.get('data')
+    if not isinstance(inner, dict) or 'meta' not in inner:
+        return None
+
+    status_code = body.get('http_status_code')
+    if not isinstance(status_code, int):
+        status_code = upstream.status_code
+    return JSONResponse(status_code=status_code, content=inner)
