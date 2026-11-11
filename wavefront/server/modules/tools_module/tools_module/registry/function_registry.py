@@ -21,6 +21,7 @@ from tools_module.registry.registries.email_registry import build_email_registry
 from tools_module.registry.registries.message_processor_registry import (
     build_message_processor_registry,
 )
+from tools_module.registry.registries.user_registry import build_user_registry
 from tools_module.registry.registries.util_function_registry import (
     build_util_function_registry,
 )
@@ -51,4 +52,5 @@ def build_function_registry(api: FlowareApiClient) -> Dict[str, Callable]:
         build_message_processor_registry(api),
         build_api_service_registry(api),
         build_configuration_registry(api),
+        build_user_registry(api),
     )
