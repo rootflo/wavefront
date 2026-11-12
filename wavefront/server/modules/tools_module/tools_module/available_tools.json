@@ -169,5 +169,36 @@
     ],
     "required": [],
     "category": "api_service"
+  },
+  "floware_list_users": {
+    "name": "floware_list_users",
+    "description": "List floware users (id, email, first_name, last_name, username). Pass role to keep only users holding any of those roles. Pass group_name and/or group_id to return only members of those groups, e.g. group_name \"Active\" for the case-assignment pool, or \"Underwriters,Reviewers\" for several. Returns JSON {\"users\": [...]}; unknown groups are skipped and an empty list is a valid result, not an error. On failure it returns a descriptive error string instead.",
+    "parameters": {
+      "group_name": {
+        "type": "string",
+        "description": "One exact group name, or several separated by commas, e.g. \"Active\" or \"Underwriters,Reviewers\".",
+        "required": false
+      },
+      "group_id": {
+        "type": "string",
+        "description": "One group UUID, or several separated by commas. Combined with group_name.",
+        "required": false
+      },
+      "match": {
+        "type": "string",
+        "description": "\"any\" (default): users in at least one of the groups. \"all\": users in every one of them.",
+        "required": false
+      },
+      "search": {
+        "type": "string",
+        "description": "Filter by name or email. Only applies when no group is given.",
+        "required": false
+      },
+      "role": {
+        "type": "string",
+        "description": "One role name, or several separated by commas, e.g. \"admin\" or \"underwriter,reviewer\". Keeps users who hold any of them directly (not through a group). Combined with groups, users must match both.",
+        "required": false
+      }
+    }
   }
 }
