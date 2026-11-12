@@ -39,7 +39,7 @@ fi
 cd /app/apps/floware/floware
 
 # `docker run <image> app-migrate <command>` runs the app-migration CLI
-# (status | upgrade [--dry-run] | stamp REV) instead of the server.
+# (status | upgrade [--dry-run] | downgrade REV | stamp REV) instead of the server.
 if [ "$1" = "app-migrate" ]; then
     shift
     exec python -m floware.app_migrations "$@"
