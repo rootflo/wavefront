@@ -270,6 +270,11 @@ def test_pending_blocking_honours_flags():
     for status in (FAILED, RUNNING):
         blocked = pending_blocking(scripts, {'a': entry('a', status)}, FLAG_ON)
         assert [s.revision for s in blocked] == ['a']
+        # Even once it no longer applies: the data may be half converted.
+        blocked = pending_blocking(scripts, {'a': entry('a', status)}, FLAG_OFF)
+        assert [s.revision for s in blocked] == ['a']
+    # Until a downgrade completes.
+    assert pending_blocking(scripts, {'a': entry('a', REVERTED)}, FLAG_OFF) == []
 
 
 # ---- run ------------------------------------------------------------------

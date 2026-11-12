@@ -72,14 +72,16 @@ def migration_states(
         reverted = entry is not None and entry.status == REVERTED
         if entry is not None and entry.status == APPLIED:
             states.append(MigrationState(script, APPLIED))
+        # Before applicability: a run that stopped part way may have left data
+        # half converted, whatever the flags say now.
+        elif entry is not None and entry.status in (RUNNING, FAILED):
+            states.append(MigrationState(script, entry.status, error=entry.error))
         elif not applicable[script.revision]:
             states.append(MigrationState(script, NOT_APPLICABLE, reverted=reverted))
         elif missing := tuple(d for d in script.depends_on if d not in applied):
             states.append(
                 MigrationState(script, WAITING, waiting_on=missing, reverted=reverted)
             )
-        elif entry is not None and entry.status in (RUNNING, FAILED):
-            states.append(MigrationState(script, entry.status, error=entry.error))
         else:
             states.append(MigrationState(script, PENDING, reverted=reverted))
     return states
@@ -90,7 +92,7 @@ def pending_blocking(
     entries: Dict[str, LedgerEntry],
     flags: Any,
 ) -> List[AppMigrationScript]:
-    """Blocking migrations that apply here and are not applied yet."""
+    """Blocking migrations that apply here and are not applied, or whose last run stopped part way."""
     return [
         state.script
         for state in migration_states(scripts, entries, flags)

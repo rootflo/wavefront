@@ -218,17 +218,21 @@ async def convert_tables(
     db_client: DatabaseClient, conv: Converter, dry_run: bool
 ) -> Dict[str, Report]:
     reports: Dict[str, Report] = {}
+    writes = not dry_run and conv.mode != VERIFY
     for table, model, handle in TABLES:
         report = Report()
         # One transaction per table; a failure rolls back only that table.
+        # Rows are locked until commit, so a concurrent update waits instead of
+        # being overwritten by the converted copy read before it.
+        query = select(model).with_for_update() if writes else select(model)
         async with db_client.session() as session:
-            rows = (await session.execute(select(model))).scalars().all()
+            rows = (await session.execute(query)).scalars().all()
             for row in rows:
                 handle(row, conv, report)
-            if dry_run or conv.mode == VERIFY:
-                await session.rollback()
-            else:
+            if writes:
                 await session.commit()
+            else:
+                await session.rollback()
         reports[table] = report
     return reports
 
