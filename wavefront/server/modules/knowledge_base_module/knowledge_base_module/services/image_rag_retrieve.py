@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import flo_lib.http as httpx
 from typing import Any, Optional
 import uuid
@@ -17,6 +17,17 @@ EXACT_MATCH_HARD_CEILING = 5_000
 # tune based on real p95 latency measurements against the target KB size.
 DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
 
+# Scores leave the API rounded to this many decimal places. Full-precision
+# similarities give an attacker a fine-grained signal to follow when
+# iteratively perturbing a query image (e.g. PGD-style adversarial search);
+# coarse scores blunt that. Ranking and thresholding still use full
+# precision -- rounding happens only once results are final.
+SCORE_DECIMALS = 2
+
+
+def _round_score(score: Any) -> float:
+    return round(float(score or 0), SCORE_DECIMALS)
+
 
 @dataclass
 class ImageMatch:
@@ -24,10 +35,12 @@ class ImageMatch:
     A single image search result, merged across the CLIP and DINO
     nearest-neighbor searches for one `document_id`.
 
-    `clip_score`/`dino_score` default to 0 rather than `None` to
-    distinguish "this model never returned this document" from a
-    genuine near-zero similarity -- callers should check `matched_by`
-    to tell the two apart.
+    This is the API response shape, so it names scores by role rather than
+    by embedding model -- `primary_score` is the DINO similarity and
+    `secondary_score` the CLIP similarity -- and does not say which model
+    surfaced the document, so the models in use are not exposed.
+
+    A score is 0 when that model did not return the document.
     """
 
     document_id: uuid.UUID
@@ -36,9 +49,8 @@ class ImageMatch:
     file_name: Optional[str] = None
     knowledge_base_id: Optional[uuid.UUID] = None
     metadata_value: Optional[dict] = None
-    clip_score: float = 0.0
-    dino_score: float = 0.0
-    matched_by: list = field(default_factory=list)
+    primary_score: float = 0.0
+    secondary_score: float = 0.0
     combined_score: float = 0.0
     similarity: float = 0.0
 
@@ -147,7 +159,8 @@ class ImageRagRetrieve:
         The extra "+1" row lets us detect an overflow  (raise a 422)
         using just the row count of the one query already run.
         The `threshold` filter is applied in Python (after the overflow check)
-        rather than in SQL.
+        rather than in SQL, against the full-precision score; the returned
+        `primary_score` is then rounded to `SCORE_DECIMALS` places.
         """
         effective_cap = min(
             max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
@@ -225,7 +238,11 @@ class ImageRagRetrieve:
                 ),
             )
 
-        return [row for row in raw_rows if row['dino_score'] > threshold]
+        return [
+            {**row, 'primary_score': _round_score(row['primary_score'])}
+            for row in raw_rows
+            if row['primary_score'] > threshold
+        ]
 
     async def image_retrieve_clip(
         self,
@@ -359,12 +376,6 @@ class ImageRagRetrieve:
         JSON-serializable form (e.g. an HTTP response) should convert
         via `dataclasses.asdict()`.
 
-        Each result also carries a `matched_by` list (e.g. `['clip']`,
-        `['dino']`, or `['clip', 'dino']`) so callers can tell whether a
-        `clip_score`/`dino_score` of `0` means "this model scored it near
-        zero" or "this model never returned this document at all" --
-        distinguishing genuine low scores from defaults.
-
         CLIP and DINO are each asked for their own real `top_k` (no
         overfetching) and the union is returned as-is, so the response
         naturally holds between `top_k` and `2 * top_k` results depending
@@ -424,27 +435,30 @@ class ImageRagRetrieve:
         for row in clip_rows:
             doc_id = row['document_id']
             match = merged.setdefault(doc_id, _base_match(doc_id, row))
-            match.clip_score = row.get('clip_score', 0) or 0
-            if 'clip' not in match.matched_by:
-                match.matched_by.append('clip')
+            match.secondary_score = row.get('clip_score', 0) or 0
 
         for row in dino_rows:
             doc_id = row['document_id']
             # Only created here if the document didn't already surface via
-            # CLIP -- otherwise the existing match (with its clip_score and
-            # shared fields already set) is reused and just gains a
-            # dino_score.
+            # CLIP -- otherwise the existing match (with its secondary_score
+            # and shared fields already set) is reused and just gains a
+            # primary_score.
             match = merged.setdefault(doc_id, _base_match(doc_id, row))
-            match.dino_score = row.get('similarity', 0) or 0
-            if 'dino' not in match.matched_by:
-                match.matched_by.append('dino')
+            match.primary_score = row.get('similarity', 0) or 0
 
         results = list(merged.values())
         for match in results:
             match.combined_score = (
-                match.clip_score * clip_weight + match.dino_score * dino_weight
+                match.secondary_score * clip_weight + match.primary_score * dino_weight
             )
             match.similarity = match.combined_score
 
         results.sort(key=lambda m: m.combined_score, reverse=True)
+
+        # Round only after sorting so ranking uses full-precision scores.
+        for match in results:
+            match.primary_score = _round_score(match.primary_score)
+            match.secondary_score = _round_score(match.secondary_score)
+            match.combined_score = _round_score(match.combined_score)
+            match.similarity = _round_score(match.similarity)
         return results

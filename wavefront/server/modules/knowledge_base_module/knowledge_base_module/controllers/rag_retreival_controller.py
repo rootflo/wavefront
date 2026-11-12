@@ -19,6 +19,11 @@ from fastapi import APIRouter, Body, Depends, Query, status
 from fastapi.responses import JSONResponse
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from knowledge_base_module.embeddings.embed import TextEmbeddingError
+from knowledge_base_module.image_validation import (
+    ImageValidationError,
+    decode_base64_image,
+    validate_image_bytes,
+)
 from knowledge_base_module.services.kb_rag_retrieve import KBRagResponse
 from knowledge_base_module.services.image_rag_retrieve import (
     DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
@@ -101,9 +106,17 @@ async def _resolve_image_data(
     cloud_storage: CloudStorageManager,
     response_formatter: ResponseFormatter,
 ) -> Tuple[Optional[str], Optional[JSONResponse]]:
-    """Resolve to base64 image bytes. ``image_url`` wins over ``image_data``."""
+    """Resolve to base64 image bytes. ``image_url`` wins over ``image_data``.
+
+    Either way the image is checked against the size and pixel limits here,
+    so an oversized image is rejected before it reaches the inference service.
+    """
     if not payload.image_url:
         if payload.image_data:
+            try:
+                validate_image_bytes(decode_base64_image(payload.image_data))
+            except ImageValidationError as e:
+                return (None, _bad_request(response_formatter, str(e)))
             return (payload.image_data, None)
         return (
             None,
@@ -136,6 +149,11 @@ async def _resolve_image_data(
 
     if not image_bytes:
         return (None, _bad_request(response_formatter, 'Image from URL is empty'))
+
+    try:
+        validate_image_bytes(image_bytes)
+    except ImageValidationError as e:
+        return (None, _bad_request(response_formatter, str(e)))
 
     return (base64.b64encode(image_bytes).decode('utf-8'), None)
 

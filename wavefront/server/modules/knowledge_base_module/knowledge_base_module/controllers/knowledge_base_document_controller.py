@@ -15,8 +15,9 @@ from db_repo_module.models.knowledge_base_documents import (
     KnowledgeBaseDocuments,
 )
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
-from db_repo_module.models.knowledge_bases import KnowledgeBase
+from db_repo_module.models.knowledge_bases import KnowledgeBase, KnowledgeBaseType
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from common_module.utils.image_formats import MAX_IMAGE_BYTES
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import APIRouter
@@ -27,6 +28,11 @@ from fastapi import UploadFile
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from fastapi import Form
+from knowledge_base_module.image_validation import (
+    IMAGE_TOO_LARGE_MESSAGE,
+    ImageValidationError,
+    validate_image_bytes,
+)
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from knowledge_base_module.models.knowledge_base_schema import upload_rejection_reason
 from flo_cloud.message_queue import MessageQueueManager
@@ -129,8 +135,35 @@ async def upload_document(
                 ),
             )
 
+        is_image_kb = existing_kb.type == KnowledgeBaseType.IMAGE.value
+        # Reject an oversized image on its declared size before reading it
+        # into memory.
+        if is_image_kb and file.size is not None and file.size > MAX_IMAGE_BYTES:
+            logger.warning(
+                f'Rejected image upload of {file.size} bytes '
+                f'(limit {MAX_IMAGE_BYTES}) for kb {kb_id}'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(IMAGE_TOO_LARGE_MESSAGE),
+            )
+
         # Process file content
         file_bytes = await file.read()
+
+        # The ingestion worker sends every image to the inference service,
+        # which decodes all of its pixels -- so a small file declaring huge
+        # dimensions (a decompression bomb) is rejected here, before anything
+        # is stored or queued.
+        if is_image_kb:
+            try:
+                validate_image_bytes(file_bytes)
+            except ImageValidationError as e:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(str(e)),
+                )
+
         doc_id = uuid.uuid4()
         filename = file.filename.replace(' ', '_')
         filename = re.sub(r'_{2,}', '_', filename)

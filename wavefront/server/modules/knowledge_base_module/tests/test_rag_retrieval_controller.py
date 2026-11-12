@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fastapi import status
 from flo_testing import seed_user_session as create_session
+from kb_image_fixtures import VALID_IMAGE_BASE64
 
 
 @pytest.mark.asyncio
@@ -119,7 +120,7 @@ async def test_retrieve_image_success(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        json={'image_data': 'base64-image-data'},
+        json={'image_data': VALID_IMAGE_BASE64},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -166,7 +167,7 @@ async def test_retrieve_image_exact_match_returns_document_date(
             'file_path': 'images/test.png',
             'file_name': 'test.png',
             'document_date': '2026-08-01T00:00:00',
-            'dino_score': 0.95,
+            'primary_score': 0.95,
         }
     ]
     kb_container.image_knowledge_base_retrieve.override(
@@ -183,7 +184,7 @@ async def test_retrieve_image_exact_match_returns_document_date(
             'threshold': 0.8,
         },
         headers={'Authorization': f'Bearer {auth_token}'},
-        json={'image_data': 'base64-image-data'},
+        json={'image_data': VALID_IMAGE_BASE64},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -210,7 +211,7 @@ async def test_retrieve_image_kb_not_found(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{non_existent_kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        json={'image_data': 'base64-image-data'},
+        json={'image_data': VALID_IMAGE_BASE64},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -570,7 +571,7 @@ async def test_image_search_result_count(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
         params=params,
-        json={'image_data': 'base64-image-data'},
+        json={'image_data': VALID_IMAGE_BASE64},
     )
 
     assert response.status_code == status.HTTP_200_OK
