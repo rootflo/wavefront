@@ -53,6 +53,20 @@ class RowMutationResult:
     key_columns: Optional[List[str]] = None
 
 
+_DURATION_UNIT_MS = {'ms': 1, 's': 1000, 'min': 60_000, 'h': 3_600_000, 'd': 86_400_000}
+
+
+def _duration_setting_ms(value: str) -> Optional[int]:
+    """Parse a Postgres duration setting as SHOW prints it ('0', '5s', '1min').
+
+    A bare number is milliseconds. Returns None for anything else.
+    """
+    match = re.fullmatch(r'\s*(\d+)\s*(ms|s|min|h|d)?\s*', str(value))
+    if not match:
+        return None
+    return int(match.group(1)) * _DURATION_UNIT_MS[match.group(2) or 'ms']
+
+
 class PostgresClient:
     def __init__(
         self,
@@ -88,16 +102,42 @@ class PostgresClient:
             'password': self.password,
             'connect_timeout': self.timeout,
             # Notice a dead network or crashed host in about a minute instead of
-            # waiting on the socket indefinitely. A frozen but reachable server
-            # still answers the probes, so this does not bound that case.
+            # waiting on the socket indefinitely: keepalives cover an idle
+            # connection waiting on a query, tcp_user_timeout (ms) covers data
+            # sent but never acknowledged. A frozen but reachable server still
+            # answers both, so neither bounds that case.
             'keepalives': 1,
             'keepalives_idle': 30,
             'keepalives_interval': 10,
             'keepalives_count': 3,
+            'tcp_user_timeout': 60_000,
         }
         if self.ssl:
             params['sslmode'] = 'require'
         return params
+
+    def _apply_statement_timeout(self, connection, cursor) -> None:
+        """Set our statement limit unless the server already has a stricter one.
+
+        A DBA may give the role a lower ``statement_timeout``; replacing it with
+        ours would loosen their policy. A setting that cannot be read is treated
+        as no limit, so ours applies. Best effort: a server that rejects SHOW or
+        SET (a Postgres-compatible engine, say) keeps its own setting rather than
+        failing every call.
+        """
+        ours_ms = int(self.statement_timeout * 1000)
+        try:
+            cursor.execute('SHOW statement_timeout')
+            row = cursor.fetchone()
+            current_ms = _duration_setting_ms(row[0]) if row else None
+            if current_ms and current_ms <= ours_ms:
+                return
+            cursor.execute('SET statement_timeout = %s', (ours_ms,))
+        except psycopg2.Error as e:
+            connection.rollback()
+            logger.warning(
+                f'Could not set statement_timeout; using the server setting: {e}'
+            )
 
     def _table_identifier(self, table_name: str) -> sql.Identifier:
         """Compose ``table_name`` as an identifier pinned to the configured schema.
@@ -128,10 +168,7 @@ class PostgresClient:
             connection = psycopg2.connect(**self._get_connection_params())
             with connection.cursor() as cursor:
                 if self.statement_timeout is not None:
-                    cursor.execute(
-                        'SET statement_timeout = %s',
-                        (int(self.statement_timeout * 1000),),
-                    )
+                    self._apply_statement_timeout(connection, cursor)
                 if self.schema:
                     cursor.execute(
                         sql.SQL('SET search_path TO {}').format(

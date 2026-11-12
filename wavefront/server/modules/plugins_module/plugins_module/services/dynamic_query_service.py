@@ -1,7 +1,7 @@
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 import yaml
 from common_module.log.logger import logger
-from datasource.executor import run_blocking
+from datasource.executor import DatasourceBusyError, run_blocking
 from flo_cloud.cloud_storage import CloudStorageManager
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from typing import Optional
@@ -59,6 +59,9 @@ class DynamicQueryService:
 
         except ValueError as e:
             logger.error(f'Error uploading dynamic query YAML {yaml_id}: {str(e)}')
+            raise
+        except DatasourceBusyError:
+            # Overload, not a bad upload: let it reach the 503 handler.
             raise
         except Exception as e:
             logger.error(

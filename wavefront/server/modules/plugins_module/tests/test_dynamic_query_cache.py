@@ -1,10 +1,11 @@
-"""The dynamic-query execute route caches only fully successful results."""
+"""Dynamic-query execute caching, and export failures giving the slot back."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from datasource import PostgresConfig
+from datasource.executor import DatasourceBusyError
 from datasource.types import DataSourceType
 
 from common_module.response_formatter import ResponseFormatter
@@ -80,3 +81,53 @@ async def test_result_with_a_failed_query_is_not_cached(plugin):
 
     assert response.status_code == 200
     cache_manager.add.assert_not_called()
+
+
+async def _export(cache_manager):
+    query_service = MagicMock()
+    query_service.get_dynamic_yaml_query = AsyncMock(return_value=([{'id': 'q'}], None))
+    return await datasource_controller.export_dynamic_query_csv(
+        request=SimpleNamespace(
+            state=SimpleNamespace(
+                session=SimpleNamespace(role_id='r', user_id='u', session_id='s')
+            )
+        ),
+        datasource_id='ds',
+        query_id='q',
+        filter=None,
+        offset=0,
+        limit=10,
+        dynamic_query_params=None,
+        response_formatter=ResponseFormatter(),
+        dynamic_query_yaml_service=query_service,
+        user_service=MagicMock(),
+        cloud_storage_manager=MagicMock(),
+        config={'storage': {'application_bucket': 'bucket'}},
+        cache_manager=cache_manager,
+        force_fetch=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_busy_export_gives_the_rate_limit_slot_back(plugin):
+    plugin.execute_dynamic_query = AsyncMock(side_effect=DatasourceBusyError('busy'))
+    cache_manager = MagicMock()
+    cache_manager.add.return_value = True
+
+    with pytest.raises(DatasourceBusyError):
+        await _export(cache_manager)
+
+    cache_manager.remove.assert_called_once_with('dynamic_query_export_rate:u')
+
+
+@pytest.mark.asyncio
+async def test_failed_export_gives_the_rate_limit_slot_back(plugin):
+    plugin.execute_dynamic_query = AsyncMock(return_value={'q': FAILED})
+    cache_manager = MagicMock()
+    cache_manager.add.return_value = True
+
+    response = await _export(cache_manager)
+
+    assert response.status_code == 500
+    assert b'canceling statement' not in response.body  # driver text stays in logs
+    cache_manager.remove.assert_called_once_with('dynamic_query_export_rate:u')

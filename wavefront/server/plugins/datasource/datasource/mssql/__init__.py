@@ -1,10 +1,10 @@
-import asyncio
 import re
 from typing import Any, Dict, List, Optional
 
 from ..executor import (
     DATASOURCE_CONNECT_TIMEOUT_SECONDS,
     run_blocking,
+    run_blocking_batch,
     statement_timeout_limit,
 )
 from ..types import DataSourceABC
@@ -147,7 +147,7 @@ class MSSQLPlugin(DataSourceABC):
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         results = {}
-        tasks = []
+        prepared = []
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
@@ -183,30 +183,31 @@ class MSSQLPlugin(DataSourceABC):
             query_to_execute = query_to_execute.rstrip().rstrip(';')
             query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
 
-            task = asyncio.create_task(
-                run_blocking(
-                    self.client.execute_query_as_dict,
-                    query_to_execute,
-                    params_to_execute,
-                )
-            )
-            tasks.append((query_id, task))
+            prepared.append((query_id, query_to_execute, params_to_execute))
 
-        for query_id, task in tasks:
-            try:
-                formatted_result = await task
+        # Every query is validated above before any of them starts, so a bad
+        # query further down cannot leave earlier ones running unobserved.
+        outcomes = await run_blocking_batch(
+            [
+                (self.client.execute_query_as_dict, (sql, sql_params))
+                for _, sql, sql_params in prepared
+            ]
+        )
+
+        for (query_id, _, _), outcome in zip(prepared, outcomes):
+            if isinstance(outcome, BaseException):
+                results[query_id] = {
+                    'status': 'error',
+                    'error': str(outcome),
+                    'description': f'Error executing query {query_id}',
+                    'result': [],
+                }
+            else:
                 results[query_id] = {
                     'status': 'success',
                     'error': None,
                     'description': f'Query {query_id} executed successfully',
-                    'result': formatted_result,
-                }
-            except Exception as e:
-                results[query_id] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'description': f'Error executing query {query_id}',
-                    'result': [],
+                    'result': outcome,
                 }
 
         return results

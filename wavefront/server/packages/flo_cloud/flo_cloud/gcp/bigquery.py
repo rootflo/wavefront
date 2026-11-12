@@ -167,6 +167,47 @@ class BigQueryClient:
             logger.error(f'Unexpected error executing BigQuery query: {e}')
             raise
 
+    def query_rows(
+        self, query: str, params: Optional[dict] = None, **kwargs
+    ) -> List[Dict[str, Any]]:
+        """Run a query and return every row as a dict.
+
+        Blocking, unlike ``execute_query``: callers run it on a thread of their
+        choosing (the datasource plugin uses its own bounded pool).
+        """
+        try:
+            job_config = QueryJobConfig(**kwargs)
+            if params:
+                job_config.query_parameters = self._get_query_params(params)
+            return [dict(row.items()) for row in self._run_bounded(query, job_config)]
+        except GoogleCloudError as e:
+            logger.error(f'BigQuery query execution error: {e}')
+            raise
+
+    def _run_bounded(self, query: str, job_config: QueryJobConfig):
+        """Run a query and return its rows, all within ``self.timeout`` seconds.
+
+        The job gets the same limit on the server, the HTTP calls get it too,
+        and a job still running when the client gives up is cancelled, so it
+        stops using slots and billing instead of running on unobserved.
+        """
+        job_config.job_timeout_ms = int(self.timeout * 1000)
+        query_job = self.client.query(
+            query, job_config=job_config, timeout=self.timeout
+        )
+        try:
+            return query_job.result(timeout=self.timeout)
+        except TimeoutError:
+            # concurrent.futures.TimeoutError is TimeoutError from Python 3.11,
+            # and is raised with no message.
+            try:
+                query_job.cancel()
+            except Exception as e:
+                logger.warning(f'Could not cancel BigQuery job {query_job.job_id}: {e}')
+            raise TimeoutError(
+                f'BigQuery query did not finish within {self.timeout}s'
+            ) from None
+
     def execute_query_to_dataframe(
         self, query: str, use_legacy_sql: bool = False, **kwargs
     ):
@@ -258,8 +299,7 @@ class BigQueryClient:
                 job_config.query_parameters = self._get_query_params(params)
 
             logger.debug(f'Executing query: {query}')
-            query_job = self.client.query(query, job_config=job_config)
-            results = query_job.result(timeout=self.timeout)
+            results = self._run_bounded(query, job_config)
 
             return [dict(row.items()) for row in results]
 

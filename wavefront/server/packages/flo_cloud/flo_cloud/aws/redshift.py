@@ -70,6 +70,22 @@ class RedshiftClient:
         if not self.database:
             raise ValueError('Database name must be provided')
 
+    def _read_timeout(self) -> int:
+        return max(self.timeout, int(self.statement_timeout) + 30)
+
+    def _extend_read_timeout(self, connection: Connection) -> None:
+        """Give reads longer than the statement limit.
+
+        redshift_connector applies ``timeout`` to its socket for every read, not
+        just to connecting. Connecting uses the short limit; afterwards the
+        socket gets longer than the statement limit, so a long query is
+        cancelled by the server with a clear error rather than cut off by the
+        client mid-flight.
+        """
+        sock = getattr(connection, '_usock', None)
+        if sock is not None:
+            sock.settimeout(self._read_timeout())
+
     def _get_connection_params(self) -> Dict[str, Any]:
         """Get connection parameters for redshift-connector."""
         params = {
@@ -109,6 +125,7 @@ class RedshiftClient:
             redshift_connector.paramstyle = 'named'
             connection = redshift_connector.connect(**self._get_connection_params())
             if self.statement_timeout is not None:
+                self._extend_read_timeout(connection)
                 cursor = connection.cursor()
                 try:
                     cursor.execute(
