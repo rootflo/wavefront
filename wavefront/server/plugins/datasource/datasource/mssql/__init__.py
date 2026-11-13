@@ -2,10 +2,10 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..executor import (
-    DATASOURCE_CONNECT_TIMEOUT_SECONDS,
+    current_statement_timeout,
+    limits,
     run_blocking,
     run_blocking_batch,
-    statement_timeout_limit,
 )
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
@@ -25,8 +25,8 @@ class MSSQLPlugin(DataSourceABC):
             schema=config.schema,
             encrypt=config.encrypt,
             trust_server_certificate=config.trust_server_certificate,
-            timeout=DATASOURCE_CONNECT_TIMEOUT_SECONDS,
-            statement_timeout=statement_timeout_limit.get(),
+            timeout=limits().connect_timeout_seconds,
+            statement_timeout=current_statement_timeout(),
         )
         self.db_name = f'{config.database}.{config.schema}'
 

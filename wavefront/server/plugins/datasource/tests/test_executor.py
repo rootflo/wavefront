@@ -4,6 +4,7 @@ Tests for run_blocking, the datasource thread pool
 
 import asyncio
 import contextvars
+import dataclasses
 import threading
 import time
 
@@ -12,6 +13,14 @@ from datasource import executor
 from datasource.executor import run_blocking
 
 request_id = contextvars.ContextVar('request_id', default=None)
+
+
+def _set_queue_wait(monkeypatch, seconds):
+    monkeypatch.setattr(
+        executor,
+        '_limits',
+        dataclasses.replace(executor.limits(), queue_wait_seconds=seconds),
+    )
 
 
 @pytest.mark.asyncio
@@ -72,15 +81,15 @@ async def _drain_queue():
 def busy_pool():
     """Occupy every request-pool thread until the test releases them."""
     release = threading.Event()
-    started = threading.Barrier(executor.DATASOURCE_MAX_THREADS + 1, timeout=5)
+    started = threading.Barrier(executor.limits().max_threads + 1, timeout=5)
 
     def hold():
         started.wait()
         release.wait()
 
     futures = [
-        executor._request_pool.submit(hold)
-        for _ in range(executor.DATASOURCE_MAX_THREADS)
+        executor._pool_for('request').submit(hold)
+        for _ in range(executor.limits().max_threads)
     ]
     started.wait()
     try:
@@ -95,7 +104,7 @@ def busy_pool():
 async def test_refuses_without_running_when_all_threads_stay_busy(
     busy_pool, monkeypatch
 ):
-    monkeypatch.setattr(executor, 'DATASOURCE_MAX_QUEUE_WAIT_SECONDS', 0.05)
+    _set_queue_wait(monkeypatch, 0.05)
     calls = []
 
     with pytest.raises(executor.DatasourceBusyError):
@@ -108,7 +117,7 @@ async def test_refuses_without_running_when_all_threads_stay_busy(
 
 @pytest.mark.asyncio
 async def test_no_wait_limit_waits_for_a_thread(busy_pool, monkeypatch):
-    monkeypatch.setattr(executor, 'DATASOURCE_MAX_QUEUE_WAIT_SECONDS', 0.05)
+    _set_queue_wait(monkeypatch, 0.05)
     token = executor.queue_wait_limit.set(None)
     try:
         pending = asyncio.ensure_future(run_blocking(lambda: 'done'))
@@ -149,17 +158,17 @@ async def test_scheduled_calls_use_their_own_pool_and_limits():
         return (
             threading.current_thread().name,
             executor.queue_wait_limit.get(),
-            executor.statement_timeout_limit.get(),
+            executor.current_statement_timeout(),
         )
 
     name, wait, statement = await _in_scheduled_context(settings)
 
     assert name.startswith('datasource-scheduled')
     assert wait is None
-    assert statement == executor.DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS
+    assert statement == executor.limits().scheduled_statement_timeout_seconds
     # The request context is untouched.
-    assert executor.statement_timeout_limit.get() == (
-        executor.DATASOURCE_STATEMENT_TIMEOUT_SECONDS
+    assert executor.current_statement_timeout() == (
+        executor.limits().statement_timeout_seconds
     )
 
 
@@ -175,8 +184,8 @@ async def test_scheduled_calls_run_while_request_threads_are_busy(busy_pool):
 async def test_batch_larger_than_the_pool_is_not_refused_by_its_own_calls(
     monkeypatch,
 ):
-    monkeypatch.setattr(executor, 'DATASOURCE_MAX_QUEUE_WAIT_SECONDS', 0.2)
-    count = executor.DATASOURCE_MAX_THREADS * 2
+    _set_queue_wait(monkeypatch, 0.2)
+    count = executor.limits().max_threads * 2
     lock = threading.Lock()
     running = {'now': 0, 'most': 0}
 
@@ -193,7 +202,7 @@ async def test_batch_larger_than_the_pool_is_not_refused_by_its_own_calls(
 
     assert results == list(range(count))
     # One batch never takes more than half the pool, leaving room for others.
-    assert running['most'] <= executor.DATASOURCE_MAX_THREADS // 2
+    assert running['most'] <= executor.limits().max_threads // 2
 
 
 @pytest.mark.asyncio
@@ -212,7 +221,7 @@ async def test_batch_returns_each_outcome_in_order():
 
 @pytest.mark.asyncio
 async def test_refused_batch_runs_none_of_its_calls(busy_pool, monkeypatch):
-    monkeypatch.setattr(executor, 'DATASOURCE_MAX_QUEUE_WAIT_SECONDS', 0.05)
+    _set_queue_wait(monkeypatch, 0.05)
     calls = []
 
     with pytest.raises(executor.DatasourceBusyError):
@@ -249,30 +258,35 @@ async def test_cancelled_batch_stops_queued_calls(busy_pool):
     assert calls == []
 
 
-@pytest.mark.parametrize(
-    'raw, expected',
-    [
-        (None, 16),
-        ('', 16),
-        ('8', 8),
-        ('8.0', 8),
-        ('0', 16),
-        ('-3', 16),
-        ('lots', 16),
-    ],
-)
-def test_env_limits_fall_back_on_values_that_are_not_positive(
-    monkeypatch, raw, expected
-):
-    if raw is None:
-        monkeypatch.delenv('TEST_DATASOURCE_LIMIT', raising=False)
-    else:
-        monkeypatch.setenv('TEST_DATASOURCE_LIMIT', raw)
+def test_configured_limits_apply_and_bad_values_fall_back(monkeypatch):
+    monkeypatch.setattr(executor, '_limits', executor.limits())
 
-    assert executor._env_positive('TEST_DATASOURCE_LIMIT', 16) == expected
+    configured = executor.configure_limits(
+        {
+            'max_threads': '8',
+            'queue_wait_seconds': '2.5',
+            'connect_timeout_seconds': '0',
+            'statement_timeout_seconds': 'lots',
+            'scheduled_statement_timeout_seconds': '-5',
+        }
+    )
+
+    assert configured.max_threads == 8
+    assert configured.queue_wait_seconds == 2.5
+    # Not positive numbers: the defaults stay.
+    assert configured.connect_timeout_seconds == 30
+    assert configured.statement_timeout_seconds == 30
+    assert configured.scheduled_statement_timeout_seconds == 300
+    # Not given at all: the default stays.
+    assert configured.scheduled_max_threads == 4
+    assert executor.limits() == configured
 
 
-def test_env_limits_keep_fractions_where_allowed(monkeypatch):
-    monkeypatch.setenv('TEST_DATASOURCE_WAIT', '2.5')
+def test_statement_limit_follows_the_configured_value(monkeypatch):
+    monkeypatch.setattr(
+        executor,
+        '_limits',
+        dataclasses.replace(executor.limits(), statement_timeout_seconds=45),
+    )
 
-    assert executor._env_positive('TEST_DATASOURCE_WAIT', 10.0, float) == 2.5
+    assert executor.current_statement_timeout() == 45

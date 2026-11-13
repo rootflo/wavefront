@@ -20,103 +20,134 @@ it.
 Requests and scheduled reports use separate pools, so a batch of heavy reports
 cannot make the UI wait, and a busy UI cannot hold reports up.
 
-Every limit can be set through an environment variable of the same name. A value
-that is not a positive number is ignored with a warning.
+The limits come from the app's config through ``configure_limits`` (floware:
+the ``[datasource]`` section of its config.ini), called once at startup. Until
+then, and in tests, the defaults in ``DatasourceLimits`` apply.
 """
 
 import asyncio
 import contextvars
 import logging
-import os
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, List, Optional, Sequence, Tuple, TypeVar
+from dataclasses import dataclass, fields
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 
 T = TypeVar('T')
 
 logger = logging.getLogger(__name__)
 
 
-def _env_positive(name: str, default: float, cast: Callable[[float], Any] = int):
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == '':
-        return default
-    try:
-        value = float(raw)
-    except ValueError:
-        value = 0
-    if value <= 0:
-        logger.warning(
-            f'Ignoring {name}={raw!r}: not a positive number. Using {default}.'
-        )
-        return default
-    return cast(value)
+@dataclass(frozen=True)
+class DatasourceLimits:
+    # Threads per process, so per uvicorn worker. Calls beyond these wait in
+    # the pool's queue.
+    max_threads: int = 16
+    scheduled_max_threads: int = 4
+    # How long a request may wait for a free thread before it is refused with
+    # DatasourceBusyError, so that an overloaded worker answers "busy" quickly
+    # instead of holding requests open behind a slow datasource.
+    queue_wait_seconds: float = 10.0
+    # Bounds on how long one call can hold a thread. The connect limit leaves
+    # room for databases that pause when idle and take a while to resume.
+    # Requests (UI reads, exports) get the short statement limit; scheduled
+    # reports get the long one, since a heavy report is expected to take a
+    # while and nobody is waiting on it interactively.
+    connect_timeout_seconds: int = 30
+    statement_timeout_seconds: int = 30
+    scheduled_statement_timeout_seconds: int = 300
 
 
-# Threads per process, so per uvicorn worker. Calls beyond these wait in the
-# pool's queue.
-DATASOURCE_MAX_THREADS = _env_positive('DATASOURCE_MAX_THREADS', 16)
-DATASOURCE_SCHEDULED_MAX_THREADS = _env_positive('DATASOURCE_SCHEDULED_MAX_THREADS', 4)
+_limits = DatasourceLimits()
 
-# How long a request may wait for a free thread before it is refused with
-# DatasourceBusyError, so that an overloaded worker answers "busy" quickly
-# instead of holding requests open behind a slow datasource.
-DATASOURCE_MAX_QUEUE_WAIT_SECONDS = _env_positive(
-    'DATASOURCE_MAX_QUEUE_WAIT_SECONDS', 10.0, float
-)
-
-# Bounds on how long one call can hold a pool thread. The connect limit leaves
-# room for databases that pause when idle and take a while to resume. Requests
-# (UI reads, exports) get the short statement limit; scheduled reports get the
-# long one, since a heavy report is expected to take a while and nobody is
-# waiting on it interactively.
-DATASOURCE_CONNECT_TIMEOUT_SECONDS = _env_positive(
-    'DATASOURCE_CONNECT_TIMEOUT_SECONDS', 30
-)
-DATASOURCE_STATEMENT_TIMEOUT_SECONDS = _env_positive(
-    'DATASOURCE_STATEMENT_TIMEOUT_SECONDS', 30
-)
-DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS = _env_positive(
-    'DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS', 300
-)
-
-_request_pool = ThreadPoolExecutor(
-    max_workers=DATASOURCE_MAX_THREADS, thread_name_prefix='datasource'
-)
-_scheduled_pool = ThreadPoolExecutor(
-    max_workers=DATASOURCE_SCHEDULED_MAX_THREADS,
-    thread_name_prefix='datasource-scheduled',
-)
-
-# How many of a pool's threads one batch (one dynamic query's sub-queries) may
-# use at once: half, so a single large dashboard cannot occupy the whole pool
-# and turn every other request away as busy.
-_BATCH_CONCURRENCY = {
-    _request_pool: max(1, DATASOURCE_MAX_THREADS // 2),
-    _scheduled_pool: max(1, DATASOURCE_SCHEDULED_MAX_THREADS // 2),
-}
+_REQUEST = 'request'
+_SCHEDULED = 'scheduled'
+_pools: Dict[str, ThreadPoolExecutor] = {}
+_pools_lock = threading.Lock()
 
 _DEFAULT_WAIT = object()
 
-# The pool that calls in the current context run on.
-_pool: contextvars.ContextVar[ThreadPoolExecutor] = contextvars.ContextVar(
-    'datasource_pool', default=_request_pool
+# Which pool calls in the current context run on.
+_lane: contextvars.ContextVar[str] = contextvars.ContextVar(
+    'datasource_lane', default=_REQUEST
 )
 
-# Overrides DATASOURCE_MAX_QUEUE_WAIT_SECONDS for the current context. None
-# waits for a thread however long it takes.
+# Overrides the configured queue wait for the current context. None waits for a
+# thread however long it takes.
 queue_wait_limit: contextvars.ContextVar[Any] = contextvars.ContextVar(
     'datasource_queue_wait_limit', default=_DEFAULT_WAIT
 )
 
-# The statement limit for clients built in the current context. Plugins read it
-# when they construct their client.
-statement_timeout_limit: contextvars.ContextVar[int] = contextvars.ContextVar(
-    'datasource_statement_timeout', default=DATASOURCE_STATEMENT_TIMEOUT_SECONDS
+# Overrides the configured statement limit for clients built in the current
+# context. None means the configured request limit.
+_statement_timeout: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    'datasource_statement_timeout', default=None
 )
 
 
 class DatasourceBusyError(RuntimeError):
     """No datasource thread became free within the queue wait limit."""
+
+
+def _positive(name: str, raw: Any, default):
+    if raw is None or str(raw).strip() == '':
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = 0
+    if value <= 0:
+        logger.warning(
+            f'Ignoring datasource {name}={raw!r}: not a positive number. '
+            f'Using {default}.'
+        )
+        return default
+    return type(default)(value)
+
+
+def configure_limits(settings: Mapping[str, Any]) -> DatasourceLimits:
+    """Set the limits from the app's config, keyed by ``DatasourceLimits`` field.
+
+    Missing keys keep their defaults, and a value that is not a positive number
+    is ignored with a warning. Call it at startup, before the first datasource
+    call: pools are sized when first used, so a later call cannot resize them.
+    """
+    global _limits
+    defaults = DatasourceLimits()
+    values = {
+        field.name: _positive(
+            field.name, settings.get(field.name), getattr(defaults, field.name)
+        )
+        for field in fields(DatasourceLimits)
+    }
+    with _pools_lock:
+        if _pools:
+            logger.warning(
+                'Datasource limits were configured after the first datasource '
+                'call; thread counts keep their earlier values.'
+            )
+        _limits = DatasourceLimits(**values)
+    return _limits
+
+
+def limits() -> DatasourceLimits:
+    return _limits
+
+
+def current_statement_timeout() -> int:
+    """The statement limit for a client built now, in seconds."""
+    override = _statement_timeout.get()
+    return _limits.statement_timeout_seconds if override is None else override
 
 
 def use_scheduled_limits() -> None:
@@ -127,9 +158,29 @@ def use_scheduled_limits() -> None:
     get the long statement limit. Scheduled runs call this at the start of the
     coroutine ``asyncio.run`` drives, so it never reaches request contexts.
     """
-    _pool.set(_scheduled_pool)
+    _lane.set(_SCHEDULED)
     queue_wait_limit.set(None)
-    statement_timeout_limit.set(DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS)
+    _statement_timeout.set(_limits.scheduled_statement_timeout_seconds)
+
+
+def _pool_size(lane: str) -> int:
+    if lane == _SCHEDULED:
+        return _limits.scheduled_max_threads
+    return _limits.max_threads
+
+
+def _pool_for(lane: str) -> ThreadPoolExecutor:
+    pool = _pools.get(lane)
+    if pool is None:
+        with _pools_lock:
+            pool = _pools.get(lane)
+            if pool is None:
+                prefix = 'datasource-scheduled' if lane == _SCHEDULED else 'datasource'
+                pool = ThreadPoolExecutor(
+                    max_workers=_pool_size(lane), thread_name_prefix=prefix
+                )
+                _pools[lane] = pool
+    return pool
 
 
 def shutdown_pools() -> None:
@@ -138,13 +189,15 @@ def shutdown_pools() -> None:
     Calls already running are left to finish within their driver timeouts; the
     interpreter still waits for them on exit.
     """
-    for pool in (_request_pool, _scheduled_pool):
-        pool.shutdown(wait=False, cancel_futures=True)
+    with _pools_lock:
+        for pool in _pools.values():
+            pool.shutdown(wait=False, cancel_futures=True)
+        _pools.clear()
 
 
 def _current_wait_limit() -> Optional[float]:
     limit = queue_wait_limit.get()
-    return DATASOURCE_MAX_QUEUE_WAIT_SECONDS if limit is _DEFAULT_WAIT else limit
+    return _limits.queue_wait_seconds if limit is _DEFAULT_WAIT else limit
 
 
 def _submit(pool: ThreadPoolExecutor, fn: Callable, args, kwargs) -> Future:
@@ -193,7 +246,7 @@ async def run_blocking(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     raised here. Raises DatasourceBusyError, without running ``fn``, when no
     thread frees up within the queue wait limit.
     """
-    pending = _submit(_pool.get(), fn, args, kwargs)
+    pending = _submit(_pool_for(_lane.get()), fn, args, kwargs)
     result = asyncio.wrap_future(pending)
     try:
         await _admit(pending, result)
@@ -222,11 +275,13 @@ async def run_blocking_batch(
     """
     if not calls:
         return []
-    pool = _pool.get()
+    lane = _lane.get()
+    pool = _pool_for(lane)
     first_fn, first_args = calls[0]
     pending = [_submit(pool, first_fn, first_args, {})]
     wrappers = [asyncio.wrap_future(pending[0])]
-    slots = asyncio.Semaphore(max(1, _BATCH_CONCURRENCY.get(pool, 1) - 1))
+    # Half the pool for the whole batch, the first call included.
+    slots = asyncio.Semaphore(max(1, _pool_size(lane) // 2 - 1))
     others: List[asyncio.Task] = []
 
     async def run_one(fn, args):

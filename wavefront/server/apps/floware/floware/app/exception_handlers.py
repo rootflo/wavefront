@@ -4,7 +4,7 @@ from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
 from common_module.telemetry import record_exception_on_span
-from datasource.executor import DATASOURCE_MAX_QUEUE_WAIT_SECONDS, DatasourceBusyError
+from datasource.executor import DatasourceBusyError, limits
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from flo_ai.llm.guarded_llm import GuardrailBlocked
@@ -25,7 +25,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         )
         return JSONResponse(
             status_code=503,
-            headers={'Retry-After': str(DATASOURCE_MAX_QUEUE_WAIT_SECONDS)},
+            headers={'Retry-After': str(max(1, round(limits().queue_wait_seconds)))},
             content=ResponseFormatter().buildErrorResponse(
                 error='The datasource is busy. Please try again shortly.'
             ),

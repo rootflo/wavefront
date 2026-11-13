@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from ..executor import run_blocking, run_blocking_batch, statement_timeout_limit
+from ..executor import current_statement_timeout, run_blocking, run_blocking_batch
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
 from .config import BigQueryConfig
@@ -25,7 +25,7 @@ class BigQueryPlugin(DataSourceABC):
             location=config.location,
             credentials_path=config.credentials_path,
             credentials_json=config.credentials_json,
-            timeout=statement_timeout_limit.get(),
+            timeout=current_statement_timeout(),
         )
         self.table_prefix = f'{config.project_id}.{config.dataset_id}.'
 

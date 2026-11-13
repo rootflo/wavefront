@@ -9,12 +9,7 @@ import contextvars
 import mssql_python
 import psycopg2
 import pytest
-from datasource.executor import (
-    DATASOURCE_CONNECT_TIMEOUT_SECONDS,
-    DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS,
-    DATASOURCE_STATEMENT_TIMEOUT_SECONDS,
-    use_scheduled_limits,
-)
+from datasource.executor import limits, use_scheduled_limits
 from datasource.bigquery import BigQueryConfig, BigQueryPlugin
 from datasource.mssql import MSSQLConfig, MSSQLPlugin
 from datasource.postgres import PostgresConfig, PostgresPlugin
@@ -41,8 +36,8 @@ def _executed_sql(cursor):
 def test_postgres_plugin_bounds_connect_and_statement_time():
     plugin = PostgresPlugin(PostgresConfig('h', 5432, 'db', 'u', 'p'))
 
-    assert plugin.client.timeout == DATASOURCE_CONNECT_TIMEOUT_SECONDS
-    assert plugin.client.statement_timeout == DATASOURCE_STATEMENT_TIMEOUT_SECONDS
+    assert plugin.client.timeout == limits().connect_timeout_seconds
+    assert plugin.client.statement_timeout == limits().statement_timeout_seconds
 
 
 @patch('flo_cloud.postgres.postgres.psycopg2.connect')
@@ -211,16 +206,16 @@ def test_bigquery_plugin_uses_the_context_limit():
 
     timeouts = [c.kwargs['timeout'] for c in client_class.call_args_list]
     assert timeouts == [
-        DATASOURCE_STATEMENT_TIMEOUT_SECONDS,
-        DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS,
+        limits().statement_timeout_seconds,
+        limits().scheduled_statement_timeout_seconds,
     ]
 
 
 def test_mssql_plugin_bounds_login_and_statement_time():
     plugin = MSSQLPlugin(MSSQLConfig('h', 1433, 'db', 'u', 'p'))
 
-    assert plugin.client.timeout == DATASOURCE_CONNECT_TIMEOUT_SECONDS
-    assert plugin.client.statement_timeout == DATASOURCE_STATEMENT_TIMEOUT_SECONDS
+    assert plugin.client.timeout == limits().connect_timeout_seconds
+    assert plugin.client.statement_timeout == limits().statement_timeout_seconds
 
 
 @patch('flo_cloud.mssql.mssql.mssql_python.connect')
@@ -259,11 +254,10 @@ def test_scheduled_context_gets_the_long_statement_limit(plugin_class, config):
     plugin = scheduled.run(plugin_class, config)
 
     assert (
-        plugin.client.statement_timeout
-        == DATASOURCE_SCHEDULED_STATEMENT_TIMEOUT_SECONDS
+        plugin.client.statement_timeout == limits().scheduled_statement_timeout_seconds
     )
     # Clients built outside that context keep the request limit.
     assert (
         plugin_class(config).client.statement_timeout
-        == DATASOURCE_STATEMENT_TIMEOUT_SECONDS
+        == limits().statement_timeout_seconds
     )
