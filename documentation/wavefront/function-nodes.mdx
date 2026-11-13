@@ -157,7 +157,41 @@ Calls an endpoint defined under **API Services**.
 |---|---|
 | `api_service_id`, `api_id` | Which service and endpoint. Usually prefilled |
 | `api_version` | Default `v1` |
+| `retry_enabled` | Retry failures that can clear on their own. Default `false` |
+| `max_retries` | Retries after the first attempt, 0–10. Default `5` |
+| `retry_window_seconds` | The most the node may hold the run, attempts and waits together. Default `900` (15 minutes) |
 | other fields | Become the request: fields of the payload schema go in the body; fields prefixed `path_` and `query_` become path and query parameters |
+
+Output: the response body exactly as it came back, for success and failure alike. For a call through floware that is `{"meta": {...}, "data": <the API's own body>}`, so check `data` (for example its `status`) to see what happened. Only when there is no usable body (the service could not be reached, timed out, or did not answer JSON) does the node output `{"error": "..."}`. It never stops the run.
+
+### Retries
+
+```yaml
+- name: notify_middleware
+  function_name: trigger_api_service
+  prefilled_params:
+    api_service_id: <service-id>
+    api_id: <api-id>
+    retry_enabled: true
+    max_retries: 5
+    retry_window_seconds: 900
+```
+
+Only failures that can clear on their own are retried: no answer, a timeout, HTTP 408, 429 or 5xx. Any other answer, including 401, 403 and 422, is returned at once.
+
+**A retry sends the same request again.** After a timeout or a 5xx the API may already have acted on the first one, and nothing marks the resend as a repeat. Turn retries on only for endpoints that can safely receive the same request twice, for example ones that deduplicate on a field of the payload.
+
+`retry_window_seconds` is a hard cap on the whole node: however the attempts go, the node never holds the run longer than that. Each wait is double the one before, and the waits are sized so that they, plus every attempt using its full 60-second timeout, fit in the window: the first wait is `(retry_window_seconds − (max_retries + 1) × 60) / (2^max_retries − 1)`. A deadline also cuts an attempt's timeout to the time left and gives up when no further attempt fits. More retries than the window allows just means shorter waits, down to attempts back to back.
+
+<Warning>
+A retrying node holds its run, and the worker running it, for up to `retry_window_seconds`. With the 15-minute default:
+
+| `max_retries` | Waits | Longest hold |
+|---|---|---|
+| 3 | 1.6m, 3.1m, 6.3m | 15 min |
+| 5 | 17s, 35s, 70s, 2.3m, 4.6m | 15 min |
+| 8 | 1.4s doubling to 3m | 15 min |
+</Warning>
 
 ## send_email
 
