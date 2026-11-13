@@ -1,7 +1,12 @@
-import asyncio
 import re
 from typing import Any, Dict, List, Optional
 
+from ..executor import (
+    current_statement_timeout,
+    limits,
+    run_blocking,
+    run_blocking_batch,
+)
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
 from flo_cloud.mssql import MSSQLClient
@@ -20,11 +25,13 @@ class MSSQLPlugin(DataSourceABC):
             schema=config.schema,
             encrypt=config.encrypt,
             trust_server_certificate=config.trust_server_certificate,
+            timeout=limits().connect_timeout_seconds,
+            statement_timeout=current_statement_timeout(),
         )
         self.db_name = f'{config.database}.{config.schema}'
 
     async def test_connection(self) -> bool:
-        return await asyncio.to_thread(self.client.test_connection)
+        return await run_blocking(self.client.test_connection)
 
     def validate_table_name(self, table_name: str) -> None:
         # Writes use the name as given rather than prefixing the schema, so a
@@ -77,7 +84,7 @@ class MSSQLPlugin(DataSourceABC):
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:
         params = kwargs.get('params')
-        return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
+        return await run_blocking(self.client.execute_query_as_dict, query, params)
 
     @staticmethod
     def _apply_pagination(
@@ -140,7 +147,7 @@ class MSSQLPlugin(DataSourceABC):
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         results = {}
-        tasks = []
+        prepared = []
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
@@ -176,30 +183,31 @@ class MSSQLPlugin(DataSourceABC):
             query_to_execute = query_to_execute.rstrip().rstrip(';')
             query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
 
-            task = asyncio.create_task(
-                asyncio.to_thread(
-                    self.client.execute_query_as_dict,
-                    query_to_execute,
-                    params_to_execute,
-                )
-            )
-            tasks.append((query_id, task))
+            prepared.append((query_id, query_to_execute, params_to_execute))
 
-        for query_id, task in tasks:
-            try:
-                formatted_result = await task
+        # Every query is validated above before any of them starts, so a bad
+        # query further down cannot leave earlier ones running unobserved.
+        outcomes = await run_blocking_batch(
+            [
+                (self.client.execute_query_as_dict, (sql, sql_params))
+                for _, sql, sql_params in prepared
+            ]
+        )
+
+        for (query_id, _, _), outcome in zip(prepared, outcomes):
+            if isinstance(outcome, BaseException):
+                results[query_id] = {
+                    'status': 'error',
+                    'error': str(outcome),
+                    'description': f'Error executing query {query_id}',
+                    'result': [],
+                }
+            else:
                 results[query_id] = {
                     'status': 'success',
                     'error': None,
                     'description': f'Query {query_id} executed successfully',
-                    'result': formatted_result,
-                }
-            except Exception as e:
-                results[query_id] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'description': f'Error executing query {query_id}',
-                    'result': [],
+                    'result': outcome,
                 }
 
         return results

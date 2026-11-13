@@ -8,9 +8,11 @@ from agents_module.services.async_agentic_execution_result_consumer import (
 )
 from common_module.log.logger import logger
 from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
+from datasource.executor import configure_limits, shutdown_pools
 from db_repo_module.database.connection import DatabaseClient
 from fastapi import FastAPI
 from floware.app.channels import start_redis_listener
+from floware.app_migrations.startup import check_app_migrations
 from floware.di import application_container
 from knowledge_base_module.services.kb_index_status_consumer import (
     KbIndexStatusConsumer,
@@ -24,6 +26,9 @@ async def lifespan(app: FastAPI):
 
     try:
         config = application_container.config()
+        # Before anything can call a datasource: the pools are sized on first use.
+        datasource_limits = configure_limits(config.get('datasource') or {})
+        logger.info(f'Datasource limits: {datasource_limits}')
         db = application_container.db
         db_client: DatabaseClient = db.db_client()
 
@@ -38,6 +43,11 @@ async def lifespan(app: FastAPI):
             raise TypeError('db_client is not an instance of DatabaseClient')
 
         db_client.run_migration()
+        # App migrations run as a separate step (floware.app_migrations);
+        # serving before a blocking one has run would fail on its data.
+        await check_app_migrations(
+            db_client, application_container.common.feature_flags()
+        )
 
         # Load the safety providers' models before the first request needs
         # them. Presidio builds a spaCy model on first use, which takes longer
@@ -144,6 +154,9 @@ async def lifespan(app: FastAPI):
 
         # Shutdown code
         scheduler_manager.shutdown()
+        # Drop queued datasource calls so the worker is not held up running a
+        # backlog nobody is waiting for any more.
+        shutdown_pools()
         async_agentic_exec_consumer.stop()
         try:
             await asyncio.wait_for(
