@@ -7,6 +7,12 @@ from flo_ai import ImageMessageContent, VideoMessageContent
 
 from tools_module.floware_api import FlowareApiClient
 
+# Longer than floware can take on a datasource call before it answers on its
+# own (10 s queue wait + 30 s connect + 30 s query), so a slow call comes back
+# as floware's own error rather than a client timeout that hides whether a
+# write went through.
+DATASOURCE_API_TIMEOUT_SECONDS = 90.0
+
 
 async def datasource_insert_rows(
     api: FlowareApiClient,
@@ -34,7 +40,7 @@ async def datasource_insert_rows(
             response = await client.post(
                 url,
                 json={'data': rows},
-                timeout=30.0,
+                timeout=DATASOURCE_API_TIMEOUT_SECONDS,
             )
         except httpx.RequestError as e:
             return f"Failed to reach datasource API for '{datasource_id}': {e}"
@@ -70,7 +76,7 @@ async def datasource_insert_multi(
             response = await client.post(
                 url,
                 json={'inserts': inserts},
-                timeout=30.0,
+                timeout=DATASOURCE_API_TIMEOUT_SECONDS,
             )
         except httpx.RequestError as e:
             return f"Failed to reach datasource API for '{datasource_id}': {e}"
@@ -158,7 +164,7 @@ async def datasource_execute_query(
                 url,
                 params=query_params,
                 json={'params': {k: str(v) for k, v in (params or {}).items()}},
-                timeout=30.0,
+                timeout=DATASOURCE_API_TIMEOUT_SECONDS,
             )
         except httpx.RequestError as e:
             return f"Failed to reach datasource API for '{datasource_id}': {e}"
