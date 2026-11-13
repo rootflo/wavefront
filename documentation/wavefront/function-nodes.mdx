@@ -179,6 +179,8 @@ Output: the response body exactly as it came back, for success and failure alike
 
 Only failures that can clear on their own are retried: no answer, a timeout, HTTP 408, 429 or 5xx. Any other answer, including 401, 403 and 422, is returned at once.
 
+**A retry sends the same request again.** After a timeout or a 5xx the API may already have acted on the first one, and nothing marks the resend as a repeat. Turn retries on only for endpoints that can safely receive the same request twice, for example ones that deduplicate on a field of the payload.
+
 `retry_window_seconds` is a hard cap on the whole node: however the attempts go, the node never holds the run longer than that. Each wait is double the one before, and the waits are sized so that they, plus every attempt using its full 60-second timeout, fit in the window: the first wait is `(retry_window_seconds − (max_retries + 1) × 60) / (2^max_retries − 1)`. A deadline also cuts an attempt's timeout to the time left and gives up when no further attempt fits. More retries than the window allows just means shorter waits, down to attempts back to back.
 
 <Warning>

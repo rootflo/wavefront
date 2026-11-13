@@ -128,7 +128,12 @@ export const FunctionProperties = ({ selectedNode, handleChange, nodes, tools }:
         {paramsError && <p className="text-destructive mt-0.5 text-[10px]">{paramsError}</p>}
       </div>
       {functionName === API_SERVICE_FUNCTION && (
-        <div className="border-border space-y-2 rounded-md border p-2">
+        // Every control here rebuilds the JSON box from the stored params, so they are all
+        // disabled while it holds a half-typed edit that is not valid yet.
+        <fieldset
+          disabled={!!paramsError}
+          className="border-border min-w-0 space-y-2 rounded-md border p-2 disabled:opacity-60"
+        >
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor="api-service-retry" className="text-xs">
               Retry on failure
@@ -136,8 +141,6 @@ export const FunctionProperties = ({ selectedNode, handleChange, nodes, tools }:
             <Switch
               id="api-service-retry"
               checked={retry.enabled}
-              // Built on the stored params, so a half-typed JSON edit would be lost: fix it first.
-              disabled={!!paramsError}
               onCheckedChange={(on) =>
                 updateParams(
                   on
@@ -200,7 +203,8 @@ export const FunctionProperties = ({ selectedNode, handleChange, nodes, tools }:
               Off: one attempt. A failure is returned as the node&apos;s output and the run continues.
             </p>
           )}
-        </div>
+          {paramsError && <p className="text-muted-foreground text-[10px]">Fix the JSON above to change retries.</p>}
+        </fieldset>
       )}
     </>
   );

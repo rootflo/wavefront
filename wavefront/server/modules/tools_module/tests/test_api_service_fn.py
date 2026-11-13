@@ -1,7 +1,9 @@
 """trigger_api_service: returns the response body as-is, success or failure; never raises;
 optional retries with exponential backoff."""
 
+import asyncio
 import json
+import time
 
 import flo_lib.http as httpx
 import pytest
@@ -290,3 +292,57 @@ async def test_bad_retry_settings_fall_back_to_defaults(http, clock):
     assert json.loads(out) == OK_BODY
     assert len(http.requests) == 2
     assert clock.waits == [retry_delays(5, 900)[0]]
+
+
+@pytest.mark.parametrize('bad', ['nan', 'inf', float('nan'), float('-inf')])
+async def test_non_finite_retry_settings_fall_back_to_defaults(http, clock, bad):
+    http.reply = replies(503, 200)
+    out = await call(retry_enabled=True, max_retries=bad, retry_window_seconds=bad)
+    assert json.loads(out) == OK_BODY
+    assert clock.waits == [retry_delays(5, 900)[0]]
+
+
+async def test_tiny_window_never_gets_a_longer_first_attempt(http, clock):
+    timeouts: list[float] = []
+    http.reply = timing_out(clock, timeouts)
+    await call(retry_enabled=True, max_retries=1, retry_window_seconds=1)
+    assert timeouts == [1]
+    assert clock.t == 1
+
+
+async def test_no_attempt_starts_after_a_wait_overruns_the_window(
+    http, clock, monkeypatch
+):
+    async def overrunning_sleep(seconds):
+        clock.waits = [*clock.waits, seconds]
+        clock.t += seconds + 1000  # the wait resumes long after the deadline
+
+    monkeypatch.setattr(api_service_fn.asyncio, 'sleep', overrunning_sleep)
+    http.reply = replies(503, 200)
+    out = json.loads(
+        await call(retry_enabled=True, max_retries=1, retry_window_seconds=125)
+    )
+    assert out['data']['status'] == 503
+    assert len(http.requests) == 1
+
+
+async def test_a_trickling_answer_is_cut_off_at_the_window(monkeypatch):
+    real_sleep = asyncio.sleep
+
+    async def never_finishes(request):
+        await real_sleep(30)
+        return httpx.Response(200, json=OK_BODY)
+
+    real_client = httpx.AsyncClient
+
+    def make_client(*args, **kwargs):
+        kwargs['transport'] = httpx.MockTransport(never_finishes)
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, 'AsyncClient', make_client)
+    started = time.monotonic()
+    out = json.loads(
+        await call(retry_enabled=True, max_retries=1, retry_window_seconds=0.3)
+    )
+    assert list(out) == ['error']
+    assert time.monotonic() - started < 5

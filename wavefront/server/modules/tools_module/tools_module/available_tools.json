@@ -160,7 +160,7 @@
   },
   "trigger_api_service": {
     "name": "trigger_api_service",
-    "description": "Execute an API service. This template gets expanded into individual tools for each API. Returns the response body as-is, success or failure, and never raises; {\"error\": ...} only when there is no usable body. Optional retries with exponential backoff: retry_enabled, max_retries (0-10, default 5), retry_window_seconds (the most the node may hold the run, attempts and waits together; default 900).",
+    "description": "Execute an API service. This template gets expanded into individual tools for each API. Returns the response body as-is, success or failure, and never raises; {\"error\": ...} only when there is no usable body. Optional retries with exponential backoff: retry_enabled, max_retries (0-10, default 5), retry_window_seconds (the most the node may hold the run, attempts and waits together; default 900). A retry resends the same request, so enable it only for endpoints that tolerate repeats.",
     "parameters": {},
     "prefill_values": [
       "api_service_id",

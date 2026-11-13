@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import time
 from urllib.parse import quote
 
@@ -74,13 +75,16 @@ def _as_bool(value) -> bool:
 
 
 def _number(value, default, name: str) -> float:
-    """A retry setting as a number; a bad value (null, 'abc') falls back to the default
+    """A retry setting as a number; a bad value (null, 'abc', nan, inf) falls back to the default
     with a warning, so a misconfigured node cannot fail the run."""
     try:
-        return float(value)
+        number = float(value)
+        if math.isfinite(number):  # nan/inf would fail int() later, outside the handler
+            return number
     except (TypeError, ValueError):
-        logger.warning(f'Invalid {name} {value!r}; using the default {default}')
-        return float(default)
+        pass
+    logger.warning(f'Invalid {name} {value!r}; using the default {default}')
+    return float(default)
 
 
 def _retryable(response) -> bool:
@@ -192,15 +196,30 @@ async def execute_api_service_fn(
         for attempt in range(retries + 1):
             timeout = REQUEST_TIMEOUT_SECONDS
             if deadline is not None:
-                # Never let one attempt run past the cap
-                timeout = max(min(timeout, deadline - _now()), MIN_ATTEMPT_SECONDS)
+                left = deadline - _now()
+                # A wait can overrun its deadline; never start an attempt the window
+                # has no real room for. The first attempt always runs.
+                if attempt and left < MIN_ATTEMPT_SECONDS:
+                    logger.warning(
+                        f'API service {api_service_id}/{api_id}: retry window used up '
+                        f'before attempt {attempt + 1}, giving up'
+                    )
+                    break
+                timeout = max(min(timeout, left), 0.001)
+            post = client.post(url, json=body, headers=api.headers(), timeout=timeout)
             try:
-                response = await client.post(
-                    url, json=body, headers=api.headers(), timeout=timeout
-                )
+                if deadline is None:
+                    response = await post
+                else:
+                    # httpx's timeout bounds each read/write, not the whole request: a
+                    # server trickling bytes could outlast it. This bounds the attempt.
+                    response = await asyncio.wait_for(post, timeout)
                 request_error = None
             except httpx.RequestError as e:
                 response, request_error = None, e
+            except asyncio.TimeoutError:
+                response = None
+                request_error = f'no complete answer within {timeout:.0f}s'
             if not _retryable(response) or attempt == retries:
                 break
             reason = (
