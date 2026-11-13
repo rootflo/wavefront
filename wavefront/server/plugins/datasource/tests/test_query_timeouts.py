@@ -16,6 +16,7 @@ from datasource.postgres import PostgresConfig, PostgresPlugin
 from datasource.redshift import RedshiftConfig, RedshiftPlugin
 from flo_cloud.aws.redshift import RedshiftClient
 from flo_cloud.gcp.bigquery import BigQueryClient
+from google.api_core.exceptions import RetryError
 from flo_cloud.mssql import MSSQLClient
 from flo_cloud.postgres import PostgresClient
 from flo_cloud.postgres.postgres import _duration_setting_ms
@@ -182,8 +183,14 @@ def test_bigquery_query_is_bounded_on_server_and_client():
     job_config = client.client.query.call_args.kwargs['job_config']
     # The library keeps it in its API form, a string of milliseconds.
     assert int(job_config.job_timeout_ms) == 30000
-    assert client.client.query.call_args.kwargs['timeout'] == 30
-    job.result.assert_called_once_with(timeout=30)
+    query_kwargs = client.client.query.call_args.kwargs
+    result_kwargs = job.result.call_args.kwargs
+    for kwargs in (query_kwargs, result_kwargs):
+        # Each HTTP attempt and each retry sequence fits in what is left of 30 s,
+        # and the job is never resubmitted.
+        assert 0 < kwargs['timeout'] <= 30
+        assert 0 < kwargs['retry'].timeout <= 30
+        assert kwargs['job_retry'] is None
 
 
 def test_bigquery_query_over_the_limit_is_cancelled_with_a_clear_error():
@@ -194,7 +201,29 @@ def test_bigquery_query_over_the_limit_is_cancelled_with_a_clear_error():
     with pytest.raises(TimeoutError, match='did not finish within 30s'):
         client.query_rows('SELECT 1')
 
+    # Bounded, so a stalled cancel cannot hold the thread.
+    job.cancel.assert_called_once_with(retry=None, timeout=5)
+
+
+def test_bigquery_retries_running_out_count_as_the_time_limit():
+    client = _bigquery_client(30)
+    job = client.client.query.return_value
+    job.result.side_effect = RetryError('deadline exceeded', cause=None)
+
+    with pytest.raises(TimeoutError, match='did not finish within 30s'):
+        client.query_rows('SELECT 1')
+
     job.cancel.assert_called_once()
+
+
+def test_bigquery_failed_cancel_still_reports_the_timeout():
+    client = _bigquery_client(30)
+    job = client.client.query.return_value
+    job.result.side_effect = TimeoutError()
+    job.cancel.side_effect = RuntimeError('cancel stalled')
+
+    with pytest.raises(TimeoutError, match='did not finish within 30s'):
+        client.query_rows('SELECT 1')
 
 
 def test_bigquery_plugin_uses_the_context_limit():

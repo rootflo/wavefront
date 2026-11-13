@@ -83,9 +83,12 @@ async def test_result_with_a_failed_query_is_not_cached(plugin):
     cache_manager.add.assert_not_called()
 
 
-async def _export(cache_manager):
-    query_service = MagicMock()
-    query_service.get_dynamic_yaml_query = AsyncMock(return_value=([{'id': 'q'}], None))
+async def _export(cache_manager, query_service=None):
+    if query_service is None:
+        query_service = MagicMock()
+        query_service.get_dynamic_yaml_query = AsyncMock(
+            return_value=([{'id': 'q'}], None)
+        )
     return await datasource_controller.export_dynamic_query_csv(
         request=SimpleNamespace(
             state=SimpleNamespace(
@@ -130,4 +133,19 @@ async def test_failed_export_gives_the_rate_limit_slot_back(plugin):
 
     assert response.status_code == 500
     assert b'canceling statement' not in response.body  # driver text stays in logs
+    cache_manager.remove.assert_called_once_with('dynamic_query_export_rate:u')
+
+
+@pytest.mark.asyncio
+async def test_busy_yaml_lookup_gives_the_rate_limit_slot_back(plugin):
+    cache_manager = MagicMock()
+    cache_manager.add.return_value = True
+    query_service = MagicMock()
+    query_service.get_dynamic_yaml_query = AsyncMock(
+        side_effect=DatasourceBusyError('busy')
+    )
+
+    with pytest.raises(DatasourceBusyError):
+        await _export(cache_manager, query_service)
+
     cache_manager.remove.assert_called_once_with('dynamic_query_export_rate:u')

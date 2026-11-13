@@ -282,6 +282,26 @@ def test_configured_limits_apply_and_bad_values_fall_back(monkeypatch):
     assert executor.limits() == configured
 
 
+@pytest.mark.parametrize('raw', ['0.5', 'inf', '-inf', 'nan', '1e400'])
+def test_values_that_would_break_the_pool_fall_back(monkeypatch, raw):
+    # 0.5 threads truncates to 0, which ThreadPoolExecutor rejects; inf and nan
+    # cannot become an int at all. None of them may reach the pool.
+    monkeypatch.setattr(executor, '_limits', executor.limits())
+
+    configured = executor.configure_limits({'max_threads': raw})
+
+    assert configured.max_threads == 16
+
+
+def test_fractional_wait_is_kept(monkeypatch):
+    monkeypatch.setattr(executor, '_limits', executor.limits())
+
+    assert (
+        executor.configure_limits({'queue_wait_seconds': '0.5'}).queue_wait_seconds
+        == 0.5
+    )
+
+
 def test_statement_limit_follows_the_configured_value(monkeypatch):
     monkeypatch.setattr(
         executor,
@@ -290,3 +310,41 @@ def test_statement_limit_follows_the_configured_value(monkeypatch):
     )
 
     assert executor.current_statement_timeout() == 45
+
+
+async def _until(condition, timeout=5):
+    for _ in range(int(timeout / 0.01)):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError('condition not met in time')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('lane', ['request', 'scheduled'])
+async def test_batch_starts_other_calls_while_the_first_is_still_running(lane):
+    first_may_finish = threading.Event()
+    second_started = threading.Event()
+
+    def first():
+        first_may_finish.wait(5)
+        return 'first'
+
+    def second():
+        second_started.set()
+        return 'second'
+
+    context = contextvars.copy_context()
+    if lane == 'scheduled':
+        context.run(executor.use_scheduled_limits)
+    batch = asyncio.create_task(
+        executor.run_blocking_batch([(first, ()), (second, ())]), context=context
+    )
+    try:
+        # The second call must not wait for the first one to finish.
+        await _until(second_started.is_set)
+        assert not batch.done()
+    finally:
+        first_may_finish.set()
+
+    assert await batch == ['first', 'second']

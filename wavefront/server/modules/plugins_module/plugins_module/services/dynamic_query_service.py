@@ -1,3 +1,4 @@
+import asyncio
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 import yaml
 from common_module.log.logger import logger
@@ -18,6 +19,28 @@ class DynamicQueryService:
         self.dynamic_query_repo = dynamic_query_repo
         self.bucket_name = bucket_name
         self.prefix = 'dynamic_query/v1'
+
+    async def _save_file_and_record(
+        self, file_content: bytes, file_key: str, yaml_id: str, datasource_id: str
+    ) -> None:
+        await run_blocking(
+            self.cloud_storage_manager.save_small_file,
+            file_content=file_content,
+            bucket_name=self.bucket_name,
+            key=file_key,
+            disable_cache=True,
+        )
+        await self.dynamic_query_repo.upsert(
+            filters={'name': yaml_id},
+            datasource_id=datasource_id,
+            file_path=file_key,
+        )
+
+    async def _delete_file_and_record(self, file_path: str, query_id: str) -> None:
+        await run_blocking(
+            self.cloud_storage_manager.delete_file, self.bucket_name, file_path
+        )
+        await self.dynamic_query_repo.delete_all(name=query_id)
 
     async def store_yaml_to_bucket(self, yaml_content: dict, datasource_id: str):
         """Store YAML file to cloud storage and save metadata to database
@@ -41,20 +64,12 @@ class DynamicQueryService:
             yaml_string = yaml.dump(yaml_content, default_flow_style=False)
             file_content = yaml_string.encode('utf-8')
 
-            # storing to s3bucket
-            await run_blocking(
-                self.cloud_storage_manager.save_small_file,
-                file_content=file_content,
-                bucket_name=self.bucket_name,
-                key=file_key,
-                disable_cache=True,
-            )
-
-            # strogin to db
-            await self.dynamic_query_repo.upsert(
-                filters={'name': yaml_id},
-                datasource_id=datasource_id,
-                file_path=file_key,
+            # Shielded: if the request is cancelled mid-upload, the file and its
+            # metadata row are still written together.
+            await asyncio.shield(
+                self._save_file_and_record(
+                    file_content, file_key, yaml_id, datasource_id
+                )
             )
 
         except ValueError as e:
@@ -155,14 +170,11 @@ class DynamicQueryService:
             if not query:
                 raise ValueError(f'Query {query_id} not found')
 
-            # deleting the file from the cloud storage
-            await run_blocking(
-                self.cloud_storage_manager.delete_file,
-                self.bucket_name,
-                query.file_path,
+            # Shielded: if the request is cancelled mid-delete, the metadata row
+            # does not outlive the file it points to.
+            await asyncio.shield(
+                self._delete_file_and_record(query.file_path, query_id)
             )
-            # deleting the record from the database
-            await self.dynamic_query_repo.delete_all(name=query_id)
 
         except Exception as e:
             logger.error(f'Error deleting dynamic query {query_id}: {str(e)}')

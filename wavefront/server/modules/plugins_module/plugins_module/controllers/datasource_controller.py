@@ -1475,7 +1475,14 @@ async def export_dynamic_query_csv(
                 f'Datasource not found: {datasource_id}'
             ),
         )
-    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
+    try:
+        # Reads the YAML through the datasource pool, so it can be refused too.
+        yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(
+            query_id
+        )
+    except DatasourceBusyError:
+        release_export_slot()
+        raise
     if not yaml_query:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,

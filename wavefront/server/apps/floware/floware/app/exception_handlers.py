@@ -1,5 +1,7 @@
 """HTTP exception handlers for the floware FastAPI app."""
 
+import math
+
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
@@ -25,7 +27,10 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         )
         return JSONResponse(
             status_code=503,
-            headers={'Retry-After': str(max(1, round(limits().queue_wait_seconds)))},
+            # Whole seconds, as HTTP requires; rounded up so 2.5 s waits 3.
+            headers={
+                'Retry-After': str(max(1, math.ceil(limits().queue_wait_seconds)))
+            },
             content=ResponseFormatter().buildErrorResponse(
                 error='The datasource is busy. Please try again shortly.'
             ),
