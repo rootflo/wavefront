@@ -8,11 +8,7 @@ import pytest
 
 from tools_module.floware_api import FlowareApiClient
 from tools_module.utils import api_service_fn
-from tools_module.utils.api_service_fn import (
-    execute_api_service_fn,
-    max_hold_seconds,
-    retry_delays,
-)
+from tools_module.utils.api_service_fn import execute_api_service_fn, retry_delays
 
 
 @pytest.fixture
@@ -114,88 +110,106 @@ async def test_invalid_json_gives_error_json(http):
 
 
 @pytest.fixture
-def sleeps(monkeypatch):
-    """Record backoff waits instead of sleeping."""
-    waited: list[float] = []
+def clock(monkeypatch):
+    """A fake clock: backoff waits advance it instead of sleeping, and record themselves."""
+
+    class Clock:
+        t = 0.0
+        waits: list[float] = []
 
     async def fake_sleep(seconds):
-        waited.append(seconds)
+        Clock.waits = [*Clock.waits, seconds]
+        Clock.t += seconds
 
+    Clock.t, Clock.waits = 0.0, []
     monkeypatch.setattr(api_service_fn.asyncio, 'sleep', fake_sleep)
-    return waited
+    monkeypatch.setattr(api_service_fn, '_now', lambda: Clock.t)
+    return Clock
 
 
 OK_BODY = {'meta': {'status': 'success'}, 'data': {'status': 200}}
 
 
-def replies(*answers):
-    """Answer each request with the next item: a status code, or an exception."""
-    queue = list(answers)
+def replies(*statuses):
+    """Answer each request with the next status code."""
+    queue = list(statuses)
 
     def reply(request):
-        answer = queue.pop(0)
-        if isinstance(answer, Exception):
-            raise answer
-        body = OK_BODY if answer == 200 else {'meta': {}, 'data': {'status': answer}}
-        return httpx.Response(answer, json=body)
+        status = queue.pop(0)
+        body = OK_BODY if status == 200 else {'meta': {}, 'data': {'status': status}}
+        return httpx.Response(status, json=body)
 
     return reply
 
 
-def test_retry_delays_double_and_fill_the_window():
+def timing_out(clock, timeouts):
+    """Every request uses up its whole timeout, then fails; the timeouts are recorded."""
+
+    def reply(request):
+        timeout = request.extensions['timeout']['read']
+        timeouts.append(timeout)
+        clock.t += timeout
+        raise httpx.ReadTimeout('timed out', request=request)
+
+    return reply
+
+
+def test_retry_delays_double_and_fit_the_window_with_every_timeout():
+    # 900s window, 6 attempts x 60s timeout = 360s, so 540s is left to wait in
     delays = retry_delays(5, 900)
-    assert [round(d, 2) for d in delays] == [29.03, 58.06, 116.13, 232.26, 464.52]
-    assert round(sum(delays), 6) == 900
+    assert [round(d, 2) for d in delays] == [17.42, 34.84, 69.68, 139.35, 278.71]
+    assert round(sum(delays), 6) == 900 - 6 * 60
+    assert [round(d, 2) for d in retry_delays(3, 900)] == [94.29, 188.57, 377.14]
     assert retry_delays(0, 900) == []
 
 
-def test_max_hold_is_window_plus_one_timeout_per_attempt():
-    assert max_hold_seconds(5, 900) == 900 + 6 * 60
-    assert max_hold_seconds(3, 900) == 900 + 4 * 60
+def test_retry_delays_are_zero_when_the_window_is_too_short():
+    assert retry_delays(5, 120) == [0, 0, 0, 0, 0]
 
 
-async def test_retries_off_by_default(http, sleeps):
+async def test_retries_off_by_default(http, clock):
     http.reply = replies(503)
     out = json.loads(await call())
     assert out['data']['status'] == 503
     assert len(http.requests) == 1
-    assert sleeps == []
+    assert clock.waits == []
 
 
-async def test_retries_until_success(http, sleeps):
+async def test_retries_until_success(http, clock):
     http.reply = replies(503, 502, 200)
-    out = await call(retry_enabled=True, max_retries=3, retry_window_seconds=70)
+    # 4 attempts x 60s + 70s of waiting: waits 10, 20, 40
+    out = await call(retry_enabled=True, max_retries=3, retry_window_seconds=310)
     assert json.loads(out) == OK_BODY
     assert len(http.requests) == 3
-    assert sleeps == [10, 20]
+    assert clock.waits == [10, 20]
 
 
-async def test_gives_up_after_max_retries_with_last_body(http, sleeps):
+async def test_gives_up_after_max_retries_with_last_body(http, clock):
     http.reply = replies(503, 503, 503)
     out = json.loads(
-        await call(retry_enabled=True, max_retries=2, retry_window_seconds=3)
+        await call(retry_enabled=True, max_retries=2, retry_window_seconds=183)
     )
     assert out['data']['status'] == 503
     assert len(http.requests) == 3
-    assert sleeps == [1, 2]
+    assert clock.waits == [1, 2]
 
 
-async def test_client_errors_are_not_retried(http, sleeps):
+async def test_client_errors_are_not_retried(http, clock):
     http.reply = replies(401)
     out = json.loads(await call(retry_enabled=True, max_retries=5))
     assert out['data']['status'] == 401
     assert len(http.requests) == 1
-    assert sleeps == []
+    assert clock.waits == []
 
 
-async def test_429_and_408_are_retried(http, sleeps):
+async def test_429_and_408_are_retried(http, clock):
     http.reply = replies(429, 408, 200)
-    out = await call(retry_enabled=True, max_retries=2, retry_window_seconds=3)
+    out = await call(retry_enabled=True, max_retries=2, retry_window_seconds=183)
     assert json.loads(out) == OK_BODY
     assert len(http.requests) == 3
 
 
-async def test_unreachable_is_retried(http, sleeps):
+async def test_unreachable_is_retried(http, clock):
     queue = ['boom', 200]
 
     def reply(request):
@@ -204,46 +218,75 @@ async def test_unreachable_is_retried(http, sleeps):
         return httpx.Response(200, json=OK_BODY)
 
     http.reply = reply
-    out = await call(retry_enabled=True, max_retries=1, retry_window_seconds=5)
+    out = await call(retry_enabled=True, max_retries=1, retry_window_seconds=125)
     assert json.loads(out) == OK_BODY
-    assert sleeps == [5]
+    assert clock.waits == [5]
 
 
-async def test_unreachable_every_time_gives_error_json(http, sleeps):
+async def test_unreachable_every_time_gives_error_json(http, clock):
     def reply(request):
         raise httpx.ConnectError('refused', request=request)
 
     http.reply = reply
     out = json.loads(
-        await call(retry_enabled=True, max_retries=2, retry_window_seconds=3)
+        await call(retry_enabled=True, max_retries=2, retry_window_seconds=183)
     )
     assert list(out) == ['error']
     assert 'refused' in out['error']
-    assert len(sleeps) == 2
+    assert len(clock.waits) == 2
 
 
-async def test_yaml_style_strings_are_accepted(http, sleeps):
+async def test_window_caps_the_whole_node_when_every_attempt_times_out(http, clock):
+    timeouts: list[float] = []
+    http.reply = timing_out(clock, timeouts)
+    out = json.loads(
+        await call(retry_enabled=True, max_retries=5, retry_window_seconds=900)
+    )
+    assert list(out) == ['error']
+    assert len(timeouts) == 6
+    assert clock.t <= 900
+
+
+async def test_short_window_cuts_attempts_short_and_stops(http, clock):
+    timeouts: list[float] = []
+    http.reply = timing_out(clock, timeouts)
+    await call(retry_enabled=True, max_retries=5, retry_window_seconds=100)
+    # 60s, then the 40s left; then nothing fits
+    assert timeouts == [60, 40]
+    assert clock.t == 100
+
+
+async def test_no_window_means_one_plain_attempt(http, clock):
+    http.reply = replies(503, 200)
+    out = json.loads(
+        await call(retry_enabled=True, max_retries=5, retry_window_seconds=0)
+    )
+    assert out['data']['status'] == 503
+    assert len(http.requests) == 1
+
+
+async def test_yaml_style_strings_are_accepted(http, clock):
     http.reply = replies(500, 200)
-    out = await call(retry_enabled='true', max_retries='1', retry_window_seconds='60')
+    out = await call(retry_enabled='true', max_retries='1', retry_window_seconds='180')
     assert json.loads(out) == OK_BODY
-    assert sleeps == [60]
+    assert clock.waits == [60]
 
 
-async def test_retry_settings_are_not_sent_in_the_payload(http, sleeps):
+async def test_retry_settings_are_not_sent_in_the_payload(http, clock):
     http.reply = replies(200)
     await call(retry_enabled=True, max_retries=1, quotation_no='Q1')
     assert json.loads(http.requests[0].content)['payload'] == {'quotation_no': 'Q1'}
 
 
-async def test_max_retries_is_capped(http, sleeps):
+async def test_max_retries_is_capped(http, clock):
     http.reply = replies(*([503] * 11))
-    await call(retry_enabled=True, max_retries=50, retry_window_seconds=1)
+    await call(retry_enabled=True, max_retries=50, retry_window_seconds=10_000)
     assert len(http.requests) == 11
 
 
-async def test_bad_retry_settings_fall_back_to_defaults(http, sleeps):
+async def test_bad_retry_settings_fall_back_to_defaults(http, clock):
     http.reply = replies(503, 200)
     out = await call(retry_enabled=True, max_retries='abc', retry_window_seconds=None)
     assert json.loads(out) == OK_BODY
     assert len(http.requests) == 2
-    assert sleeps == [retry_delays(5, 900)[0]]
+    assert clock.waits == [retry_delays(5, 900)[0]]

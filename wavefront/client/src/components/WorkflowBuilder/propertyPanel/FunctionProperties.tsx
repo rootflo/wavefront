@@ -11,9 +11,9 @@ import {
   DEFAULT_RETRY_WINDOW_SECONDS,
   MAX_RETRIES_CAP,
   formatDuration,
-  maxHoldSeconds,
   readRetrySettings,
   retryDelays,
+  waitBudgetSeconds,
 } from './apiServiceRetry';
 import { NumberInput } from './NumberInput';
 import { NodePropertiesProps, ToolOption } from './types';
@@ -167,7 +167,7 @@ export const FunctionProperties = ({ selectedNode, handleChange, nodes, tools }:
                   />
                 </div>
                 <div className="flex-1">
-                  <Label className="mb-1 block text-xs">Retry window (min)</Label>
+                  <Label className="mb-1 block text-xs">Retry window (minutes)</Label>
                   <NumberInput
                     min={0}
                     step={1}
@@ -181,13 +181,16 @@ export const FunctionProperties = ({ selectedNode, handleChange, nodes, tools }:
                 </div>
               </div>
               <p className="text-foreground text-[10px]">
-                Can hold the run up to ~{formatDuration(maxHoldSeconds(retry.maxRetries, retry.windowSeconds))} if every
-                attempt fails.
+                {retry.windowSeconds > 0 && retry.maxRetries > 0
+                  ? `Never holds the run longer than ${formatDuration(retry.windowSeconds)}, even if every attempt fails.`
+                  : 'No retries: one attempt only.'}
               </p>
               <p className="text-muted-foreground text-[10px]">
-                {waits.length
-                  ? `Waits between attempts: ${waits.map(formatDuration).join(', ')}.`
-                  : 'No retries: one attempt only.'}{' '}
+                {retry.windowSeconds > 0 && retry.maxRetries > 0
+                  ? waitBudgetSeconds(retry.maxRetries, retry.windowSeconds) > 0
+                    ? `Waits between attempts: ${waits.map(formatDuration).join(', ')}. Each attempt can take up to 60s.`
+                    : 'The window is too short to wait between retries: attempts run back to back, as many as fit.'
+                  : ''}{' '}
                 Retried: no answer, timeouts, HTTP 408, 429 and 5xx. Any other answer returns at once.
                 {Number(storedParams.max_retries) > MAX_RETRIES_CAP ? ` Retries are capped at ${MAX_RETRIES_CAP}.` : ''}
               </p>

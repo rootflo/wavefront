@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDuration, maxHoldSeconds, readRetrySettings, retryDelays } from './apiServiceRetry';
+import { formatDuration, readRetrySettings, retryDelays, waitBudgetSeconds } from './apiServiceRetry';
 
 describe('readRetrySettings', () => {
   it('defaults to off, 5 retries, 15 minutes', () => {
@@ -25,21 +25,23 @@ describe('readRetrySettings', () => {
 });
 
 describe('retry timing (same numbers as api_service_fn.py)', () => {
-  it('doubles the waits and fills the window', () => {
+  it('fits the waits and every attempt timing out inside the window', () => {
+    // 900s window, 6 attempts x 60s = 360s, so 540s is left to wait in
     const delays = retryDelays(5, 900);
-    expect(delays.map((d) => Math.round(d * 100) / 100)).toEqual([29.03, 58.06, 116.13, 232.26, 464.52]);
-    expect(delays.reduce((a, b) => a + b, 0)).toBeCloseTo(900);
+    expect(delays.map((d) => Math.round(d * 100) / 100)).toEqual([17.42, 34.84, 69.68, 139.35, 278.71]);
+    expect(delays.reduce((a, b) => a + b, 0)).toBeCloseTo(540);
+    expect(retryDelays(3, 900).map((d) => Math.round(d * 100) / 100)).toEqual([94.29, 188.57, 377.14]);
     expect(retryDelays(0, 900)).toEqual([]);
   });
 
-  it('holds for the window plus one timeout per attempt', () => {
-    expect(maxHoldSeconds(5, 900)).toBe(900 + 6 * 60);
-    expect(maxHoldSeconds(3, 900)).toBe(900 + 4 * 60);
+  it('has no waits left when the window is too short for the retries', () => {
+    expect(waitBudgetSeconds(5, 120)).toBe(0);
+    expect(retryDelays(5, 120)).toEqual([0, 0, 0, 0, 0]);
   });
 
   it('formats durations', () => {
-    expect(formatDuration(29.03)).toBe('29s');
-    expect(formatDuration(116.13)).toBe('1.9 min');
-    expect(formatDuration(1260)).toBe('21 min');
+    expect(formatDuration(17.42)).toBe('17s');
+    expect(formatDuration(139.35)).toBe('2.3 min');
+    expect(formatDuration(900)).toBe('15 min');
   });
 });

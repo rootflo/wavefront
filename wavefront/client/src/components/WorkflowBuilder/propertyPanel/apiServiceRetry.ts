@@ -1,6 +1,9 @@
 // Retry settings of a trigger_api_service function node, as the property panel shows them.
-// Mirrors tools_module/utils/api_service_fn.py (retry_delays, max_hold_seconds and the
-// defaults there): keep the two in step, or the panel promises a hold time the run won't keep.
+// Mirrors tools_module/utils/api_service_fn.py (retry_delays and the defaults there): keep the
+// two in step, or the panel shows waits the run won't use.
+//
+// The retry window is a hard cap on the whole node: the most it may hold the run, attempts and
+// waits together. The backend enforces it with a deadline.
 
 export const API_SERVICE_FUNCTION = 'trigger_api_service';
 export const REQUEST_TIMEOUT_SECONDS = 60;
@@ -34,18 +37,18 @@ export const readRetrySettings = (params: Record<string, unknown> | undefined): 
   };
 };
 
-/** The wait before each retry: doubling, and adding up to the window. */
+/** Seconds of the window left for waiting once every attempt is allowed its full timeout. */
+export const waitBudgetSeconds = (maxRetries: number, windowSeconds: number): number =>
+  Math.max(windowSeconds - (Math.max(maxRetries, 0) + 1) * REQUEST_TIMEOUT_SECONDS, 0);
+
+/** The wait before each retry: doubling, and adding up to the wait budget. */
 export const retryDelays = (maxRetries: number, windowSeconds: number): number[] => {
   if (maxRetries <= 0) return [];
-  const first = Math.max(windowSeconds, 0) / (2 ** maxRetries - 1);
+  const first = waitBudgetSeconds(maxRetries, windowSeconds) / (2 ** maxRetries - 1);
   return Array.from({ length: maxRetries }, (_, i) => first * 2 ** i);
 };
 
-/** Longest the node can hold its run: every wait plus every attempt timing out. */
-export const maxHoldSeconds = (maxRetries: number, windowSeconds: number): number =>
-  Math.max(windowSeconds, 0) + (Math.max(maxRetries, 0) + 1) * REQUEST_TIMEOUT_SECONDS;
-
-/** 29s, 1.9 min, 21 min. */
+/** 29s, 1.9 min, 15 min. */
 export const formatDuration = (seconds: number): string => {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   const minutes = Math.round((seconds / 60) * 10) / 10;

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from urllib.parse import quote
 
 import flo_lib.http as httpx
@@ -33,13 +34,18 @@ from tools_module.floware_api import FlowareApiClient
 # existing nodes behave exactly as before. Set on the node's prefilled_params:
 #   retry_enabled: true
 #   max_retries: 5               # retries after the first attempt (0-10)
-#   retry_window_seconds: 900    # total time spent WAITING between attempts (15 min)
-# The waits double each time and add up to the window: first = window / (2^retries - 1).
+#   retry_window_seconds: 900    # the MOST this node may hold the run, all in (15 min)
+# The window is a hard cap on the whole node - every attempt and every wait - so it is the
+# longest a failing API can block the workflow. The waits double each time and are sized to
+# fit what is left of the window once every attempt is allowed its full 60s timeout:
+#   first = (window - (retries + 1) x 60) / (2^retries - 1)
+# A deadline enforces the cap regardless: an attempt's timeout is cut to the time left, and
+# no wait is started that would not leave room for one more attempt. Too many retries for
+# the window just means shorter waits, down to back-to-back attempts.
 # Only failures that can clear on their own are retried - nothing answered, a timeout,
 # HTTP 408, 429 or 5xx. Any other answer, including 401/403/422, returns at once.
-# The run (and its Celery worker) is held for up to max_hold_seconds(): the window plus
-# one request timeout per attempt. The tool logs that figure when it starts retrying.
 REQUEST_TIMEOUT_SECONDS = 60.0
+MIN_ATTEMPT_SECONDS = 5.0  # an attempt with less time than this left is not started
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_RETRY_WINDOW_SECONDS = 900
 MAX_RETRIES_CAP = 10
@@ -47,16 +53,18 @@ RETRYABLE_STATUSES = frozenset({408, 429})
 
 
 def retry_delays(max_retries: int, window_seconds: float) -> list[float]:
-    """The wait before each retry: doubling, and adding up to window_seconds."""
+    """The wait before each retry: doubling, and sized so the waits plus every attempt
+    timing out still fit in window_seconds (all zero when the window is too short)."""
     if max_retries <= 0:
         return []
-    first = max(window_seconds, 0) / (2**max_retries - 1)
+    budget = max(window_seconds - (max_retries + 1) * REQUEST_TIMEOUT_SECONDS, 0)
+    first = budget / (2**max_retries - 1)
     return [first * 2**i for i in range(max_retries)]
 
 
-def max_hold_seconds(max_retries: int, window_seconds: float) -> float:
-    """Longest a node can hold its run: every wait plus every attempt timing out."""
-    return max(window_seconds, 0) + (max(max_retries, 0) + 1) * REQUEST_TIMEOUT_SECONDS
+def _now() -> float:
+    """Monotonic clock for the retry deadline (patched in tests)."""
+    return time.monotonic()
 
 
 def _as_bool(value) -> bool:
@@ -108,7 +116,8 @@ async def execute_api_service_fn(
         api_version: API version (prefilled, default: v1)
         retry_enabled: retry transient failures with exponential backoff (default off)
         max_retries: retries after the first attempt, 0-10 (default 5)
-        retry_window_seconds: total wait across all retries (default 900 = 15 min)
+        retry_window_seconds: the most this node may hold the run, attempts and waits
+            together (default 900 = 15 min)
         **kwargs: Dynamic parameters including:
             - Payload schema fields (goes into payload)
             - Path parameters (prefixed with 'path_', goes into path_params)
@@ -159,29 +168,35 @@ async def execute_api_service_fn(
     }
     retries = 0
     delays: list[float] = []
+    deadline = None
     if _as_bool(retry_enabled):
         retries = int(_number(max_retries, DEFAULT_MAX_RETRIES, 'max_retries'))
         retries = min(max(retries, 0), MAX_RETRIES_CAP)
         window = _number(
             retry_window_seconds, DEFAULT_RETRY_WINDOW_SECONDS, 'retry_window_seconds'
         )
-        delays = retry_delays(retries, window)
-        logger.info(
-            f'API service {api_service_id}/{api_id}: retries on, up to {retries} over '
-            f'{window / 60:.1f} min of waiting; this node can hold the run up to '
-            f'~{max_hold_seconds(retries, window) / 60:.1f} min'
-        )
+        if window <= 0:
+            retries = 0  # no time to retry in: a plain single attempt
+        if retries:
+            delays = retry_delays(retries, window)
+            deadline = _now() + window
+            logger.info(
+                f'API service {api_service_id}/{api_id}: retries on, up to {retries}; '
+                f'this node will not hold the run longer than {window / 60:.1f} min '
+                f'(waits {", ".join(f"{d:.0f}s" for d in delays)})'
+            )
 
     response = None
     request_error = None
     async with httpx.AsyncClient() as client:
         for attempt in range(retries + 1):
+            timeout = REQUEST_TIMEOUT_SECONDS
+            if deadline is not None:
+                # Never let one attempt run past the cap
+                timeout = max(min(timeout, deadline - _now()), MIN_ATTEMPT_SECONDS)
             try:
                 response = await client.post(
-                    url,
-                    json=body,
-                    headers=api.headers(),
-                    timeout=REQUEST_TIMEOUT_SECONDS,
+                    url, json=body, headers=api.headers(), timeout=timeout
                 )
                 request_error = None
             except httpx.RequestError as e:
@@ -193,11 +208,18 @@ async def execute_api_service_fn(
                 if response is not None
                 else request_error
             )
+            delay = delays[attempt]
+            if _now() + delay + MIN_ATTEMPT_SECONDS > deadline:
+                logger.warning(
+                    f'API service {api_service_id}/{api_id}: attempt {attempt + 1} '
+                    f'failed ({reason}); retry window used up, giving up'
+                )
+                break
             logger.warning(
                 f'API service {api_service_id}/{api_id}: attempt {attempt + 1}/'
-                f'{retries + 1} failed ({reason}); retrying in {delays[attempt]:.0f}s'
+                f'{retries + 1} failed ({reason}); retrying in {delay:.0f}s'
             )
-            await asyncio.sleep(delays[attempt])
+            await asyncio.sleep(delay)
 
     if response is None:
         # Used to raise. Nothing answered, so there is no body to pass on.
