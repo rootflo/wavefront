@@ -1,6 +1,11 @@
-import asyncio
 from typing import Any, Dict, List, Optional
 
+from ..executor import (
+    current_statement_timeout,
+    limits,
+    run_blocking,
+    run_blocking_batch,
+)
 from ..types import DataSourceABC
 from flo_cloud.aws.redshift import RedshiftClient as AWSRedshiftClient
 from .config import RedshiftConfig
@@ -15,11 +20,13 @@ class RedshiftPlugin(DataSourceABC):
             database=config.database,
             user=config.user,
             password=config.password,
+            timeout=limits().connect_timeout_seconds,
+            statement_timeout=current_statement_timeout(),
         )
         self.db_name = f'{config.database}.public'
 
     async def test_connection(self) -> bool:
-        return await asyncio.to_thread(self.client.test_connection)
+        return await run_blocking(self.client.test_connection)
 
     def get_schema(self) -> dict:
         table_names = self.client.list_tables()
@@ -68,7 +75,7 @@ class RedshiftPlugin(DataSourceABC):
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:
         params = kwargs.get('params')
-        return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
+        return await run_blocking(self.client.execute_query_as_dict, query, params)
 
     async def execute_dynamic_query(
         self,
@@ -82,7 +89,7 @@ class RedshiftPlugin(DataSourceABC):
         params: Optional[Dict[str, Any]] = None,
     ):
         results = {}
-        tasks = []
+        prepared = []
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
@@ -115,30 +122,31 @@ class RedshiftPlugin(DataSourceABC):
             )
             query_to_execute += f' LIMIT {limit} OFFSET {offset}'
 
-            task = asyncio.create_task(
-                asyncio.to_thread(
-                    self.client.execute_query_as_dict,
-                    query_to_execute,
-                    params_to_execute,
-                )
-            )
-            tasks.append((query_id, task))
+            prepared.append((query_id, query_to_execute, params_to_execute))
 
-        for query_id, task in tasks:
-            try:
-                formatted_result = await task
+        # Every query is validated above before any of them starts, so a bad
+        # query further down cannot leave earlier ones running unobserved.
+        outcomes = await run_blocking_batch(
+            [
+                (self.client.execute_query_as_dict, (sql, sql_params))
+                for _, sql, sql_params in prepared
+            ]
+        )
+
+        for (query_id, _, _), outcome in zip(prepared, outcomes):
+            if isinstance(outcome, BaseException):
+                results[query_id] = {
+                    'status': 'error',
+                    'error': str(outcome),
+                    'description': f'Error executing query {query_id}',
+                    'result': [],
+                }
+            else:
                 results[query_id] = {
                     'status': 'success',
                     'error': None,
                     'description': f'Query {query_id} executed successfully',
-                    'result': formatted_result,
-                }
-            except Exception as e:
-                results[query_id] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'description': f'Error executing query {query_id}',
-                    'result': [],
+                    'result': outcome,
                 }
 
         return results

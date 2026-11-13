@@ -29,6 +29,7 @@ class RedshiftClient:
         ssl: bool = True,
         tcp_keepalive: bool = True,
         timeout: int = 60,
+        statement_timeout: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -45,6 +46,8 @@ class RedshiftClient:
             region: AWS region
             ssl: Enable SSL connection (default: True)
             timeout: Connection timeout in seconds
+            statement_timeout: Seconds after which the server cancels a
+                statement; None leaves the server's own setting
             **kwargs: Additional connection parameters
         """
         self.host = host
@@ -57,6 +60,7 @@ class RedshiftClient:
         self.region = region
         self.ssl = ssl
         self.timeout = timeout
+        self.statement_timeout = statement_timeout
         self.connection_params = kwargs
         self.tcp_keepalive = tcp_keepalive
 
@@ -65,6 +69,22 @@ class RedshiftClient:
 
         if not self.database:
             raise ValueError('Database name must be provided')
+
+    def _read_timeout(self) -> int:
+        return max(self.timeout, int(self.statement_timeout) + 30)
+
+    def _extend_read_timeout(self, connection: Connection) -> None:
+        """Give reads longer than the statement limit.
+
+        redshift_connector applies ``timeout`` to its socket for every read, not
+        just to connecting. Connecting uses the short limit; afterwards the
+        socket gets longer than the statement limit, so a long query is
+        cancelled by the server with a clear error rather than cut off by the
+        client mid-flight.
+        """
+        sock = getattr(connection, '_usock', None)
+        if sock is not None:
+            sock.settimeout(self._read_timeout())
 
     def _get_connection_params(self) -> Dict[str, Any]:
         """Get connection parameters for redshift-connector."""
@@ -104,6 +124,15 @@ class RedshiftClient:
         try:
             redshift_connector.paramstyle = 'named'
             connection = redshift_connector.connect(**self._get_connection_params())
+            if self.statement_timeout is not None:
+                self._extend_read_timeout(connection)
+                cursor = connection.cursor()
+                try:
+                    cursor.execute(
+                        f'SET statement_timeout TO {int(self.statement_timeout * 1000)}'
+                    )
+                finally:
+                    cursor.close()
             yield connection
         except RedshiftError as e:
             logger.error(f'Redshift connection error: {e}')

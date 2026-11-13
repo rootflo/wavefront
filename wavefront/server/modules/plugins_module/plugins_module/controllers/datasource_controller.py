@@ -49,6 +49,7 @@ from datasource import (
     get_datasource_secret_fields,
     is_file_storage_type,
 )
+from datasource.executor import DatasourceBusyError, run_blocking
 from datasource.file_storage.config import normalize_storage_path
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
@@ -542,7 +543,7 @@ async def get_tables(
     if is_file_storage_type(datasource_type):
         return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    table_list: TableListResult = datasource_plugin.get_table_names()
+    table_list: TableListResult = await run_blocking(datasource_plugin.get_table_names)
     return JSONResponse(
         content=response_formatter.buildSuccessResponse(
             {'resources': table_list.result}
@@ -612,7 +613,8 @@ async def query_datasource(
         join_query = f'$expand={expand}&$join={join}'
 
     try:
-        result: QueryResult = datasource_plugin.fetch_data(
+        result: QueryResult = await run_blocking(
+            datasource_plugin.fetch_data,
             table_name=resource_id,
             projection=projection,
             filter=filter,
@@ -733,7 +735,7 @@ async def insert_rows_json_multi(
         prepared.append({'table_name': insert.table_name, 'data': rows_with_created_at})
 
     try:
-        await asyncio.to_thread(datasource_plugin.insert_rows_json_multi, prepared)
+        await run_blocking(datasource_plugin.insert_rows_json_multi, prepared)
     except NotImplementedError as e:
         return JSONResponse(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -798,7 +800,7 @@ async def insert_rows_json(
         for row in insert_rows_json_payload.data
     ]
     try:
-        await asyncio.to_thread(
+        await run_blocking(
             datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
         )
     except InvalidResourceError as e:
@@ -909,7 +911,7 @@ async def update_rows_json_multi(
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
-        results = await asyncio.to_thread(
+        results = await run_blocking(
             datasource_plugin.update_rows_json_multi,
             [update.model_dump() for update in update_rows_json_multi_payload.updates],
             update_rows_json_multi_payload.require_all_matched,
@@ -1028,7 +1030,7 @@ async def update_rows_json(
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
-        result = await asyncio.to_thread(
+        result = await run_blocking(
             datasource_plugin.update_rows_json,
             resource_id,
             update_rows_json_payload.data,
@@ -1142,7 +1144,7 @@ async def delete_rows_json(
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
-        result = await asyncio.to_thread(
+        result = await run_blocking(
             datasource_plugin.delete_rows_json,
             resource_id,
             delete_rows_json_payload.filter,
@@ -1403,8 +1405,10 @@ async def execute_dynamic_query(
     )
     # Serialize date/datetime objects before JSON serialization
     serialized_res = serialize_values(res)
-    # caching the result
-    cache_manager.add(cache_key, json.dumps(serialized_res), expiry=60 * 2)
+    # Cache only a fully successful result: a timed-out or busy query would
+    # otherwise keep being served as an error for the whole expiry.
+    if all(r.get('status') == 'success' for r in serialized_res.values()):
+        cache_manager.add(cache_key, json.dumps(serialized_res), expiry=60 * 2)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -1450,6 +1454,19 @@ async def export_dynamic_query_csv(
                 f'Export rate limit: one export per user every {EXPORT_RATE_LIMIT_SECONDS // 60} minutes. Please try again later.'
             ),
         )
+
+    # A busy refusal or a failed query produced no export, so the user gets the
+    # slot back: otherwise the retry a 503 asks for is refused as rate limited.
+    def release_export_slot() -> None:
+        cache_manager.remove(export_rate_key)
+
+    async def export_blocking(fn, /, *args, **kwargs):
+        try:
+            return await run_blocking(fn, *args, **kwargs)
+        except DatasourceBusyError:
+            release_export_slot()
+            raise
+
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -1458,7 +1475,14 @@ async def export_dynamic_query_csv(
                 f'Datasource not found: {datasource_id}'
             ),
         )
-    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
+    try:
+        # Reads the YAML through the datasource pool, so it can be refused too.
+        yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(
+            query_id
+        )
+    except DatasourceBusyError:
+        release_export_slot()
+        raise
     if not yaml_query:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1497,15 +1521,19 @@ async def export_dynamic_query_csv(
 
     # If not force_fetch, return existing file from bucket if present
     if not force_fetch:
-        existing_keys, _ = cloud_storage_manager.list_files(
+        existing_keys, _ = await export_blocking(
+            cloud_storage_manager.list_files,
             bucket_name=bucket_name,
             prefix=file_key,
             page_size=1,
             page_number=1,
         )
         if existing_keys and existing_keys[0] == file_key:
-            signed_url = cloud_storage_manager.generate_presigned_url(
-                bucket_name=bucket_name, key=file_key, operation='GET'
+            signed_url = await export_blocking(
+                cloud_storage_manager.generate_presigned_url,
+                bucket_name=bucket_name,
+                key=file_key,
+                operation='GET',
             )
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
@@ -1517,16 +1545,21 @@ async def export_dynamic_query_csv(
     if is_file_storage_type(datasource_type):
         return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
-        yaml_query,
-        rls_filter_str,
-        filter,
-        offset,
-        limit,
-        dynamic_query_params.params if dynamic_query_params else None,
-    )
+    try:
+        res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
+            yaml_query,
+            rls_filter_str,
+            filter,
+            offset,
+            limit,
+            dynamic_query_params.params if dynamic_query_params else None,
+        )
+    except DatasourceBusyError:
+        release_export_slot()
+        raise
 
     if not res:
+        release_export_slot()
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=response_formatter.buildErrorResponse(
@@ -1536,10 +1569,18 @@ async def export_dynamic_query_csv(
 
     first_key = next(iter(res))
     if res[first_key].get('status') != 'success':
+        # The query ran and failed (a timeout, a SQL error), which is not the
+        # same as an empty result. The driver's message stays in the log: it can
+        # name tables and columns.
+        logger.warning(
+            f'Export of dynamic query {query_id} failed: {res[first_key].get("error")}'
+        )
+        release_export_slot()
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=response_formatter.buildErrorResponse(
-                f'Unexpected dynamic query result format for query_id {query_id}, no results'
+                f'Dynamic query {query_id} failed to run. It may have taken longer '
+                'than the time limit.'
             ),
         )
 
@@ -1555,32 +1596,37 @@ async def export_dynamic_query_csv(
             ),
         )
 
-    if rows:
-        fieldnames = list(rows[0].keys())
-        for row in rows[1:]:
-            for k in row:
-                if k not in fieldnames:
-                    fieldnames.append(k)
-    else:
-        fieldnames = []
-
     def _cell_value(v):
         if isinstance(v, (dict, list)):
             return json.dumps(v)
         return v if v is None or isinstance(v, str) else str(v)
 
-    with cloud_storage_manager.open_text_writer(
-        bucket_name=bucket_name, key=file_key, content_type='text/csv'
-    ) as f:
-        if fieldnames:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+    # Builds the CSV and uploads it as it goes: CPU per row plus storage I/O,
+    # so it runs on the datasource pool rather than the event loop.
+    def _write_csv_and_sign() -> str:
+        if rows:
+            fieldnames = list(rows[0].keys())
+            for row in rows[1:]:
+                for k in row:
+                    if k not in fieldnames:
+                        fieldnames.append(k)
+        else:
+            fieldnames = []
 
-    signed_url = cloud_storage_manager.generate_presigned_url(
-        bucket_name=bucket_name, key=file_key, operation='GET'
-    )
+        with cloud_storage_manager.open_text_writer(
+            bucket_name=bucket_name, key=file_key, content_type='text/csv'
+        ) as f:
+            if fieldnames:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+
+        return cloud_storage_manager.generate_presigned_url(
+            bucket_name=bucket_name, key=file_key, operation='GET'
+        )
+
+    signed_url = await export_blocking(_write_csv_and_sign)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

@@ -8,6 +8,7 @@ from agents_module.services.async_agentic_execution_result_consumer import (
 )
 from common_module.log.logger import logger
 from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
+from datasource.executor import configure_limits, shutdown_pools
 from db_repo_module.database.connection import DatabaseClient
 from fastapi import FastAPI
 from floware.app.channels import start_redis_listener
@@ -25,6 +26,9 @@ async def lifespan(app: FastAPI):
 
     try:
         config = application_container.config()
+        # Before anything can call a datasource: the pools are sized on first use.
+        datasource_limits = configure_limits(config.get('datasource') or {})
+        logger.info(f'Datasource limits: {datasource_limits}')
         db = application_container.db
         db_client: DatabaseClient = db.db_client()
 
@@ -150,6 +154,9 @@ async def lifespan(app: FastAPI):
 
         # Shutdown code
         scheduler_manager.shutdown()
+        # Drop queued datasource calls so the worker is not held up running a
+        # backlog nobody is waiting for any more.
+        shutdown_pools()
         async_agentic_exec_consumer.stop()
         try:
             await asyncio.wait_for(
