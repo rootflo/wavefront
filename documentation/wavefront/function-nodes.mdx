@@ -157,7 +157,37 @@ Calls an endpoint defined under **API Services**.
 |---|---|
 | `api_service_id`, `api_id` | Which service and endpoint. Usually prefilled |
 | `api_version` | Default `v1` |
+| `retry_enabled` | Retry failures that can clear on their own. Default `false` |
+| `max_retries` | Retries after the first attempt, 0–10. Default `5` |
+| `retry_window_seconds` | Total time spent waiting between attempts. Default `900` (15 minutes) |
 | other fields | Become the request: fields of the payload schema go in the body; fields prefixed `path_` and `query_` become path and query parameters |
+
+Output: the response body exactly as it came back, for success and failure alike. For a call through floware that is `{"meta": {...}, "data": <the API's own body>}`, so check `data` (for example its `status`) to see what happened. Only when there is no usable body (the service could not be reached, timed out, or did not answer JSON) does the node output `{"error": "..."}`. It never stops the run.
+
+### Retries
+
+```yaml
+- name: notify_middleware
+  function_name: trigger_api_service
+  prefilled_params:
+    api_service_id: <service-id>
+    api_id: <api-id>
+    retry_enabled: true
+    max_retries: 5
+    retry_window_seconds: 900
+```
+
+Only failures that can clear on their own are retried: no answer, a timeout, HTTP 408, 429 or 5xx. Any other answer, including 401, 403 and 422, is returned at once. Each wait is double the one before, and together they add up to `retry_window_seconds`, so the first wait is `retry_window_seconds / (2^max_retries − 1)`.
+
+<Warning>
+A retrying node holds its run, and the worker running it, until it succeeds or gives up. The longest hold is the window plus one 60-second request timeout per attempt: `retry_window_seconds + (max_retries + 1) × 60`. The node logs this figure when it starts.
+
+| `max_retries` | Waits with a 15-minute window | Longest hold |
+|---|---|---|
+| 3 | 2.1m, 4.3m, 8.6m | about 19 min |
+| 5 | 29s, 58s, 1.9m, 3.9m, 7.7m | about 21 min |
+| 8 | 3.5s doubling to 7.5m | about 24 min |
+</Warning>
 
 ## send_email
 
