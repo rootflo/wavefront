@@ -79,6 +79,7 @@ from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 from fastapi import HTTPException
 from user_management_module.utils.user_utils import check_is_admin
+from user_management_module.utils.user_utils import can_write_datasource_rows
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from ..utils.helper import (
@@ -865,12 +866,13 @@ async def update_rows_json_multi(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
+    # TEMPORARY HACK until RBAC: admin, manager and editor may update rows (was admin-only).
+    # See ROW_WRITE_ROLE_NAMES in user_utils; remove when RBAC is implemented.
+    if not await can_write_datasource_rows(request.state.session.role_id):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Only admin users can update rows'
+                'Only admin, manager or editor users can update rows'
             ),
         )
 
@@ -993,12 +995,13 @@ async def update_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
+    # TEMPORARY HACK until RBAC: admin, manager and editor may update rows (was admin-only).
+    # See ROW_WRITE_ROLE_NAMES in user_utils; remove when RBAC is implemented.
+    if not await can_write_datasource_rows(request.state.session.role_id):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Only admin users can update rows'
+                'Only admin, manager or editor users can update rows'
             ),
         )
 
@@ -1113,12 +1116,13 @@ async def delete_rows_json(
 
     Currently only Postgres supports this; other datasource types return 501.
     """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if not is_admin:
+    # TEMPORARY HACK until RBAC: admin, manager and editor may delete rows (was admin-only).
+    # See ROW_WRITE_ROLE_NAMES in user_utils; remove when RBAC is implemented.
+    if not await can_write_datasource_rows(request.state.session.role_id):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
-                'Only admin users can delete rows'
+                'Only admin, manager or editor users can delete rows'
             ),
         )
 
