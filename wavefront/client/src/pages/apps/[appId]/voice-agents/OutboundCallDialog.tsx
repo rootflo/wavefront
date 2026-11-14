@@ -14,7 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { Plus, X } from 'lucide-react';
 import React, { useState } from 'react';
+import { ContextRow, contextFromRows } from './outbound-call-context';
 
 interface CallInfo {
   call_sid?: string;
@@ -41,6 +43,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
   const { notifySuccess, notifyError } = useNotifyStore();
   const [toNumber, setToNumber] = useState('');
   const [fromNumber, setFromNumber] = useState('');
+  const [contextRows, setContextRows] = useState<ContextRow[]>([]);
   const [callLoading, setCallLoading] = useState(false);
 
   // Get outbound phone numbers from the voice agent (not telephony config)
@@ -58,14 +61,23 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
       return;
     }
 
+    const { context, error: contextError } = contextFromRows(contextRows);
+    if (contextError) {
+      notifyError(contextError);
+      return;
+    }
+
     setCallLoading(true);
     try {
-      const callData: { to_number: string; from_number?: string } = {
+      const callData: { to_number: string; from_number?: string; context?: Record<string, string> } = {
         to_number: toNumber.trim(),
       };
 
       if (fromNumber.trim()) {
         callData.from_number = fromNumber.trim();
+      }
+      if (context) {
+        callData.context = context;
       }
 
       const response = await floConsoleService.voiceAgentService.initiateCall(agent.id, callData);
@@ -78,6 +90,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
       // Reset form and close dialog
       setToNumber('');
       setFromNumber('');
+      setContextRows([]);
       onOpenChange(false);
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
@@ -90,8 +103,12 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
   const handleClose = () => {
     setToNumber('');
     setFromNumber('');
+    setContextRows([]);
     onOpenChange(false);
   };
+
+  const updateContextRow = (index: number, change: Partial<ContextRow>) =>
+    setContextRows((rows) => rows.map((row, i) => (i === index ? { ...row, ...change } : row)));
 
   const body = (
     <div className="space-y-4 py-4">
@@ -138,6 +155,49 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
             ? 'Select from configured phone numbers or leave empty for auto-select'
             : 'Source phone number in E.164 format (leave empty to use first configured number)'}
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Caller context (optional, for testing)</Label>
+        <p className="frost-text-muted text-xs">
+          What a CRM would send with this call. The agent knows it from the first line, and tools can use it as
+          outbound.&lt;key&gt;.
+        </p>
+        {contextRows.map((row, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <Input
+              aria-label={`Context key ${index + 1}`}
+              value={row.key}
+              onChange={(e) => updateContextRow(index, { key: e.target.value })}
+              placeholder="reason_for_call"
+              className="w-2/5"
+            />
+            <Input
+              aria-label={`Context value ${index + 1}`}
+              value={row.value}
+              onChange={(e) => updateContextRow(index, { value: e.target.value })}
+              placeholder="overdue bill"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Remove"
+              onClick={() => setContextRows((rows) => rows.filter((_, i) => i !== index))}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setContextRows((rows) => [...rows, { key: '', value: '' }])}
+        >
+          <Plus className="mr-1 h-4 w-4" />
+          Add context
+        </Button>
       </div>
     </div>
   );

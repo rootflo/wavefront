@@ -6,6 +6,10 @@ from dependency_injector import providers
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.cache.cache_manager import CacheManager
 from call_processing.log.logger import configure_logging
+from call_processing.services.common.context.store import (
+    CallContextStore,
+    create_context_redis,
+)
 from call_processing.services.common.voice_agent_cache_service import (
     VoiceAgentCacheService,
 )
@@ -40,6 +44,18 @@ class ApplicationContainer(containers.DeclarativeContainer):
         pool_timeout=config.redis.pool_timeout,
     )
 
+    # Per-call tool results (async, fail-fast; CacheManager retries for seconds)
+    call_context_redis = providers.Singleton(
+        create_context_redis,
+        host=config.redis.host,
+        port=config.redis.port,
+        protocol=config.redis.protocol,
+        password=config.redis.password,
+        db=config.redis.db,
+        pool_size=config.redis.pool_size,
+    )
+    call_context_store = providers.Singleton(CallContextStore, redis=call_context_redis)
+
     # HTTP Client for floware
     floware_http_client = providers.Singleton(
         FlowareHttpClient,
@@ -61,6 +77,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         TelephonySessionService,
         voice_agent_cache_service=voice_agent_cache_service,
         app_settings=app_settings,
+        call_context_store=call_context_store,
     )
 
     # Browser (WebRTC) rooms + sessions

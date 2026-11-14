@@ -5,9 +5,12 @@ Everything the LLM reads that is not written by the agent author lives here
 pipeline code. Telephony-only text is in ``services/telephony/prompts.py``.
 """
 
-from typing import List
+from typing import List, Optional
 
-from call_processing.constants.language_config import LANGUAGE_INSTRUCTIONS
+from call_processing.constants.language_config import (
+    LANGUAGE_DISPLAY_NAMES,
+    LANGUAGE_INSTRUCTIONS,
+)
 
 
 def language_instruction(language: str) -> str:
@@ -17,15 +20,28 @@ def language_instruction(language: str) -> str:
     )
 
 
+def current_language_line(language: str) -> str:
+    """The last line of a multi-language prompt: which language to speak now."""
+    name = LANGUAGE_DISPLAY_NAMES.get(language, language)
+    return f'{language_instruction(language)} Current language: {name}.'
+
+
 def language_switching_rules(
-    supported_language_names: List[str], current_language_name: str
+    supported_language_names: List[str], current_language_name: Optional[str] = None
 ) -> str:
-    """Rules telling the LLM when to call ``detect_and_switch_language``."""
+    """Rules telling the LLM when to call ``detect_and_switch_language``.
+
+    Without ``current_language_name`` the rules are the same in every language
+    (the current language is stated by ``current_language_line`` instead).
+    """
     supported = ', '.join(supported_language_names)
+    current = (
+        f'Current language: {current_language_name}.\n' if current_language_name else ''
+    )
     return (
         f'\n\nLANGUAGE SWITCHING RULES (follow exactly, no exceptions):\n'
         f'Supported languages: {supported}.\n'
-        f'Current language: {current_language_name}.\n\n'
+        f'{current}\n'
         f'CASE 1 — USER WANTS THE ASSISTANT TO USE A DIFFERENT LANGUAGE:\n'
         f'The user is asking or implying that they want the conversation to happen in a specific supported language. Triggers include:\n'
         f'  - Saying a supported language name alone (e.g. "Hindi", "English", "Tamil")\n'

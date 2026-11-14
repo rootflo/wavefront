@@ -24,6 +24,10 @@ from pipecat.transports.websocket.fastapi import (
 
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.log.logger import logger
+from call_processing.services.common.context.store import CallContextStore
+from call_processing.services.common.context.subject import (
+    normalize_indian_phone_number,
+)
 from call_processing.services.common.voice_agent_cache_service import (
     VoiceAgentCacheService,
 )
@@ -38,40 +42,6 @@ from call_processing.services.telephony.websocket_parser import (
 # WebSocket close code for a stream we cannot serve (bad / missing parameters)
 _POLICY_VIOLATION = 1008
 _INTERNAL_ERROR = 1011
-
-
-def normalize_indian_phone_number(phone_number: str) -> str:
-    """
-    Normalize Indian phone number to E.164 format.
-
-    Converts Indian national format (0xxxxxxxxxx) to E.164 format (+91xxxxxxxxxx).
-
-    Examples:
-        "01234567890" -> "+911234567890"
-        "+911234567890" -> "+911234567890"
-        "911234567890" -> "+911234567890"
-    """
-    # Remove any whitespace
-    phone_number = phone_number.strip()
-
-    # If already in E.164 format with +91, return as is
-    if phone_number.startswith('+91'):
-        return phone_number
-
-    # If starts with 91 but no +, add +
-    if phone_number.startswith('91') and len(phone_number) >= 12:
-        return f'+{phone_number}'
-
-    # If starts with 0 (Indian national format), replace with +91
-    if phone_number.startswith('0'):
-        return f'+91{phone_number[1:]}'
-
-    # If it's just the number without country code, add +91
-    if len(phone_number) == 10:
-        return f'+91{phone_number}'
-
-    # Return as is if we can't determine format
-    return phone_number
 
 
 def _mask(number: str) -> str:
@@ -90,10 +60,13 @@ def _stream_params(transport_type: str, call_data: Dict[str, Any]) -> _StreamPar
     """Read the agent and the call's numbers from a provider's start message."""
     if transport_type == 'twilio':
         body_data = call_data.get('body', {})
+        direction = body_data.get('call_direction')
         return _StreamParams(
             voice_agent_id=body_data.get('voice_agent_id'),
             customer_number=body_data.get('customer_number'),
             agent_number=body_data.get('agent_number', ''),
+            # Set by our TwiML; calls started before it existed fall back to outbound
+            call_direction=direction if direction in ('inbound', 'outbound') else None,
         )
 
     if transport_type == 'exotel':
@@ -162,9 +135,11 @@ class TelephonySessionService:
         self,
         voice_agent_cache_service: VoiceAgentCacheService,
         app_settings: CallProcessingAppSettings,
+        call_context_store: Optional[CallContextStore] = None,
     ):
         self.voice_agent_cache_service = voice_agent_cache_service
         self.app_settings = app_settings
+        self.call_context_store = call_context_store
 
     async def handle_stream(self, websocket: WebSocket) -> None:
         """Media stream that names its voice agent in the stream parameters."""
@@ -345,6 +320,7 @@ class TelephonySessionService:
             call_direction=call_direction,
             customer_number=customer_number,
             agent_number=agent_number,
+            context_store=self.call_context_store,
         )
         await conversation.run(transport, configs)
 
