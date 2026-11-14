@@ -1,4 +1,4 @@
-"""Admin-only guard on the row update and delete endpoints."""
+"""Role guard on the row update and delete endpoints (admin, manager, editor until RBAC)."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -52,7 +52,7 @@ def client():
 @pytest.fixture
 def admin():
     with patch.object(
-        datasource_controller, 'check_is_admin', AsyncMock(return_value=True)
+        datasource_controller, 'can_write_datasource_rows', AsyncMock(return_value=True)
     ) as mock:
         yield mock
 

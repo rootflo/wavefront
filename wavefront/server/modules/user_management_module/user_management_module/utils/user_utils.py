@@ -16,6 +16,7 @@ from fastapi import status
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from user_management_module.constants.auth import ADMIN_ROLE_NAME
+from user_management_module.constants.auth import EDITOR_ROLE_NAME
 from user_management_module.constants.auth import MANAGER_ROLE_NAME
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.account_lockout_service import (
@@ -84,6 +85,34 @@ async def check_is_manager(
         return False
 
     return await _role_name(role_id, role_repository) == MANAGER_ROLE_NAME
+
+
+# TEMPORARY HACK - REMOVE WHEN RBAC IS IMPLEMENTED.
+# Row update/delete through the datasource API used to be admin-only. Case reassignment
+# in the bridge console deletes and inserts rows in quotation_user_assignments, so
+# managers and editors (who reassign cases but are not admins) were refused. Until real
+# RBAC exists, these role NAMES are hardcoded as allowed to update and delete rows in
+# ANY table of ANY datasource - there is no per-table or per-datasource scoping here.
+# Replace this with a proper permission check once RBAC lands.
+ROW_WRITE_ROLE_NAMES = frozenset({ADMIN_ROLE_NAME, MANAGER_ROLE_NAME, EDITOR_ROLE_NAME})
+
+
+@inject
+async def can_write_datasource_rows(
+    role_id: str,
+    role_repository: SQLAlchemyRepository[Role] = Depends(
+        Provide[UserContainer.role_repository]
+    ),
+) -> bool:
+    """Whether the session role may update or delete datasource rows.
+
+    TEMPORARY HACK until RBAC: admin, manager and editor by role name (see
+    ROW_WRITE_ROLE_NAMES). Service identities are admins, so they are allowed.
+    """
+    if role_id == SERVICE_AUTH_ROLE_ID:
+        return True
+
+    return await _role_name(role_id, role_repository) in ROW_WRITE_ROLE_NAMES
 
 
 @inject
