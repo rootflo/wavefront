@@ -338,3 +338,17 @@ def test_prefixes_keep_separately_parsed_filters_from_colliding():
         'rls_region': 'north',
         'rls_region_1': 'east',
     }
+
+
+@pytest.mark.parametrize(
+    'filter_expr',
+    [
+        "order_id eq 'O-1' and status eq 'SHIPPED'",
+        "order_id eq 'O-1' or status eq 'SHIPPED'",
+        "order_id eq 'O-1' status eq 'SHIPPED'",
+        "(order_id eq 'O-1') status",
+    ],
+)
+def test_trailing_tokens_are_rejected(filter_expr):
+    with pytest.raises(ValueError, match='Unexpected token'):
+        parser.prepare_odata_filter(filter_expr)
