@@ -82,3 +82,38 @@ def test_worker_reads_llm_configs_from_floware_and_holds_no_cipher():
     assert client.app_env == 'dev'
     assert isinstance(container.plugins.secret_cipher(), UnavailableSecretCipher)
     assert isinstance(container.api_services.secret_cipher(), UnavailableSecretCipher)
+
+
+def test_get_result_cache_reuses_the_services_cache():
+    sentinel = MagicMock(name='WorkerServices')
+    services._services = sentinel
+    assert services.get_result_cache() is sentinel.cache
+
+
+def test_get_result_cache_builds_a_cache_without_services():
+    config = {
+        'env_config': {'app_name': 'floware'},
+        'redis': {
+            'host': 'redis.internal',
+            'port': '6380',
+            'protocol': 'redis',
+            'password': '',
+            'db': '2',
+            'pool_size': '5',
+            'pool_timeout': '2',
+        },
+    }
+
+    with (
+        patch.object(services, 'CONFIG', config),
+        patch.object(services, 'CacheManager') as cache_manager,
+    ):
+        cache = services.get_result_cache()
+
+    assert cache is cache_manager.return_value
+    kwargs = cache_manager.call_args.kwargs
+    assert kwargs['namespace'] == 'floware'
+    assert kwargs['settings'].host == 'redis.internal'
+    assert kwargs['settings'].port == '6380'
+    assert kwargs['settings'].db == '2'
+    assert kwargs['settings'].password is None
