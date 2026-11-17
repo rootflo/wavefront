@@ -148,5 +148,13 @@ async def test_oversized_image_url_is_rejected(
 
 
 def test_oversized_bytes_are_rejected_before_parsing():
-    with pytest.raises(ValueError, match='maximum allowed size'):
+    with pytest.raises(ValueError, match=IMAGE_TOO_LARGE_MESSAGE):
         validate_image_bytes(b'\xff' * (MAX_IMAGE_BYTES + 1))
+
+
+@pytest.mark.parametrize(
+    'message', [IMAGE_TOO_LARGE_MESSAGE, IMAGE_TOO_MANY_PIXELS_MESSAGE]
+)
+def test_limit_errors_do_not_reveal_the_limits(message):
+    # Naming a limit tells a prober exactly how large an image can be crafted.
+    assert not any(char.isdigit() for char in message)

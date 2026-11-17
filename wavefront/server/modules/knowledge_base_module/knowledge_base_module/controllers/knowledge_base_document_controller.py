@@ -139,6 +139,10 @@ async def upload_document(
         # Reject an oversized image on its declared size before reading it
         # into memory.
         if is_image_kb and file.size is not None and file.size > MAX_IMAGE_BYTES:
+            logger.warning(
+                f'Rejected image upload of {file.size} bytes '
+                f'(limit {MAX_IMAGE_BYTES}) for kb {kb_id}'
+            )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content=response_formatter.buildErrorResponse(IMAGE_TOO_LARGE_MESSAGE),

@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from common_module.log.logger import logger
 from common_module.utils.serializer import serialize_values
 from datasource import DatasourcePlugin
+from datasource.executor import use_scheduled_limits
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from db_repo_module.database.connection import DatabaseClient
@@ -601,9 +602,15 @@ class ScheduledJobService:
             raise ValueError(f'No results returned for dynamic query: {query_id}')
         first_key = next(iter(result))
         if result[first_key].get('status') != 'success':
+            # Ran and failed (a timeout, a SQL error): say so, rather than look
+            # like a format problem. The driver's message goes to the log only.
+            logger.warning(
+                f'Scheduled dynamic query {query_id} failed: '
+                f'{result[first_key].get("error")}'
+            )
             raise ValueError(
-                f'Unexpected dynamic query result format for query_id {query_id}, '
-                'no successful results'
+                f'Dynamic query {query_id} failed to run. It may have taken longer '
+                'than the time limit.'
             )
         rows = result[first_key].get('result') or []
         if not isinstance(rows, list):
@@ -1487,6 +1494,9 @@ class ScheduledJobService:
             )
 
     async def process_due_jobs(self, batch_size: int = 10):
+        # Reports run on their own datasource threads, wait for one rather than
+        # being refused, and get the long statement limit instead of the UI's.
+        use_scheduled_limits()
         due_jobs = await self.claim_due_jobs(batch_size=batch_size)
         for job_row in due_jobs:
             await self._run_job(job_row)
