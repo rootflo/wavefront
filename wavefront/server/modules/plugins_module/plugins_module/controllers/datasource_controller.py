@@ -1525,14 +1525,21 @@ async def export_dynamic_query_csv(
     if is_file_storage_type(datasource_type):
         return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
-        yaml_query,
-        rls_filter_str,
-        filter,
-        offset,
-        limit,
-        dynamic_query_params.params if dynamic_query_params else None,
-    )
+    try:
+        res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
+            yaml_query,
+            rls_filter_str,
+            filter,
+            offset,
+            limit,
+            dynamic_query_params.params if dynamic_query_params else None,
+        )
+    except ValueError as e:
+        # The OData parser rejects a malformed $filter.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     if not res:
         return JSONResponse(

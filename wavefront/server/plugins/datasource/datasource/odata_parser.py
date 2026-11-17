@@ -860,6 +860,10 @@ class JoinBuilder:
                             for key, value in filter_params.items():
                                 new_key = f'{table}_{key}_'
                                 all_filter_params[new_key] = value
+                    except ValueError:
+                        # A rejected filter must not be dropped: running the
+                        # join without it would return unfiltered rows.
+                        raise
                     except Exception as e:
                         # If filter parsing fails, log the error and skip it
                         print(f"Filter parsing failed for '{filter_expr}': {e}")
