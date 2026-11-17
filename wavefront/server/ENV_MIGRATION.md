@@ -80,6 +80,11 @@ Provider implementations are split into cipher vs signer classes
 | `FLOWARE_JWT_AUDIENCE`                                                           | `[jwt_token] audience`                                                                                          |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PROTOCOL` / `REDIS_PASSWORD` / `REDIS_DB`   | `[redis] host/port/protocol/password/db`                                                                        |
 | `REDIS_POOL_SIZE` / `REDIS_POOL_TIMEOUT`                                         | `[redis] pool_size` / `pool_timeout`                                                                            |
+| `REDIS_SOCKET_TIMEOUT` / `REDIS_CONNECT_TIMEOUT`                                 | `[redis] socket_timeout` / `connection_timeout` (floware; seconds, default 5 / 3)                               |
+| `REDIS_MAX_RETRIES` / `REDIS_INITIAL_BACKOFF` / `REDIS_MAX_BACKOFF`              | `[redis] max_retries` / `initial_backoff` / `max_backoff` (floware; attempts per call, wait in seconds)         |
+| `EVENT_LOOP_MONITOR_ENABLED` / `EVENT_LOOP_LAG_THRESHOLD_MS`                     | `[event_loop_monitor] enabled` / `threshold_ms` (floware; default true / 50)                                    |
+| `EVENT_LOOP_MONITOR_INTERVAL_MS` / `EVENT_LOOP_STACK_THRESHOLD_MS`               | `[event_loop_monitor] interval_ms` / `stack_threshold_ms` (floware; default 100 / 250)                          |
+| `EVENT_LOOP_LOG_COOLDOWN_SECONDS`                                                | `[event_loop_monitor] log_cooldown_seconds` (floware; default 30)                                               |
 | `FLOWARE_BASE_URL`                                                               | `[env_config] base_url` (wired via `common_module.runtime_settings`)                                            |
 | `PASSTHROUGH_SECRET`                                                             | `[env_config] passthrough_secret`                                                                               |
 | `ALLOWED_ORIGINS`                                                                | `[web] allowed_origins`                                                                                         |
