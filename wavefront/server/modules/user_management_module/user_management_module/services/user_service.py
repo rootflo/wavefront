@@ -15,7 +15,7 @@ from user_management_module.constants.cache import USER_DATA_PATTERN
 from user_management_module.constants.cache import get_session_cache_key
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
-from user_management_module.utils.password_utils import hash_password
+from user_management_module.utils.password_utils import hash_password_async
 from user_management_module.models.user_schema import NewUser
 from fastapi.responses import JSONResponse
 from fastapi import status
@@ -395,7 +395,7 @@ class UserService:
 
                 user_updates: dict[str, Any] = {
                     'deleted': False,
-                    'password': hash_password(new_user_data.password),
+                    'password': await hash_password_async(new_user_data.password),
                     'first_name': new_user_data.first_name,
                     'last_name': new_user_data.last_name,
                     'username': new_user_data.username,

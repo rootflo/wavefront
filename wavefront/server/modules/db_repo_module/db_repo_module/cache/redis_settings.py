@@ -18,6 +18,10 @@ class RedisSettings:
     connection_timeout: float | str = 60
     socket_timeout: float | str = 60
     socket_keepalive: bool | str = True
+    # The async client (a* methods): its own connection pool, and a time limit
+    # for one whole a* call, retries included.
+    async_pool_size: int | str = 20
+    async_command_timeout: float | str = 1.0
 
     def __post_init__(self) -> None:
         # A key missing from config.ini arrives as None: use the field default.

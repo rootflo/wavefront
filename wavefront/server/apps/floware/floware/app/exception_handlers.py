@@ -2,6 +2,7 @@
 
 import math
 
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
@@ -33,6 +34,26 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
             },
             content=ResponseFormatter().buildErrorResponse(
                 error='The datasource is busy. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(BlockingPoolBusyError)
+    async def blocking_pool_busy_handler(request: Request, exc: BlockingPoolBusyError):
+        """A blocking-I/O pool (KMS, storage, CPU) is full: overload, not a bug.
+
+        Same shape as the datasource handler above: 503 with Retry-After and a
+        warning, no traceback.
+        """
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'{exc.pool} pool busy on {request.method} {request.url.path} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': str(retry_after_seconds())},
+            content=ResponseFormatter().buildErrorResponse(
+                error='The server is busy. Please try again shortly.'
             ),
         )
 

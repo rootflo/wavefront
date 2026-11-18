@@ -152,6 +152,8 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         max_retries=config.redis.max_retries,
         initial_backoff=config.redis.initial_backoff,
         max_backoff=config.redis.max_backoff,
+        async_pool_size=config.redis.async_pool_size,
+        async_command_timeout=config.redis.async_command_timeout,
     )
 
     cache_manager = providers.Singleton(

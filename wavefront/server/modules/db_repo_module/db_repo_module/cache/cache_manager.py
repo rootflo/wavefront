@@ -1,8 +1,9 @@
+import asyncio
 import functools
 import socket
 import threading
 import time
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import Any, Awaitable, Callable, List, Optional, TypeVar, Union
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
@@ -15,13 +16,26 @@ from redis import Redis
 from redis import RedisError
 from redis import SSLConnection
 from redis import TimeoutError
+from redis import asyncio as aioredis
 from redis.exceptions import OutOfMemoryError
+from tenacity import AsyncRetrying
+from tenacity import RetryError
 from tenacity import Retrying
 from tenacity import retry_if_exception
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 F = TypeVar('F', bound=Callable[..., Any])
+T = TypeVar('T')
+
+
+class CacheUnavailableError(RedisError):
+    """An a* call failed: Redis errored, timed out, or ran out of retries.
+
+    One exception type for callers that want to fall back (e.g. to the
+    database) whatever the cause.
+    """
+
 
 # The pubsub listener holds one connection per subscribe() call for its whole
 # life; floware subscribes once per worker.
@@ -120,6 +134,13 @@ class CacheManager(CommonCache):
         self._pubsub_pool: Optional[ConnectionPool] = None
         self._pubsub_pool_lock = threading.Lock()
 
+        # Async client for the a* methods; created by bind_event_loop().
+        self._socket_timeout = float(redis.socket_timeout)
+        self._async_pool_size = int(redis.async_pool_size)
+        self.async_command_timeout = float(redis.async_command_timeout)
+        self._async_redis: Optional[aioredis.Redis] = None
+        self._async_loop: Optional[asyncio.AbstractEventLoop] = None
+
         # Test the connection immediately - fail fast if Redis is unreachable
         try:
             self.redis.ping()
@@ -208,14 +229,148 @@ class CacheManager(CommonCache):
                     self._connection_timeout, socket_timeout=None, socket_keepalive=True
                 )
                 pool_kwargs['socket_keepalive_options'] = _pubsub_keepalive_options()
-                # On here: it gives redis-py one built-in retry, which is what
-                # reconnects and resubscribes a dropped listener (e.g. after a
-                # Redis restart). Without it the listener thread would die.
+                # On here: redis-py retries a timed-out pubsub read once,
+                # reconnecting and resubscribing. It covers TimeoutError only.
+                # A Redis restart raises ConnectionError, which still ends the
+                # listener thread; restarting the listener is a separate fix.
                 pool_kwargs['retry_on_timeout'] = True
                 self._pubsub_pool = ConnectionPool(
                     max_connections=_PUBSUB_MAX_CONNECTIONS, **pool_kwargs
                 )
             return self._pubsub_pool
+
+    # ------------------------------------------------------------------
+    # Async client (a* methods)
+    # ------------------------------------------------------------------
+    #
+    # The sync methods above block the thread that calls them; from async code
+    # that is the event loop, so a slow Redis stalls every request in the
+    # worker. The a* methods wait on the loop instead.
+    #
+    # An asyncio client belongs to the loop it was created on, and scheduled
+    # jobs run on loops of their own (asyncio.run on the APScheduler thread).
+    # So the client is bound to the app's main loop by bind_event_loop(), and
+    # an a* call from any other loop (or before binding) runs the sync method
+    # on a worker thread instead. Callers don't need to know which they get.
+
+    def bind_event_loop(self) -> None:
+        """Create the async client on the running loop. Call once at app startup."""
+        loop = asyncio.get_running_loop()
+        if self._async_redis is not None:
+            return
+        kwargs = self._connection_kwargs(
+            self._connection_timeout, self._socket_timeout, socket_keepalive=True
+        )
+        kwargs['connection_class'] = (
+            aioredis.SSLConnection
+            if kwargs['connection_class'] is SSLConnection
+            else aioredis.Connection
+        )
+        pool = aioredis.BlockingConnectionPool(
+            max_connections=self._async_pool_size, timeout=self._pool_timeout, **kwargs
+        )
+        self._async_redis = aioredis.Redis(connection_pool=pool)
+        self._async_loop = loop
+        logger.info(
+            f'Async Redis client ready (pool {self._async_pool_size}, '
+            f'call timeout {self.async_command_timeout:g}s)'
+        )
+
+    async def aclose(self) -> None:
+        """Close the async client. Call on the loop it was bound to."""
+        client, self._async_redis, self._async_loop = self._async_redis, None, None
+        if client is not None:
+            await client.aclose()
+
+    async def _run_async(
+        self,
+        name: str,
+        call: Callable[[aioredis.Redis], Awaitable[T]],
+        sync_fallback: Callable[[], T],
+        attempts: Optional[int],
+        timeout: Optional[float],
+    ) -> T:
+        """Run ``call`` on the async client with retries and an overall time limit.
+
+        Every failure (Redis error, timeout, retries exhausted) is raised as
+        CacheUnavailableError.
+        """
+        limit = self.async_command_timeout if timeout is None else timeout
+        try:
+            if (
+                self._async_redis is None
+                or asyncio.get_running_loop() is not self._async_loop
+            ):
+                return await asyncio.wait_for(asyncio.to_thread(sync_fallback), limit)
+
+            client = self._async_redis
+            retrying = AsyncRetrying(
+                stop=stop_after_attempt(attempts or self.max_retries),
+                wait=wait_exponential(
+                    multiplier=self.initial_backoff,
+                    min=self.initial_backoff,
+                    max=self.max_backoff,
+                ),
+                retry=retry_if_exception(_is_retryable_redis_error),
+            )
+
+            async def with_retries() -> T:
+                return await retrying(call, client)
+
+            return await asyncio.wait_for(with_retries(), limit)
+        except (
+            asyncio.TimeoutError,
+            RetryError,
+            RedisError,
+            ConnectionError,
+            TimeoutError,
+        ) as e:
+            raise CacheUnavailableError(
+                f'Redis {name} failed: {type(e).__name__}: {e}'
+            ) from e
+
+    async def aget_str(
+        self,
+        key: str,
+        default: Any = None,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Optional[str]:
+        """Async ``get_str``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
+
+        async def call(client: aioredis.Redis) -> Optional[str]:
+            return await client.get(namespaced)
+
+        value = await self._run_async(
+            'GET', call, lambda: self.get_str(key), attempts, timeout
+        )
+        return value if value is not None else default
+
+    async def aadd(
+        self,
+        key: str,
+        value: Union[str, int, float, bytes],
+        expiry: int = 3600,
+        nx: bool = False,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """Async ``add``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
+
+        async def call(client: aioredis.Redis) -> bool:
+            return bool(await client.set(namespaced, value, ex=expiry, nx=nx))
+
+        return await self._run_async(
+            'SET',
+            call,
+            lambda: self.add(key, value, expiry=expiry, nx=nx),
+            attempts,
+            timeout,
+        )
 
     def _create_redis_connection(self) -> Redis:
         logger.info('Creating Redis connection from pool...')

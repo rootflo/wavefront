@@ -6,6 +6,7 @@ import asyncio
 from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
+from common_module.blocking_io import configure_blocking_io, shutdown_blocking_io
 from common_module.log.logger import logger
 from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
 from common_module.telemetry.loop_monitor import start_event_loop_monitor
@@ -37,7 +38,12 @@ async def lifespan(app: FastAPI):
         # Before anything can call a datasource: the pools are sized on first use.
         datasource_limits = configure_limits(config.get('datasource') or {})
         logger.info(f'Datasource limits: {datasource_limits}')
+        blocking_io_limits = configure_blocking_io(config.get('blocking_io'))
+        logger.info(f'Blocking I/O limits: {blocking_io_limits}')
         db = application_container.db
+        # The async Redis client belongs to this loop; a* calls from other loops
+        # (scheduled jobs) fall back to the sync client on a thread.
+        db.cache_manager().bind_event_loop()
         db_client: DatabaseClient = db.db_client()
 
         if isinstance(db_client, DatabaseClient):
@@ -165,6 +171,7 @@ async def lifespan(app: FastAPI):
         # Drop queued datasource calls so the worker is not held up running a
         # backlog nobody is waiting for any more.
         shutdown_pools()
+        shutdown_blocking_io()
         async_agentic_exec_consumer.stop()
         try:
             await asyncio.wait_for(
@@ -187,6 +194,7 @@ async def lifespan(app: FastAPI):
                 'KbIndexStatusConsumer did not stop within '
                 f'{consumer_shutdown_timeout_s}s; cancelled'
             )
+        await db.cache_manager().aclose()
         logger.info('Shutting down application...')
 
     except Exception as e:

@@ -62,7 +62,7 @@ from user_management_module.utils.email_templates import (
     PASSWORD_RESET_SUBJECT,
     build_password_reset_email,
 )
-from user_management_module.utils.password_utils import hash_password
+from user_management_module.utils.password_utils import hash_password_async
 from user_management_module.utils.rate_limit import (
     password_reset_cooldown_seconds,
     password_reset_rate_limited,
@@ -223,7 +223,7 @@ async def create_user(
                         ),
                     )
 
-            hashed_password = hash_password(new_user.password)
+            hashed_password = await hash_password_async(new_user.password)
             user = User(
                 email=new_user.email,
                 username=new_user.username,
@@ -374,7 +374,7 @@ async def update_user(
         profile_updates['username'] = update_user.username
 
     if update_user.password is not None:
-        profile_updates['password'] = hash_password(update_user.password)
+        profile_updates['password'] = await hash_password_async(update_user.password)
     if update_user.first_name is not None:
         profile_updates['first_name'] = update_user.first_name
     if update_user.last_name is not None:
@@ -933,7 +933,7 @@ async def send_reset_url(
         # creating an jwt token for reseting the password
         random_digit = secrets.token_hex(16)
 
-        decoded_url = token_service.create_token(
+        decoded_url = await token_service.create_token_async(
             payload={
                 'code': random_digit,
                 'purpose': PASSWORD_RESET_TOKEN_PURPOSE,
@@ -988,7 +988,7 @@ async def reset_password(
         return _recaptcha_failure_response(response_formatter, recaptcha_error)
 
     try:
-        decoded = token_service.decode_token(reset_user.secret_token)
+        decoded = await token_service.decode_token_async(reset_user.secret_token)
     except jwt.PyJWTError as exc:
         logger.warning(f'Rejected password reset token: {exc}')
         return _password_reset_invalid_response(response_formatter)
@@ -1012,7 +1012,7 @@ async def reset_password(
     if not user or user.deleted:
         return _password_reset_invalid_response(response_formatter)
 
-    hashed_password = hash_password(reset_user.new_password)
+    hashed_password = await hash_password_async(reset_user.new_password)
     updated_user = await user_repository.find_one_and_update(
         {'id': existing_user_id}, password=hashed_password
     )

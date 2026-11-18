@@ -11,8 +11,11 @@ from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import Response
 
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.security.secret_cipher import SecretCipher
+from db_repo_module.cache.cache_manager import CacheUnavailableError
 from flo_cloud._types import FloCipher
+from flo_testing import add_async_cache_methods, add_async_token_methods
 from flo_utils.envelope import EnvelopeCipher
 
 from user_management_module.authorization.require_auth import (
@@ -376,13 +379,13 @@ def _http_request(path: str = '/floware/v1/llm-inference-configs/x', headers=Non
 
 
 def _jwt_deps():
-    token_service = MagicMock()
+    token_service = add_async_token_methods(MagicMock())
     token_service.decode_token.return_value = {
         'session_id': 's1',
         'user_id': 'u1',
         'role_id': 'r1',
     }
-    cache_manager = MagicMock()
+    cache_manager = add_async_cache_methods(MagicMock())
     cache_manager.get_str.return_value = '{"user_id": "u1"}'
     return {'token_service': token_service, 'cache_manager': cache_manager}
 
@@ -399,10 +402,10 @@ async def _secret_access_after_dispatch(middleware, request, **deps):
     formatter = MagicMock()
     formatter.buildErrorResponse.return_value = {'error': 'x'}
     deps = {
-        'token_service': MagicMock(),
+        'token_service': add_async_token_methods(MagicMock()),
         'response_formatter': formatter,
         'session_repository': AsyncMock(),
-        'cache_manager': MagicMock(),
+        'cache_manager': add_async_cache_methods(MagicMock()),
         'auth_secrets_repository': AsyncMock(),
         'secret_cipher': _cipher(False),
         **deps,
@@ -517,3 +520,101 @@ async def test_secret_access_denied_to_hmac_callers():
         is False
     )
     assert request.state.session.user_id == 'hmac-service'
+
+
+# ---- session cache: async, with a database fallback --------------------------
+
+
+def _db_session(user_id='u1'):
+    return SimpleNamespace(id='s1', user_id=user_id, device_info='test-agent')
+
+
+@pytest.mark.asyncio
+async def test_session_cache_hit_skips_the_database():
+    deps = _jwt_deps()
+    session_repository = AsyncMock()
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    await _secret_access_after_dispatch(
+        _middleware(), request, session_repository=session_repository, **deps
+    )
+
+    assert request.state.session.user_id == 'u1'
+    deps['cache_manager'].aget_str.assert_awaited_once()
+    session_repository.find_one.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_cache_outage_falls_back_to_the_database():
+    """Redis down must not fail auth: the database is the source of truth."""
+    deps = _jwt_deps()
+    deps['cache_manager'].aget_str = AsyncMock(
+        side_effect=CacheUnavailableError('down')
+    )
+    session_repository = AsyncMock()
+    session_repository.find_one.return_value = _db_session()
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    secret_access = await _secret_access_after_dispatch(
+        _middleware(), request, session_repository=session_repository, **deps
+    )
+
+    assert secret_access is False  # reached the route
+    assert request.state.session.user_id == 'u1'
+    session_repository.find_one.assert_awaited_once_with(id='s1')
+    # Redis just failed; don't spend another timeout trying to write to it.
+    deps['cache_manager'].aadd.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_cache_lookup_uses_one_attempt():
+    deps = _jwt_deps()
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    await _secret_access_after_dispatch(_middleware(), request, **deps)
+
+    assert deps['cache_manager'].aget_str.await_args.kwargs['attempts'] == 1
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_caches_the_session_and_tolerates_a_failed_write():
+    deps = _jwt_deps()
+    deps['cache_manager'].get_str.return_value = None
+    deps['cache_manager'].aadd = AsyncMock(side_effect=CacheUnavailableError('down'))
+    session_repository = AsyncMock()
+    session_repository.find_one.return_value = _db_session()
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    secret_access = await _secret_access_after_dispatch(
+        _middleware(), request, session_repository=session_repository, **deps
+    )
+
+    assert secret_access is False  # the failed cache write didn't fail the request
+    deps['cache_manager'].aadd.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_busy_kms_pool_answers_503():
+    deps = _jwt_deps()
+    deps['token_service'].decode_token_async = AsyncMock(
+        side_effect=BlockingPoolBusyError('kms', 10)
+    )
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'busy'}
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    async def call_next(_req):
+        raise AssertionError('must not reach the route')
+
+    response = await _middleware().dispatch(
+        request,
+        call_next,
+        response_formatter=formatter,
+        session_repository=AsyncMock(),
+        auth_secrets_repository=AsyncMock(),
+        secret_cipher=_cipher(False),
+        **deps,
+    )
+
+    assert response.status_code == 503
+    assert response.headers['Retry-After'] == '10'

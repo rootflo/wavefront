@@ -45,7 +45,7 @@ from user_management_module.services.recaptcha_service import (
 )
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
-from user_management_module.utils.password_utils import verify_password
+from user_management_module.utils.password_utils import verify_password_async
 from user_management_module.utils.user_utils import create_account_lockout_response
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
@@ -111,7 +111,7 @@ async def authenticate(
             user
         )
         if is_locked:
-            if not verify_password(auth_data.password, user.password):
+            if not await verify_password_async(auth_data.password, user.password):
                 await account_lockout_service.record_locked_attempt(user)
             return create_account_lockout_response(
                 locked_until, account_lockout_service, response_formatter
@@ -131,7 +131,9 @@ async def authenticate(
                 ),
             )
 
-    if user is None or not verify_password(auth_data.password, user.password):
+    if user is None or not await verify_password_async(
+        auth_data.password, user.password
+    ):
         # Handle failed login attempt
         if user:  # Only track attempts for existing users
             (
@@ -197,7 +199,7 @@ async def authenticate(
         )
 
     # Include session_id in token payload
-    token = token_service.create_token(
+    token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=role_id,

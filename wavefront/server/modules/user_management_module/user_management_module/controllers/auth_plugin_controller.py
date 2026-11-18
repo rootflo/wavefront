@@ -31,7 +31,7 @@ from plugins_module.services.authenticator_services import (
 from plugins_module.utils.email_helper import is_allowed_client_redirect
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
-from user_management_module.utils.password_utils import verify_password
+from user_management_module.utils.password_utils import verify_password_async
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
 
@@ -227,7 +227,7 @@ async def unified_authenticate(
             )
 
         # Include session_id in token payload
-        token = token_service.create_token(
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
@@ -714,7 +714,7 @@ async def _handle_oauth_callback(
             )
 
         # Include session_id in token payload
-        token = token_service.create_token(
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
@@ -822,7 +822,7 @@ async def _handle_email_password_auth(
             )
 
         # Verify password (user is guaranteed to exist here)
-        if not verify_password(password, user.password):
+        if not await verify_password_async(password, user.password):
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content=response_formatter.buildErrorResponse(
@@ -866,7 +866,7 @@ async def _handle_email_password_auth(
             )
 
         # Create JWT token with session information
-        token = token_service.create_token(
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,

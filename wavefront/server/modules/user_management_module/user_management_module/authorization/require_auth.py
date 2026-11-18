@@ -8,12 +8,13 @@ from collections.abc import Sequence
 
 from auth_module.auth_container import AuthContainer
 from auth_module.services.token_service import TokenService
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SecretCipher
-from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
 from db_repo_module.models.session import Session
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -462,7 +463,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             error='Token missing in request'
                         ),
                     )
-                decoded = token_service.decode_token(token)
+                decoded = await token_service.decode_token_async(token)
                 if 'session_id' not in decoded:
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
@@ -477,9 +478,25 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                         ),
                     )
 
-                # Try to get session from cache
+                # Try to get session from cache. Async, with one attempt and a
+                # short time limit: a slow or unreachable Redis must not stall
+                # the event loop. The database is the source of truth, so on
+                # failure fall back to it rather than failing the request.
                 session_cache_key = get_session_cache_key(decoded['session_id'])
-                cached_session = cache_manager.get_str(session_cache_key)
+                cache_available = True
+                try:
+                    cached_session = await cache_manager.aget_str(
+                        session_cache_key, attempts=1
+                    )
+                except CacheUnavailableError as exc:
+                    request_id = getattr(
+                        request.state, 'request_id', get_current_request_id()
+                    )
+                    logger.warning(
+                        f'Session cache unavailable, checking the database: {exc} [Request ID: {request_id}]'
+                    )
+                    cached_session = None
+                    cache_available = False
                 if cached_session:
                     try:
                         session_data = json.loads(cached_session)
@@ -531,11 +548,16 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                         'device_info': session.device_info,
                     }
 
-                    cache_manager.add(
-                        session_cache_key,
-                        json.dumps(session_data),
-                        token_service.token_expiry,
-                    )
+                    if cache_available:
+                        try:
+                            await cache_manager.aadd(
+                                session_cache_key,
+                                json.dumps(session_data),
+                                token_service.token_expiry,
+                                attempts=1,
+                            )
+                        except CacheUnavailableError as exc:
+                            logger.warning(f'Could not cache session: {exc}')
 
                     if str(session.user_id) != decoded['user_id']:
                         request_id = getattr(
@@ -577,6 +599,19 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Auth busy on {request.method} {request.url.path}: {exc} [Request ID: {request_id}]'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='The server is busy. Please try again shortly.'
+                ),
+            )
         except jwt.ExpiredSignatureError as exc:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(

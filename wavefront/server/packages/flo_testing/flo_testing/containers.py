@@ -40,9 +40,30 @@ RESET_CODE = 'mock_reset_code'
 PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
+def add_async_cache_methods(cache_manager: Mock) -> Mock:
+    """Give a CacheManager mock ``aget_str``/``aadd`` that forward to the sync mocks.
+
+    Tests that configure or assert on ``get_str``/``add`` keep covering code
+    that now calls the async versions.
+    """
+
+    async def aget_str(key, default=None, **_kwargs):
+        value = cache_manager.get_str(key)
+        return value if value is not None else default
+
+    async def aadd(key, value, expiry=3600, nx=False, **_kwargs):
+        if nx:
+            return cache_manager.add(key, value, expiry, nx=True)
+        return cache_manager.add(key, value, expiry)
+
+    cache_manager.aget_str = AsyncMock(side_effect=aget_str)
+    cache_manager.aadd = AsyncMock(side_effect=aadd)
+    return cache_manager
+
+
 def build_cache_manager(user_id: str) -> Mock:
     """Cache stub that answers both the session lookup and the reset-code lookup."""
-    cache_manager = Mock()
+    cache_manager = add_async_cache_methods(Mock())
     session_payload = json.dumps({'user_id': user_id, 'device_info': 'Mozilla/5.0'})
     cache_manager.get_str.side_effect = (
         lambda key: user_id if key == RESET_CODE else session_payload
@@ -56,8 +77,24 @@ def build_cache_manager(user_id: str) -> Mock:
     return cache_manager
 
 
+def add_async_token_methods(token_service: Mock) -> Mock:
+    """Give a token-service mock ``decode_token_async``/``create_token_async``.
+
+    They forward to the sync mocks, so a test that sets
+    ``decode_token.return_value`` or ``create_token.side_effect`` (or asserts on
+    them) covers code that calls either version.
+    """
+    token_service.decode_token_async = AsyncMock(
+        side_effect=lambda token: token_service.decode_token(token)
+    )
+    token_service.create_token_async = AsyncMock(
+        side_effect=lambda **kwargs: token_service.create_token(**kwargs)
+    )
+    return token_service
+
+
 def build_token_service(user_id: str, session_id: str) -> Mock:
-    token_service = Mock()
+    token_service = add_async_token_methods(Mock())
     token_service.create_token.return_value = 'mock_token'
     token_service.decode_token.return_value = {
         'sub': 'test@example.com',
