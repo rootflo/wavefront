@@ -12,7 +12,7 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from floconsole.utils.password_utils import verify_password
+from floconsole.utils.password_utils import verify_password_async
 from floconsole.constants.auth import AUTH_ROLE_ID
 from floconsole.db.models.user import User
 from floconsole.db.models.session import Session
@@ -45,7 +45,9 @@ async def authenticate(
     ),
 ):
     user = await user_repository.find_one(email=auth_data.email)
-    if user is None or not verify_password(auth_data.password, user.password):
+    if user is None or not await verify_password_async(
+        auth_data.password, user.password
+    ):
         # Handle failed login attempt
         logger.error(f'Authentication failed for email: {auth_data.email}')
         return JSONResponse(
@@ -72,7 +74,7 @@ async def authenticate(
     )
 
     # Include session_id in token payload
-    token = token_service.create_token(
+    token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=AUTH_ROLE_ID,

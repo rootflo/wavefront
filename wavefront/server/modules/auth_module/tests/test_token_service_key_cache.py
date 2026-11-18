@@ -155,7 +155,7 @@ async def test_rotated_key_is_picked_up_from_a_new_token(signer):
 async def test_forged_tokens_cause_at_most_one_refetch(signer):
     service = make_service(signer, public_key_refresh_min_seconds=60)
     await service.decode_token_async(make_token(service))
-    service._key_fetched_at -= 120  # the cached key is old enough to refetch once
+    service._keys._fetched_at -= 120  # the cached key is old enough to refetch once
     forged = make_token(make_service(FakeKmsSigner()))
 
     results = [await service.decode_token_async(forged) for _ in range(100)]

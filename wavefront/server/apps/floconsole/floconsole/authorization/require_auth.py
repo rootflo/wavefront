@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -69,7 +70,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             try:
-                decoded = token_service.decode_token(token)
+                decoded = await token_service.decode_token_async(token)
             except ValueError as e:
                 logger.error(f'Token validation error: {e}')
                 return JSONResponse(
@@ -126,6 +127,16 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            logger.warning(f'Auth busy on {request.method} {request.url.path}: {exc}')
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='The server is busy. Please try again shortly.'
+                ),
+            )
         except jwt.ExpiredSignatureError as exc:
             logger.error(f'ExpiredSignatureError in require_auth middleware: {exc}')
             return JSONResponse(

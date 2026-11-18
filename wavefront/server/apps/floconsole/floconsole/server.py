@@ -14,6 +14,7 @@ import uvicorn
 # ruff: noqa: E402
 load_dotenv()  # Before di: create_container() reads config.ini with envs_required
 
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
 from floconsole.db import DatabaseClient
@@ -99,6 +100,21 @@ add_middlewares(
     app, allowed_origins=runtime.allowed_origins, environment=runtime.app_env
 )
 include_routers(app)
+
+
+@app.exception_handler(BlockingPoolBusyError)
+async def blocking_pool_busy_handler(request: Request, exc: BlockingPoolBusyError):
+    """A blocking-I/O pool (KMS signing, bcrypt) is full: overload, not a bug."""
+    logger.warning(
+        f'{exc.pool} pool busy on {request.method} {request.url.path}: {exc}'
+    )
+    return JSONResponse(
+        status_code=503,
+        headers={'Retry-After': str(retry_after_seconds())},
+        content=ResponseFormatter().buildErrorResponse(
+            error='The server is busy. Please try again shortly.'
+        ),
+    )
 
 
 @app.exception_handler(Exception)

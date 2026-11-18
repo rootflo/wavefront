@@ -4,24 +4,13 @@ import functools
 import json
 import jwt
 import hashlib
-import threading
-import time
 
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 from common_module.blocking_io import run_in_pool
+from common_module.security.public_key_cache import PublicKeyCache
 from flo_cloud._types import FloSigner
-
-
-def _seconds(value: float | str | None, default: float) -> float:
-    """A non-negative number of seconds from config; missing means the default."""
-    if value is None or value == '':
-        return float(default)
-    seconds = float(value)
-    if seconds < 0:
-        raise ValueError(f'Expected a non-negative number of seconds, got {value!r}')
-    return seconds
 
 
 class TokenAlgorithms(str, Enum):
@@ -61,14 +50,13 @@ class TokenService:
                 triggered by a token whose signature doesn't match (key
                 rotation). Default 60.
         """
-        self.public_key_cache_seconds = _seconds(public_key_cache_seconds, 600)
-        self.public_key_refresh_min_seconds = _seconds(
-            public_key_refresh_min_seconds, 60
+        self._keys = PublicKeyCache(
+            self._fetch_public_key,
+            cache_seconds=public_key_cache_seconds,
+            refresh_min_seconds=public_key_refresh_min_seconds,
         )
-        self._public_key: bytes | str | None = None
-        self._key_fetched_at = float('-inf')
-        self._key_lock = threading.Lock()  # guards the two fields above
-        self._fetch_lock = threading.Lock()  # one KMS key fetch at a time
+        self.public_key_cache_seconds = self._keys.cache_seconds
+        self.public_key_refresh_min_seconds = self._keys.refresh_min_seconds
         self.algorithm = algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
@@ -144,13 +132,7 @@ class TokenService:
     def decode_token(self, token: str) -> dict:
         """Verify and decode ``token``. Blocking on a cache miss: for sync callers only."""
         self._check_format(token)
-        key = self._key_for_request()
-        decoded = self._decode_with_key(token, key)
-        if decoded is None and self._may_refresh_after_bad_signature():
-            new_key = self._refresh_after_bad_signature(key)
-            if new_key is not None:
-                decoded = self._decode_with_key(token, new_key)
-        return decoded or {}
+        return self._keys.verify(lambda key: self._decode_with_key(token, key)) or {}
 
     async def decode_token_async(self, token: str) -> dict:
         """Verify and decode ``token`` without blocking the event loop.
@@ -159,15 +141,10 @@ class TokenService:
         jwt.InvalidTokenError (or a subclass) for malformed or expired tokens.
         """
         self._check_format(token)
-        key = self._cached_key()
-        if key is None:
-            key = await run_in_pool('kms', self._key_for_request)
-        decoded = self._decode_with_key(token, key)
-        if decoded is None and self._may_refresh_after_bad_signature():
-            new_key = await run_in_pool('kms', self._refresh_after_bad_signature, key)
-            if new_key is not None:
-                decoded = self._decode_with_key(token, new_key)
-        return decoded or {}
+        return (
+            await self._keys.averify(lambda key: self._decode_with_key(token, key))
+            or {}
+        )
 
     def _check_format(self, token: str) -> None:
         try:
@@ -198,64 +175,11 @@ class TokenService:
         except Exception as e:
             raise jwt.InvalidTokenError('Invalid token') from e
 
-    def _cached_key(self) -> bytes | str | None:
-        """The cached key if it is still fresh; never blocks."""
-        if self.public_key_cache_seconds <= 0:
-            return None
-        with self._key_lock:
-            if (
-                self._public_key is not None
-                and time.monotonic() - self._key_fetched_at
-                < self.public_key_cache_seconds
-            ):
-                return self._public_key
-        return None
-
-    def _key_for_request(self) -> bytes | str:
-        """The cached key, fetching it first if missing or stale. Blocking.
-
-        Concurrent callers wait on one lock and the first one fetches; the rest
-        find the fresh key when they get the lock, so a burst of requests on an
-        expired cache causes one KMS call, not one per request.
-        """
-        with self._fetch_lock:
-            key = self._cached_key()
-            if key is not None:
-                return key
-            return self._fetch_key()
-
-    def _may_refresh_after_bad_signature(self) -> bool:
-        # With the cache off, the key was fetched for this very request already.
-        return self.public_key_cache_seconds > 0
-
-    def _refresh_after_bad_signature(self, key_used: bytes | str) -> bytes | str | None:
-        """Refetch the key once in case it was rotated. Blocking.
-
-        Returns a different key to retry with, or None. At most one refetch per
-        public_key_refresh_min_seconds, so a flood of forged or stale tokens
-        can't turn into one KMS call each.
-        """
-        with self._fetch_lock:
-            with self._key_lock:
-                current = self._public_key
-                fetched_at = self._key_fetched_at
-            if current is not None and current != key_used:
-                return current  # someone else already refreshed it
-            if time.monotonic() - fetched_at < self.public_key_refresh_min_seconds:
-                return None
-            new_key = self._fetch_key()
-        return new_key if new_key != key_used else None
-
-    def _fetch_key(self) -> bytes | str:
-        """Fetch the public key from KMS and cache it. Call with _fetch_lock held."""
+    def _fetch_public_key(self) -> bytes | str:
         try:
-            key = self.kms_signer.get_public_key_pem()
+            return self.kms_signer.get_public_key_pem()
         except Exception as e:
             raise jwt.InvalidTokenError('Invalid token') from e
-        with self._key_lock:
-            self._public_key = key
-            self._key_fetched_at = time.monotonic()
-        return key
 
     def _base64url_encode(self, data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')
