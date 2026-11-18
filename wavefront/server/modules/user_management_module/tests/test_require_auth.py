@@ -6,6 +6,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import jwt
 import pytest
 from starlette.datastructures import Headers
 from starlette.requests import Request
@@ -618,3 +619,38 @@ async def test_busy_kms_pool_answers_503():
 
     assert response.status_code == 503
     assert response.headers['Retry-After'] == '10'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'error',
+    [
+        jwt.DecodeError('Not enough segments'),
+        jwt.InvalidAlgorithmError('The specified alg value is not allowed'),
+        jwt.InvalidIssuerError('Invalid issuer'),
+        jwt.InvalidAudienceError('Invalid audience'),
+    ],
+    ids=['malformed', 'bad-alg', 'bad-issuer', 'bad-audience'],
+)
+async def test_invalid_token_answers_401_not_500(error):
+    """Junk from an unauthenticated caller is their mistake: 401, never 500."""
+    deps = _jwt_deps()
+    deps['token_service'].decode_token_async = AsyncMock(side_effect=error)
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'Invalid token'}
+    request = _http_request(headers={'Authorization': 'Bearer junk'})
+
+    async def call_next(_req):
+        raise AssertionError('must not reach the route')
+
+    response = await _middleware().dispatch(
+        request,
+        call_next,
+        response_formatter=formatter,
+        session_repository=AsyncMock(),
+        auth_secrets_repository=AsyncMock(),
+        secret_cipher=_cipher(False),
+        **deps,
+    )
+
+    assert response.status_code == 401

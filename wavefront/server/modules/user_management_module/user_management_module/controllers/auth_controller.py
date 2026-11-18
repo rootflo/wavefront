@@ -311,15 +311,15 @@ async def logout(
     # Get the current session from request state
     current_session = request.state.session
 
-    # Delete the session from database
-    await session_repository.delete_all(id=current_session.session_id)
+    session_cache_key = get_session_cache_key(current_session.session_id)
 
-    # Clear both user and session cache. Strict on purpose: the middleware
-    # trusts a cached session before the database, so a delete that silently
-    # failed would keep the logged-out token working until the cache expires.
+    # Clear the cache BEFORE deleting the DB row, and strictly: the middleware
+    # trusts a cached session before the database. If Redis fails here nothing
+    # has changed yet, so the 503 is clean and a retry works. (Deleting the row
+    # first would leave a cached session that works again once Redis recovers.)
     try:
         await cache_manager.aremove(current_session.user_id)
-        await cache_manager.aremove(get_session_cache_key(current_session.session_id))
+        await cache_manager.aremove(session_cache_key)
     except CacheUnavailableError as e:
         logger.error(f'Logout could not clear the cached session: {e}')
         return JSONResponse(
@@ -328,6 +328,11 @@ async def logout(
                 'Logout could not be completed. Please try again shortly.'
             ),
         )
+
+    await session_repository.delete_all(id=current_session.session_id)
+    # A concurrent request could have re-cached the session from the DB between
+    # the clear above and the delete; clear it once more (best effort).
+    await cache_manager.try_aremove(session_cache_key)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

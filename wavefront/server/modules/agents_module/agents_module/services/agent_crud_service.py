@@ -392,8 +392,9 @@ class AgentCrudService:
                 key=yaml_key,
                 disable_cache=True,
             )
-        except Exception:
-            # Roll back, then re-raise: a busy pool still answers 503.
+        except BaseException:
+            # Roll back, then re-raise: a busy pool still answers 503. Also on
+            # cancellation (client gone), so no YAML-less row is left behind.
             logger.error(
                 f'Failed to upload YAML for new agent {agent.id} - rolling back identity and version rows'
             )
@@ -725,8 +726,9 @@ class AgentCrudService:
                 key=yaml_key,
                 disable_cache=True,
             )
-        except Exception:
-            # Roll back, then re-raise: a busy pool still answers 503.
+        except BaseException:
+            # Roll back, then re-raise: a busy pool still answers 503. Also on
+            # cancellation (client gone), so no YAML-less row is left behind.
             if create_new_version:
                 logger.error(
                     f'Failed to upload YAML for new version {write_version} of agent {agent_id} - rolling back the new version row'

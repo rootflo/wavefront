@@ -623,3 +623,14 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     error='Token has expired. Please log in again.'
                 ),
             )
+        except jwt.InvalidTokenError as exc:
+            # Malformed token, wrong algorithm, issuer or audience: the caller's
+            # mistake, so 401 and a warning, never a 500.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__} [Request ID: {request_id}]'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=response_formatter.buildErrorResponse(error='Invalid token'),
+            )

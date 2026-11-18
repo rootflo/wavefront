@@ -3,7 +3,8 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.api_services import ApiServices
 from flo_cloud.cloud_storage import CloudStorageManager
 from typing import List
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.log.logger import logger
 
 
 class ApiServicesManager:
@@ -77,7 +78,11 @@ class ApiServicesManager:
         await self.api_services_repository.find_one_and_update(
             filters={'id': id}, update_data={'service_def_path': service_def_path}
         )
-        await self.cache_manager.try_aadd(service_def_path, service_def_yaml)
+        # Strict: the cache holds the previous definition under the same key, and
+        # the reload that follows reads the cache first. A silently failed write
+        # would re-register the old URL and secrets on every worker for up to an
+        # hour. On failure this is a 503; storage and DB writes are safe to retry.
+        await self.cache_manager.aadd(service_def_path, service_def_yaml)
         return True
 
     async def delete_api_service(self, id: str) -> bool:
@@ -86,14 +91,26 @@ class ApiServicesManager:
         Storage first: if the storage pool is busy (a 503), nothing has been
         deleted yet and a retry works. Deleting the DB row first would leave an
         orphaned file and a lingering cache entry, and the retry would 404.
+
+        Any other storage error (including the file already being gone, which
+        GCS and Azure raise on) is logged and the delete carries on: an orphaned
+        file is harmless, but a row whose file is gone could never be deleted.
         """
         service_def_path = f'api_services/{id}.yaml'
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.delete_file,
-            bucket_name=self.application_bucket,
-            file_path=service_def_path,
-        )
+        try:
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.delete_file,
+                bucket_name=self.application_bucket,
+                file_path=service_def_path,
+            )
+        except BlockingPoolBusyError:
+            raise
+        except Exception as e:
+            logger.warning(
+                f'Could not delete {service_def_path} from storage; '
+                f'deleting the API service anyway: {e}'
+            )
         await self.api_services_repository.delete_all(filters={'id': id})
         await self.cache_manager.try_aremove(service_def_path)
         return True

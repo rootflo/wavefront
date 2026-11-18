@@ -86,15 +86,29 @@ async def test_block_is_reported_with_lag_and_stack(monitor, collector):
     assert 'block_the_loop_for_a_while' in event.stack
 
 
-async def test_short_block_has_no_stack(monitor, collector):
+async def test_short_block_has_no_stack(reader, collector):
     """Over the threshold but under stack_threshold_ms: reported, no stack."""
-    # Lag lands between 70 and 90 ms: over 50, and well short of the 100 ms
-    # stack threshold (which counts from the missed 20 ms wake-up).
-    block_the_loop_for_a_while(0.09)
-    await asyncio.sleep(0.05)
+    # A 150 ms block against a 50 ms threshold and a 1 s stack threshold: wide
+    # margins both ways, so scheduler jitter on a busy CI runner can't flip it.
+    settings = LoopMonitorSettings(
+        threshold_ms=50,
+        interval_ms=20,
+        stack_threshold_ms=1000,
+        log_cooldown_seconds=30,
+    )
+    m = EventLoopMonitor(
+        settings, 'test-service', meter_provider=MeterProvider(metric_readers=[reader])
+    )
+    m.start()
+    try:
+        await asyncio.sleep(0.05)  # let the heartbeat settle
+        block_the_loop_for_a_while(0.15)
+        await asyncio.sleep(0.05)
 
-    assert collector.wait_for(1)
-    assert collector.events[0].stack is None
+        assert collector.wait_for(1)
+        assert collector.events[0].stack is None
+    finally:
+        await m.stop()
 
 
 async def test_idle_loop_reports_nothing(monitor, collector):

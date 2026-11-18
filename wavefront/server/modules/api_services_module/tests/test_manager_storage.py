@@ -47,6 +47,7 @@ def make_cache(cached=None):
     cache = Mock()
     cache.try_aget_str = AsyncMock(return_value=cached)
     cache.try_aadd = AsyncMock(return_value=True)
+    cache.aadd = AsyncMock(return_value=True)
     cache.try_aremove = AsyncMock(return_value=True)
     return cache
 
@@ -77,7 +78,8 @@ async def test_writes_and_deletes_run_off_the_loop_and_update_the_cache():
 
     assert len(storage.threads) == 3
     assert threading.get_ident() not in storage.threads
-    assert cache.try_aadd.await_count == 2
+    cache.try_aadd.assert_awaited_once()  # create: a new key, tolerant
+    cache.aadd.assert_awaited_once()  # update: replaces a cached old version, strict
     cache.try_aremove.assert_awaited_once_with('api_services/acme.yaml')
 
 
@@ -98,3 +100,65 @@ async def test_busy_pool_on_delete_leaves_everything_in_place(monkeypatch):
 
     manager.api_services_repository.delete_all.assert_not_awaited()
     cache.try_aremove.assert_not_awaited()
+
+
+async def test_failed_cache_write_on_update_is_raised():
+    """The reload after an update reads the cache first, so a silently failed
+    write would keep serving the old definition: surface it (a 503)."""
+    from db_repo_module.cache.cache_manager import CacheUnavailableError
+
+    cache = make_cache()
+    cache.aadd = AsyncMock(side_effect=CacheUnavailableError('down'))
+    manager = make_manager(cache, Storage())
+
+    with pytest.raises(CacheUnavailableError):
+        await manager.update_api_service('acme', YAML)
+
+
+def ordered_manager(storage_error=None, db_error=None):
+    calls = []
+
+    class OrderedStorage(Storage):
+        def delete_file(self, **_kwargs):
+            calls.append('storage')
+            if storage_error:
+                raise storage_error
+
+    cache = make_cache()
+    cache.try_aremove = AsyncMock(side_effect=lambda _key: calls.append('cache'))
+    manager = make_manager(cache, OrderedStorage())
+
+    async def delete_all(**_kwargs):
+        calls.append('db')
+        if db_error:
+            raise db_error
+
+    manager.api_services_repository.delete_all = AsyncMock(side_effect=delete_all)
+    return manager, calls
+
+
+async def test_delete_order_is_storage_then_db_then_cache():
+    manager, calls = ordered_manager()
+
+    await manager.delete_api_service('acme')
+
+    assert calls == ['storage', 'db', 'cache']
+
+
+async def test_missing_file_does_not_block_the_delete():
+    """GCS and Azure raise when the file is already gone; the row must still go,
+    or it could never be deleted."""
+    manager, calls = ordered_manager(storage_error=Exception('blob not found'))
+
+    await manager.delete_api_service('acme')
+
+    assert calls == ['storage', 'db', 'cache']
+
+
+async def test_db_failure_after_storage_leaves_the_cache_alone():
+    manager, calls = ordered_manager(db_error=RuntimeError('db down'))
+
+    with pytest.raises(RuntimeError):
+        await manager.delete_api_service('acme')
+
+    assert calls == ['storage', 'db']

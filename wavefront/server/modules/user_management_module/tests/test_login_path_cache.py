@@ -70,9 +70,17 @@ def formatter():
     )
 
 
-async def test_logout_clears_both_cache_keys():
-    cache = MagicMock(aremove=AsyncMock(return_value=True))
-    sessions = MagicMock(delete_all=AsyncMock())
+async def test_logout_clears_the_cache_before_deleting_the_session():
+    calls = []
+    cache = MagicMock(
+        aremove=AsyncMock(side_effect=lambda key: calls.append(('cache', key)) or True),
+        try_aremove=AsyncMock(
+            side_effect=lambda key: calls.append(('cache-again', key)) or True
+        ),
+    )
+    sessions = MagicMock(
+        delete_all=AsyncMock(side_effect=lambda **kw: calls.append(('db', kw['id'])))
+    )
 
     response = await logout(
         request=logout_request(),
@@ -82,22 +90,29 @@ async def test_logout_clears_both_cache_keys():
     )
 
     assert response.status_code == 200
-    removed = [call.args[0] for call in cache.aremove.await_args_list]
-    assert removed == ['u1', get_session_cache_key('s1')]
+    assert calls == [
+        ('cache', 'u1'),
+        ('cache', get_session_cache_key('s1')),
+        ('db', 's1'),
+        ('cache-again', get_session_cache_key('s1')),
+    ]
 
 
 @pytest.mark.parametrize('fail_on', [0, 1])
-async def test_logout_fails_visibly_when_the_cache_cannot_be_cleared(fail_on):
-    """A silently failed delete would keep the logged-out token working."""
+async def test_logout_fails_cleanly_when_the_cache_cannot_be_cleared(fail_on):
+    """503 with the DB session untouched, so a retry (or the old token after
+    Redis recovers) still finds a consistent state."""
     outcomes = [True, True]
     outcomes[fail_on] = CacheUnavailableError('redis down')
-    cache = MagicMock(aremove=AsyncMock(side_effect=outcomes))
+    cache = MagicMock(aremove=AsyncMock(side_effect=outcomes), try_aremove=AsyncMock())
+    sessions = MagicMock(delete_all=AsyncMock())
 
     response = await logout(
         request=logout_request(),
-        session_repository=MagicMock(delete_all=AsyncMock()),
+        session_repository=sessions,
         cache_manager=cache,
         response_formatter=formatter(),
     )
 
     assert response.status_code == 503
+    sessions.delete_all.assert_not_awaited()

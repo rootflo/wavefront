@@ -594,17 +594,28 @@ class WorkflowCrudService:
             await self.workflow_repository.delete_all(id=workflow.id)
             raise
 
-        # Upload YAML to cloud storage
+        # Upload YAML to cloud storage. If this fails (storage error, busy pool,
+        # cancelled request), roll back the identity and version rows (the FK
+        # cascade removes the version row), as agent create does, so a failed
+        # upload doesn't leave a YAML-less workflow blocking this name.
         yaml_key = get_workflow_yaml_key(namespace, name, 1)
         yaml_bytes = yaml_content.encode('utf-8')
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.save_small_file,
-            file_content=yaml_bytes,
-            bucket_name=self.bucket_name,
-            key=yaml_key,
-            disable_cache=True,
-        )
+        try:
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
+                file_content=yaml_bytes,
+                bucket_name=self.bucket_name,
+                key=yaml_key,
+                disable_cache=True,
+            )
+        except BaseException:
+            # Roll back, then re-raise: a busy pool still answers 503.
+            logger.error(
+                f'Failed to upload YAML for new workflow {workflow.id} - rolling back identity and version rows'
+            )
+            await self.workflow_repository.delete_all(id=workflow.id)
+            raise
 
         # Build response with YAML content
         workflow_dict = workflow.to_dict()
@@ -807,19 +818,33 @@ class WorkflowCrudService:
                 )
             write_version = target_version
 
-        # Write YAML to cloud storage at the resolved version's key
+        # Write YAML to cloud storage at the resolved version's key. If this
+        # fails while branching a new version, roll back only that new version
+        # row (prior versions untouched), as agent update does; an in-place edit
+        # has no new row to remove.
         yaml_key = get_workflow_yaml_key(
             workflow.namespace, workflow.name, write_version
         )
         yaml_bytes = yaml_content.encode('utf-8')
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.save_small_file,
-            file_content=yaml_bytes,
-            bucket_name=self.bucket_name,
-            key=yaml_key,
-            disable_cache=True,
-        )
+        try:
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
+                file_content=yaml_bytes,
+                bucket_name=self.bucket_name,
+                key=yaml_key,
+                disable_cache=True,
+            )
+        except BaseException:
+            # Roll back, then re-raise: a busy pool still answers 503.
+            if create_new_version:
+                logger.error(
+                    f'Failed to upload YAML for new version {write_version} of workflow {workflow_id} - rolling back the new version row'
+                )
+                await self.workflow_version_repository.delete_all(
+                    workflow_id=workflow.id, version=write_version
+                )
+            raise
 
         # Invalidate caches
         yaml_cache_key = get_workflow_yaml_cache_key(
