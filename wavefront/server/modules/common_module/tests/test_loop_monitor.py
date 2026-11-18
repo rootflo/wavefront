@@ -75,12 +75,15 @@ def block_the_loop_for_a_while(seconds):
 
 
 async def test_block_is_reported_with_lag_and_stack(monitor, collector):
-    block_the_loop_for_a_while(0.3)
+    # The stack is captured only if the watchdog thread gets scheduled between
+    # "100 ms overdue" and the end of the block. A 1 s block leaves ~900 ms for
+    # that, so a CPU-starved CI runner (parallel test workers) still makes it.
+    block_the_loop_for_a_while(1.0)
     await asyncio.sleep(0.05)
 
     assert collector.wait_for(1)
     event = collector.events[0]
-    assert event.lag_s >= 0.25
+    assert event.lag_s >= 0.9
     assert event.service == 'test-service'
     assert event.stack is not None
     assert 'block_the_loop_for_a_while' in event.stack
