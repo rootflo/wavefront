@@ -41,9 +41,9 @@ PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
 def add_async_cache_methods(cache_manager: Mock) -> Mock:
-    """Give a CacheManager mock ``aget_str``/``aadd`` that forward to the sync mocks.
+    """Give a CacheManager mock ``aget_str``/``aadd``/``aremove`` that forward to the sync mocks.
 
-    Tests that configure or assert on ``get_str``/``add`` keep covering code
+    Tests that configure or assert on ``get_str``/``add``/``remove`` keep covering code
     that now calls the async versions.
     """
 
@@ -56,8 +56,15 @@ def add_async_cache_methods(cache_manager: Mock) -> Mock:
             return cache_manager.add(key, value, expiry, nx=True)
         return cache_manager.add(key, value, expiry)
 
+    async def aremove(key, **_kwargs):
+        return cache_manager.remove(key)
+
     cache_manager.aget_str = AsyncMock(side_effect=aget_str)
     cache_manager.aadd = AsyncMock(side_effect=aadd)
+    cache_manager.aremove = AsyncMock(side_effect=aremove)
+    cache_manager.try_aget_str = AsyncMock(side_effect=aget_str)
+    cache_manager.try_aadd = AsyncMock(side_effect=aadd)
+    cache_manager.try_aremove = AsyncMock(side_effect=aremove)
     return cache_manager
 
 

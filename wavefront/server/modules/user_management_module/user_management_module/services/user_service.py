@@ -317,12 +317,14 @@ class UserService:
         its session, so a user normally has a single session row. If a cache
         remove still fails after CacheManager's retries, the exception propagates
         before the DB rows are deleted, so the caller fails rather than reporting
-        success with a live session.
+        success with a live session. The removes are async with a short cap, so
+        a Redis outage fails the request fast (CacheUnavailableError, a 503)
+        instead of holding the event loop.
         """
         sessions = await self.session_repository.find(user_id=user_id, limit=100)
         for s in sessions:
-            self.cache_manager.remove(get_session_cache_key(s.id))
-        self.cache_manager.remove(str(user_id))
+            await self.cache_manager.aremove(get_session_cache_key(s.id))
+        await self.cache_manager.aremove(str(user_id))
         await self.session_repository.delete_all(user_id=user_id)
 
     async def delete_user(self, user_id: str) -> bool:

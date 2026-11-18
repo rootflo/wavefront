@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import status
-from flo_testing import add_async_token_methods
+from flo_testing import add_async_cache_methods, add_async_token_methods
 
 from user_management_module.controllers.auth_plugin_controller import (
     _handle_email_password_auth,
@@ -128,7 +128,7 @@ async def test_plugin_email_password_success_mints_session():
     user_service = AsyncMock()
     user_service.get_user_role_for_scope = AsyncMock(return_value='role')
 
-    cache_manager = MagicMock()
+    cache_manager = add_async_cache_methods(MagicMock())
     token_service = add_async_token_methods(MagicMock())
     token_service.create_token.return_value = 'jwt'
     token_service.token_expiry = 3600
@@ -195,7 +195,7 @@ async def test_plugin_email_password_clears_old_sessions_before_creating_new():
         user_service,
         user_repository,
         session_repository,
-        MagicMock(),
+        add_async_cache_methods(MagicMock()),
         token_service,
     )
 

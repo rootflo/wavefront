@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 import json
 
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 from flo_cloud._types import MessageQueue
@@ -26,8 +27,12 @@ class ImageService:
 
     async def save_image(self, image_data: bytes, image_name: str):
         validated_image_data = await self._validate_image(image_data)
-        self._upload(
-            validated_image_data, f'historical_data/{image_name}', 'image/jpeg'
+        await run_in_pool(
+            'storage',
+            self._upload,
+            validated_image_data,
+            f'historical_data/{image_name}',
+            'image/jpeg',
         )
 
     async def process_image(
@@ -40,7 +45,9 @@ class ImageService:
                 object_key = str(uuid.uuid4())
                 metadata['item_id'] = object_key
 
-            self._upload(validated_image_data, object_key, 'image/jpeg')
+            await run_in_pool(
+                'storage', self._upload, validated_image_data, object_key, 'image/jpeg'
+            )
 
             message = {
                 'parse_type': 'gold',
@@ -49,7 +56,9 @@ class ImageService:
                 'metadata': self._custom_serializer(metadata),
             }
 
-            self._upload(
+            await run_in_pool(
+                'storage',
+                self._upload,
                 json.dumps(message).encode('utf-8'),
                 f'gold_image_metadata/{object_key}.json',
                 'application/json',
@@ -63,6 +72,8 @@ class ImageService:
                 'message_id': message_id,
             }
 
+        except BlockingPoolBusyError:
+            raise  # overload: a 503, not a processing failure
         except Exception as e:
             logger.error(f'Error processing image: {str(e)}')
             raise Exception(f'Failed to process image: {str(e)}')

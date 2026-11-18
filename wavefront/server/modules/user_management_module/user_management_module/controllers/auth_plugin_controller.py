@@ -208,10 +208,10 @@ async def unified_authenticate(
             'user_id': str(session.user_id),
             'device_info': session.device_info,
         }
-        cache_manager.add(
+        await cache_manager.try_aadd(
             session_cache_key,
             json.dumps(session_data),
-            token_service.token_expiry,
+            expiry=token_service.token_expiry,
         )
 
         role_id = await user_service.get_user_role_for_scope(
@@ -691,10 +691,10 @@ async def _handle_oauth_callback(
             'user_id': str(session.user_id),
             'device_info': session.device_info,
         }
-        cache_manager.add(
+        await cache_manager.try_aadd(
             session_cache_key,
             json.dumps(session_data),
-            token_service.token_expiry,
+            expiry=token_service.token_expiry,
         )
 
         role_id = await user_service.get_user_role_for_scope(
@@ -847,10 +847,10 @@ async def _handle_email_password_auth(
             'user_id': str(session.user_id),
             'device_info': session.device_info,
         }
-        cache_manager.add(
+        await cache_manager.try_aadd(
             session_cache_key,
             json.dumps(session_data),
-            token_service.token_expiry,
+            expiry=token_service.token_expiry,
         )
 
         role_id = await user_service.get_user_role_for_scope(

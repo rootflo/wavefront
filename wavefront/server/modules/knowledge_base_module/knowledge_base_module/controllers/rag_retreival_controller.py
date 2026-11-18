@@ -4,6 +4,7 @@ import math
 from typing import List, Optional, Tuple, cast
 import uuid
 
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.knowledge_base_embeddings import (
@@ -138,7 +139,9 @@ async def _resolve_image_data(
 
     try:
         bucket, key = cloud_storage.get_bucket_key(url)
-        image_bytes = cloud_storage.read_file(bucket, key)
+        image_bytes = await run_in_pool('storage', cloud_storage.read_file, bucket, key)
+    except BlockingPoolBusyError:
+        raise  # overload: answer 503, don't swallow it
     except Exception as e:
         return (
             None,

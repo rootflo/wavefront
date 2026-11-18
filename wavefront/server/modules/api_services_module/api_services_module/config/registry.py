@@ -138,7 +138,7 @@ class ServiceRegistry:
         self.clear_all()
 
         for service in services:
-            yaml_content = self.api_service_manager.fetch_service_def(service)
+            yaml_content = await self.api_service_manager.fetch_service_def(service)
             service_definition = self.parser.parse_yaml_string(yaml_content)
             try:
                 execution_definition = await self.resolve_secrets(service_definition)
@@ -167,7 +167,7 @@ class ServiceRegistry:
             raise ServiceNotFoundError(
                 f'No service definition found for service: {service_id}'
             )
-        service_def_yaml = self.api_service_manager.fetch_service_def(service)
+        service_def_yaml = await self.api_service_manager.fetch_service_def(service)
         service_def = self.parser.parse_yaml_string(service_def_yaml)
         execution_def = await self.resolve_secrets(service_def)
         self.register_service(service_def, execution_def)

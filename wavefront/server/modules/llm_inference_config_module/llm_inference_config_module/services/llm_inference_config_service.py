@@ -88,7 +88,7 @@ class LlmInferenceConfigService:
 
         # Cache the config
         cache_key = get_llm_inference_config_cache_key(config.id)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key,
             json.dumps(config_dict),
             expiry=self.llm_inference_config_cache_time,
@@ -96,7 +96,7 @@ class LlmInferenceConfigService:
 
         # Invalidate list cache
         list_cache_key = get_llm_inference_configs_list_cache_key()
-        self.cache_manager.remove(list_cache_key)
+        await self.cache_manager.try_aremove(list_cache_key)
 
         # Invalidate cache in call_processing
         await self.cache_invalidator.invalidate(
@@ -120,7 +120,7 @@ class LlmInferenceConfigService:
         cache_key = get_llm_inference_config_cache_key(config_id)
 
         # Try cache first
-        cached_config_str = self.cache_manager.get_str(cache_key)
+        cached_config_str = await self.cache_manager.try_aget_str(cache_key)
         if cached_config_str:
             logger.info(f'Cache hit for LLM inference config: {config_id}')
             return json.loads(cached_config_str)
@@ -134,7 +134,7 @@ class LlmInferenceConfigService:
         if config:
             # Convert to dict and cache
             config_dict = config.to_stored_dict()
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 cache_key,
                 json.dumps(config_dict),
                 expiry=self.llm_inference_config_cache_time,
@@ -179,7 +179,7 @@ class LlmInferenceConfigService:
         list_cache_key = get_llm_inference_configs_list_cache_key()
 
         # Try cache first
-        cached_list_str = self.cache_manager.get_str(list_cache_key)
+        cached_list_str = await self.cache_manager.try_aget_str(list_cache_key)
         if cached_list_str:
             logger.info('Cache hit for LLM inference configs list')
             return [
@@ -192,7 +192,7 @@ class LlmInferenceConfigService:
 
         # Convert to dicts and cache
         configs_dicts = [config.to_stored_dict() for config in configs]
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             list_cache_key,
             json.dumps(configs_dicts),
             expiry=self.llm_inference_config_cache_time,
@@ -233,10 +233,10 @@ class LlmInferenceConfigService:
 
         # Invalidate caches
         cache_key = get_llm_inference_config_cache_key(config_id)
-        self.cache_manager.remove(cache_key)
+        await self.cache_manager.try_aremove(cache_key)
 
         list_cache_key = get_llm_inference_configs_list_cache_key()
-        self.cache_manager.remove(list_cache_key)
+        await self.cache_manager.try_aremove(list_cache_key)
 
         # Invalidate cache in call_processing
         await self.cache_invalidator.invalidate(
@@ -270,10 +270,10 @@ class LlmInferenceConfigService:
 
         # Invalidate caches
         cache_key = get_llm_inference_config_cache_key(config_id)
-        self.cache_manager.remove(cache_key)
+        await self.cache_manager.try_aremove(cache_key)
 
         list_cache_key = get_llm_inference_configs_list_cache_key()
-        self.cache_manager.remove(list_cache_key)
+        await self.cache_manager.try_aremove(list_cache_key)
 
         # Invalidate cache in call_processing
         await self.cache_invalidator.invalidate(

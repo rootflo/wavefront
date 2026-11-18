@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import yaml
 from fastapi import HTTPException
+from flo_testing import add_async_cache_methods
 
 from api_services_module.config.registry import ServiceRegistry
 from api_services_module.core.manager import ApiServicesManager
@@ -144,7 +145,7 @@ class FakeApiServicesManager:
     async def get_api_service(self, id):
         return SimpleNamespace(id=id) if id in self.yaml_by_id else None
 
-    def fetch_service_def(self, service):
+    async def fetch_service_def(self, service):
         return self.yaml_by_id[service.id]
 
     async def create_api_service(self, id, service_def_yaml):
@@ -533,7 +534,7 @@ async def test_read_paths_show_references_and_mask_literals():
 
 
 async def test_delete_api_service_removes_cache_key():
-    cache_manager = Mock()
+    cache_manager = add_async_cache_methods(Mock())
     manager = ApiServicesManager(
         api_services_repository=AsyncMock(),
         cloud_storage_manager=Mock(),

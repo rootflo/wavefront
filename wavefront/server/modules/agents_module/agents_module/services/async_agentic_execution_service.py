@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
+from common_module.blocking_io import run_in_pool
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
@@ -604,8 +605,12 @@ class AsyncAgenticExecutionService:
             logger.debug(f'Cache hit for execution status {execution_id}')
             # The cache holds the raw record, not the response, so it is shared
             # across both values of include_error without leaking either way.
-            return self._build_status_response(
-                json.loads(cached), include_error=include_error
+            # Presigning output URLs can be a network call (GCS), so off the loop.
+            return await run_in_pool(
+                'storage',
+                self._build_status_response,
+                json.loads(cached),
+                include_error=include_error,
             )
 
         record = await self.repo.find_one(id=execution_id)
@@ -624,7 +629,12 @@ class AsyncAgenticExecutionService:
             self.cache.add, cache_key, json.dumps(record_dict), ttl, nx=True
         )
 
-        return self._build_status_response(record_dict, include_error=include_error)
+        return await run_in_pool(
+            'storage',
+            self._build_status_response,
+            record_dict,
+            include_error=include_error,
+        )
 
     async def cancel_execution(
         self, execution_id: UUID

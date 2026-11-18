@@ -39,7 +39,7 @@ class NamespaceService:
         cache_key = get_namespace_cache_key(name)
 
         # Try cache first
-        cached_namespace = self.cache_manager.get_str(cache_key)
+        cached_namespace = await self.cache_manager.try_aget_str(cache_key)
         if cached_namespace:
             logger.info(f'Cache hit for namespace: {name}')
             return json.loads(cached_namespace)
@@ -54,7 +54,7 @@ class NamespaceService:
         namespace_dict = namespace.to_dict()
 
         # Cache the result
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
         )
 
@@ -88,13 +88,13 @@ class NamespaceService:
 
         # Cache the new namespace
         cache_key = get_namespace_cache_key(name)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
         )
 
         # Invalidate list cache
         list_cache_key = get_namespaces_list_cache_key()
-        self.cache_manager.remove(list_cache_key)
+        await self.cache_manager.try_aremove(list_cache_key)
 
         logger.info(f'Successfully created namespace: {name}')
         return namespace_dict
@@ -112,7 +112,7 @@ class NamespaceService:
         cache_key = get_namespace_cache_key(name)
 
         # Try cache first
-        cached_namespace = self.cache_manager.get_str(cache_key)
+        cached_namespace = await self.cache_manager.try_aget_str(cache_key)
         if cached_namespace:
             logger.info(f'Cache hit for namespace: {name}')
             return json.loads(cached_namespace)
@@ -123,7 +123,7 @@ class NamespaceService:
         if namespace:
             # Namespace exists
             namespace_dict = namespace.to_dict()
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
             )
             return namespace_dict
@@ -135,13 +135,13 @@ class NamespaceService:
             namespace_dict = created_namespace.to_dict()
 
             # Cache the new namespace
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
             )
 
             # Invalidate list cache
             list_cache_key = get_namespaces_list_cache_key()
-            self.cache_manager.remove(list_cache_key)
+            await self.cache_manager.try_aremove(list_cache_key)
 
             logger.info(f'Successfully created namespace: {name}')
             return namespace_dict
@@ -156,7 +156,7 @@ class NamespaceService:
         cache_key = get_namespaces_list_cache_key()
 
         # Try cache first
-        cached_list = self.cache_manager.get_str(cache_key)
+        cached_list = await self.cache_manager.try_aget_str(cache_key)
         if cached_list:
             logger.info('Cache hit for namespaces list')
             return json.loads(cached_list)
@@ -168,7 +168,7 @@ class NamespaceService:
         namespaces_list = [ns.to_dict() for ns in namespaces]
 
         # Cache the result
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, json.dumps(namespaces_list), expiry=self.cache_ttl
         )
 

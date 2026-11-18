@@ -3,6 +3,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.api_services import ApiServices
 from flo_cloud.cloud_storage import CloudStorageManager
 from typing import List
+from common_module.blocking_io import run_in_pool
 
 
 class ApiServicesManager:
@@ -27,23 +28,27 @@ class ApiServicesManager:
     ) -> ApiServices | None:
         """Create a new API service."""
         service_def_path = f'api_services/{id}.yaml'
-        self.cloud_storage_manager.save_small_file(
+        await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.save_small_file,
             file_content=service_def_yaml.encode('utf-8'),
             bucket_name=self.application_bucket,
             key=service_def_path,
             content_type='application/yaml',
         )
-        self.cache_manager.add(service_def_path, service_def_yaml)
+        await self.cache_manager.try_aadd(service_def_path, service_def_yaml)
         return await self.api_services_repository.create(
             id=id, service_def_path=service_def_path
         )
 
-    def fetch_service_def(self, api_services: ApiServices) -> str:
+    async def fetch_service_def(self, api_services: ApiServices) -> str:
         service_def_path = f'api_services/{api_services.id}.yaml'
-        cache_entry = self.cache_manager.get_str(service_def_path)
+        cache_entry = await self.cache_manager.try_aget_str(service_def_path)
         if cache_entry:
             return cache_entry
-        yaml_bytes: bytes = self.cloud_storage_manager.read_file(
+        yaml_bytes: bytes = await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.read_file,
             bucket_name=self.application_bucket,
             file_path=service_def_path,
         )
@@ -61,7 +66,9 @@ class ApiServicesManager:
     async def update_api_service(self, id: str, service_def_yaml: str) -> bool:
         """Update an API service."""
         service_def_path = f'api_services/{id}.yaml'
-        self.cloud_storage_manager.save_small_file(
+        await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.save_small_file,
             file_content=service_def_yaml.encode('utf-8'),
             bucket_name=self.application_bucket,
             key=service_def_path,
@@ -70,18 +77,25 @@ class ApiServicesManager:
         await self.api_services_repository.find_one_and_update(
             filters={'id': id}, update_data={'service_def_path': service_def_path}
         )
-        self.cache_manager.add(service_def_path, service_def_yaml)
+        await self.cache_manager.try_aadd(service_def_path, service_def_yaml)
         return True
 
     async def delete_api_service(self, id: str) -> bool:
-        """Delete an API service."""
+        """Delete an API service.
+
+        Storage first: if the storage pool is busy (a 503), nothing has been
+        deleted yet and a retry works. Deleting the DB row first would leave an
+        orphaned file and a lingering cache entry, and the retry would 404.
+        """
         service_def_path = f'api_services/{id}.yaml'
-        await self.api_services_repository.delete_all(filters={'id': id})
-        self.cloud_storage_manager.delete_file(
+        await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.delete_file,
             bucket_name=self.application_bucket,
             file_path=service_def_path,
         )
-        self.cache_manager.remove(service_def_path)
+        await self.api_services_repository.delete_all(filters={'id': id})
+        await self.cache_manager.try_aremove(service_def_path)
         return True
 
     async def deactivate_api_service(self, id: str) -> bool:

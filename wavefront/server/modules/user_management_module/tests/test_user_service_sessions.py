@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import pytest
+from db_repo_module.cache.cache_manager import CacheUnavailableError
+from flo_testing import add_async_cache_methods
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.services.user_service import UserService
 
@@ -26,7 +28,7 @@ def _service(sessions, cache_manager):
 
 @pytest.mark.asyncio
 async def test_invalidate_user_sessions_clears_every_cache_key_then_rows():
-    cache_manager = MagicMock()
+    cache_manager = add_async_cache_methods(MagicMock())
     sessions = [SimpleNamespace(id='s1'), SimpleNamespace(id='s2')]
     service, session_repository = _service(sessions, cache_manager)
 
@@ -43,10 +45,10 @@ async def test_invalidate_user_sessions_keeps_rows_when_cache_remove_fails():
     # A failed cache delete must surface before the DB rows go, so the caller
     # fails instead of reporting success while the cached session still works.
     cache_manager = MagicMock()
-    cache_manager.remove.side_effect = RuntimeError('redis down')
+    cache_manager.aremove = AsyncMock(side_effect=CacheUnavailableError('redis down'))
     service, session_repository = _service([SimpleNamespace(id='s1')], cache_manager)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CacheUnavailableError):
         await service.invalidate_user_sessions('uid')
 
     session_repository.delete_all.assert_not_awaited()

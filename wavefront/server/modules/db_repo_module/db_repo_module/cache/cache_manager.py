@@ -372,6 +372,60 @@ class CacheManager(CommonCache):
             timeout,
         )
 
+    async def aremove(
+        self,
+        key: str,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """Async ``remove``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
+
+        async def call(client: aioredis.Redis) -> bool:
+            return bool(await client.delete(namespaced))
+
+        return await self._run_async(
+            'DEL', call, lambda: self.remove(key), attempts, timeout
+        )
+
+    # Tolerant versions for callers where the cache is an optimisation: a Redis
+    # failure is logged and treated as a miss (reads) or a no-op (writes), so
+    # the request carries on from the database. A failed remove leaves the old
+    # value until its TTL expires; that is logged so it can be traced.
+
+    async def try_aget_str(self, key: str, default: Any = None) -> Optional[str]:
+        """``aget_str`` that returns ``default`` when Redis fails."""
+        try:
+            return await self.aget_str(key, default)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache read skipped for {key}: {e}')
+            return default
+
+    async def try_aadd(
+        self,
+        key: str,
+        value: Union[str, int, float, bytes],
+        expiry: int = 3600,
+        nx: bool = False,
+    ) -> bool:
+        """``aadd`` that returns False when Redis fails."""
+        try:
+            return await self.aadd(key, value, expiry=expiry, nx=nx)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache write skipped for {key}: {e}')
+            return False
+
+    async def try_aremove(self, key: str) -> bool:
+        """``aremove`` that returns False when Redis fails."""
+        try:
+            return await self.aremove(key)
+        except CacheUnavailableError as e:
+            logger.warning(
+                f'Cache delete failed for {key}; it may be stale until it expires: {e}'
+            )
+            return False
+
     def _create_redis_connection(self) -> Redis:
         logger.info('Creating Redis connection from pool...')
         return Redis(connection_pool=self.pool)

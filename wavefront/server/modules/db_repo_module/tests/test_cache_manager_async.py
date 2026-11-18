@@ -62,6 +62,45 @@ async def test_aadd_sets_with_expiry_and_nx(bound, monkeypatch):
     async_set.assert_awaited_once_with('ns/key', 'v', ex=60, nx=True)
 
 
+async def test_aremove_deletes_the_namespaced_key(bound, monkeypatch):
+    async_delete = AsyncMock(return_value=1)
+    monkeypatch.setattr(bound._async_redis, 'delete', async_delete)
+    monkeypatch.setattr(bound.redis, 'delete', _must_not_call)
+
+    assert await bound.aremove('key') is True
+    async_delete.assert_awaited_once_with('ns/key')
+
+
+async def test_aremove_failure_is_reported(bound, monkeypatch):
+    monkeypatch.setattr(
+        bound._async_redis, 'delete', AsyncMock(side_effect=ConnectionError('down'))
+    )
+
+    with pytest.raises(CacheUnavailableError):
+        await bound.aremove('key', attempts=1)
+
+
+async def test_try_helpers_work_normally(bound, monkeypatch):
+    monkeypatch.setattr(bound._async_redis, 'get', AsyncMock(return_value='v'))
+    monkeypatch.setattr(bound._async_redis, 'set', AsyncMock(return_value=True))
+    monkeypatch.setattr(bound._async_redis, 'delete', AsyncMock(return_value=1))
+
+    assert await bound.try_aget_str('key') == 'v'
+    assert await bound.try_aadd('key', 'v', expiry=60) is True
+    assert await bound.try_aremove('key') is True
+
+
+async def test_try_helpers_tolerate_redis_failure(bound, monkeypatch):
+    down = AsyncMock(side_effect=ConnectionError('down'))
+    for method in ('get', 'set', 'delete'):
+        monkeypatch.setattr(bound._async_redis, method, down)
+    monkeypatch.setattr(bound, 'max_retries', 1)
+
+    assert await bound.try_aget_str('key', 'fallback') == 'fallback'
+    assert await bound.try_aadd('key', 'v') is False
+    assert await bound.try_aremove('key') is False
+
+
 async def test_slow_redis_times_out_without_blocking_the_loop(bound, monkeypatch):
     async def hang(_key):
         await asyncio.sleep(5)

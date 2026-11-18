@@ -108,6 +108,17 @@ class FakeCache:
     def remove(self, key):
         self.store.pop(key, None)
 
+    async def try_aget_str(self, key, default=None):
+        return self.store.get(key, default)
+
+    async def try_aadd(self, key, value, expiry=None, nx=False):
+        self.add(key, value, expiry)
+        return True
+
+    async def try_aremove(self, key):
+        self.remove(key)
+        return True
+
 
 def assert_no_secret(value):
     """Recursively assert a public response holds no key or ciphertext."""

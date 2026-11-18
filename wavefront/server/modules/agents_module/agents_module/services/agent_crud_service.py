@@ -13,6 +13,7 @@ from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.utils.agent_utils import get_agent_yaml_key
@@ -236,8 +237,11 @@ class AgentCrudService:
             # Load YAML to get input_schema
             yaml_key = f'message_processors/v1/{processor.source}'
             try:
-                yaml_bytes = self.cloud_storage_manager.read_file(
-                    self.message_processor_bucket_name, yaml_key
+                yaml_bytes = await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.read_file,
+                    self.message_processor_bucket_name,
+                    yaml_key,
                 )
                 yaml_content = yaml_bytes.decode('utf-8')
                 yaml_dict = yaml.safe_load(yaml_content)
@@ -276,12 +280,16 @@ class AgentCrudService:
                 logger.info(f'Dynamically loaded message processor tool: {tool_name}')
                 return tool
 
+            except BlockingPoolBusyError:
+                raise  # overload: a 503, not a silently missing tool
             except Exception as e:
                 logger.warning(
                     f'Failed to load YAML for message processor {tool_name}: {str(e)}'
                 )
                 return None
 
+        except BlockingPoolBusyError:
+            raise
         except Exception as e:
             logger.debug(f'Message processor {tool_name} not found: {str(e)}')
             return None
@@ -376,13 +384,16 @@ class AgentCrudService:
         yaml_key = get_agent_yaml_key(namespace, name, 1)
         yaml_bytes = yaml_content.encode('utf-8')
         try:
-            self.cloud_storage_manager.save_small_file(
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
                 file_content=yaml_bytes,
                 bucket_name=self.bucket_name,
                 key=yaml_key,
                 disable_cache=True,
             )
         except Exception:
+            # Roll back, then re-raise: a busy pool still answers 503.
             logger.error(
                 f'Failed to upload YAML for new agent {agent.id} - rolling back identity and version rows'
             )
@@ -396,17 +407,19 @@ class AgentCrudService:
 
         # Cache agent metadata
         agent_cache_key = get_agent_by_id_cache_key(agent.id)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             agent_cache_key, json.dumps(agent.to_dict()), expiry=self.cache_ttl
         )
 
         # Cache YAML content
         yaml_cache_key = get_agent_yaml_cache_key(namespace, name, 1)
-        self.cache_manager.add(yaml_cache_key, yaml_content, expiry=self.cache_ttl)
+        await self.cache_manager.try_aadd(
+            yaml_cache_key, yaml_content, expiry=self.cache_ttl
+        )
 
         # Invalidate list caches
-        self.cache_manager.remove(get_agents_list_cache_key(None))
-        self.cache_manager.remove(get_agents_list_cache_key(namespace))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(namespace))
 
         logger.info(
             f'Successfully created agent - namespace: {namespace}, name: {name}'
@@ -430,7 +443,7 @@ class AgentCrudService:
         """
         # Try cache first
         cache_key = get_agent_by_id_cache_key(agent_id)
-        cached_agent = self.cache_manager.get_str(cache_key)
+        cached_agent = await self.cache_manager.try_aget_str(cache_key)
 
         if cached_agent:
             logger.info(f'Cache hit for agent ID: {agent_id}')
@@ -446,7 +459,7 @@ class AgentCrudService:
             agent_dict = agent.to_dict()
 
             # Cache agent metadata
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 cache_key, json.dumps(agent_dict), expiry=self.cache_ttl
             )
 
@@ -467,7 +480,7 @@ class AgentCrudService:
         yaml_cache_key = get_agent_yaml_cache_key(
             agent_dict['namespace'], agent_dict['name'], resolved_version
         )
-        cached_yaml = self.cache_manager.get_str(yaml_cache_key)
+        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
         if cached_yaml:
             logger.info(
@@ -482,13 +495,16 @@ class AgentCrudService:
             logger.info(f'Fetching agent YAML from storage - key: {yaml_key}')
 
             try:
-                yaml_bytes = self.cloud_storage_manager.read_file(
-                    self.bucket_name, yaml_key
+                yaml_bytes = await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.read_file,
+                    self.bucket_name,
+                    yaml_key,
                 )
                 yaml_content = yaml_bytes.decode('utf-8')
 
                 # Cache YAML
-                self.cache_manager.add(
+                await self.cache_manager.try_aadd(
                     yaml_cache_key, yaml_content, expiry=self.cache_ttl
                 )
             except CloudStorageFileNotFoundError:
@@ -516,7 +532,7 @@ class AgentCrudService:
         so name-based lookups (no explicit version) don't hit the DB on every call.
         """
         cache_key = get_agent_current_version_cache_key(namespace, agent_name)
-        cached_version = self.cache_manager.get_str(cache_key)
+        cached_version = await self.cache_manager.try_aget_str(cache_key)
         if cached_version:
             return int(cached_version)
 
@@ -526,7 +542,7 @@ class AgentCrudService:
         if not agent:
             raise ValueError(f'Agent not found: {namespace}/{agent_name}')
 
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, str(agent.current_version), expiry=self.current_version_cache_ttl
         )
         return agent.current_version
@@ -574,7 +590,7 @@ class AgentCrudService:
         yaml_cache_key = get_agent_yaml_cache_key(
             namespace, agent_name, resolved_version
         )
-        cached_yaml = self.cache_manager.get_str(yaml_cache_key)
+        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
         if cached_yaml:
             logger.info(
@@ -587,13 +603,18 @@ class AgentCrudService:
         logger.info(f'Fetching agent YAML from storage - key: {yaml_key}')
 
         try:
-            yaml_bytes = self.cloud_storage_manager.read_file(
-                self.bucket_name, yaml_key
+            yaml_bytes = await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.read_file,
+                self.bucket_name,
+                yaml_key,
             )
             yaml_content = yaml_bytes.decode('utf-8')
 
             # Cache YAML
-            self.cache_manager.add(yaml_cache_key, yaml_content, expiry=self.cache_ttl)
+            await self.cache_manager.try_aadd(
+                yaml_cache_key, yaml_content, expiry=self.cache_ttl
+            )
         except CloudStorageFileNotFoundError:
             logger.error(
                 f'YAML not found in cloud storage for agent: {namespace}/{agent_name}, version: {resolved_version}'
@@ -696,13 +717,16 @@ class AgentCrudService:
         yaml_key = get_agent_yaml_key(agent.namespace, agent.name, write_version)
         yaml_bytes = yaml_content.encode('utf-8')
         try:
-            self.cloud_storage_manager.save_small_file(
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
                 file_content=yaml_bytes,
                 bucket_name=self.bucket_name,
                 key=yaml_key,
                 disable_cache=True,
             )
         except Exception:
+            # Roll back, then re-raise: a busy pool still answers 503.
             if create_new_version:
                 logger.error(
                     f'Failed to upload YAML for new version {write_version} of agent {agent_id} - rolling back the new version row'
@@ -716,11 +740,11 @@ class AgentCrudService:
         yaml_cache_key = get_agent_yaml_cache_key(
             agent.namespace, agent.name, write_version
         )
-        self.cache_manager.remove(yaml_cache_key)
+        await self.cache_manager.try_aremove(yaml_cache_key)
 
         # Invalidate list caches
-        self.cache_manager.remove(get_agents_list_cache_key(None))
-        self.cache_manager.remove(get_agents_list_cache_key(agent.namespace))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
 
         # Build response
         agent_dict = agent.to_dict()
@@ -774,20 +798,20 @@ class AgentCrudService:
             yaml_cache_key = get_agent_yaml_cache_key(
                 agent.namespace, agent.name, version
             )
-            self.cache_manager.remove(yaml_cache_key)
+            await self.cache_manager.try_aremove(yaml_cache_key)
 
         await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
 
         # Invalidate caches
         agent_cache_key = get_agent_by_id_cache_key(agent_id)
-        self.cache_manager.remove(agent_cache_key)
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(agent_cache_key)
+        await self.cache_manager.try_aremove(
             get_agent_current_version_cache_key(agent.namespace, agent.name)
         )
 
         # Invalidate list caches
-        self.cache_manager.remove(get_agents_list_cache_key(None))
-        self.cache_manager.remove(get_agents_list_cache_key(agent.namespace))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
 
         logger.info(f'Successfully deleted agent - ID: {agent_id}')
         return True
@@ -804,7 +828,7 @@ class AgentCrudService:
         """
         # Try cache first
         cache_key = get_agents_list_cache_key(namespace)
-        cached_list = self.cache_manager.get_str(cache_key)
+        cached_list = await self.cache_manager.try_aget_str(cache_key)
 
         if cached_list:
             logger.info(f'Cache hit for agents list - namespace: {namespace}')
@@ -821,7 +845,7 @@ class AgentCrudService:
         agents_list = [agent.to_dict() for agent in agents]
 
         # Cache the result (shorter TTL for lists)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, json.dumps(agents_list), expiry=1800
         )  # 30 min
 
@@ -862,12 +886,12 @@ class AgentCrudService:
             {'id': agent_id}, current_version=version, refresh=True
         )
 
-        self.cache_manager.remove(get_agent_by_id_cache_key(agent_id))
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(get_agent_by_id_cache_key(agent_id))
+        await self.cache_manager.try_aremove(
             get_agent_current_version_cache_key(agent.namespace, agent.name)
         )
-        self.cache_manager.remove(get_agents_list_cache_key(None))
-        self.cache_manager.remove(get_agents_list_cache_key(agent.namespace))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
+        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
 
         logger.info(f'Successfully promoted agent {agent_id} to version {version}')
         return updated_agent.to_dict()
@@ -945,7 +969,7 @@ class AgentCrudService:
             {'agent_id': agent.id, 'version': version}, is_deleted=True
         )
 
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(
             get_agent_yaml_cache_key(agent.namespace, agent.name, version)
         )
 

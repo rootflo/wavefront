@@ -12,6 +12,7 @@ from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
+from common_module.blocking_io import run_in_pool
 from common_module.log.logger import logger
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
@@ -279,7 +280,7 @@ class WorkflowCrudService:
         yaml_cache_key = get_workflow_yaml_cache_key(
             namespace, workflow_name, resolved_version
         )
-        cached_yaml = self.cache_manager.get_str(yaml_cache_key)
+        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
         if cached_yaml:
             logger.info(
@@ -292,13 +293,18 @@ class WorkflowCrudService:
         logger.info(f'Fetching workflow YAML from storage - key: {yaml_key}')
 
         try:
-            yaml_bytes = self.cloud_storage_manager.read_file(
-                self.bucket_name, yaml_key
+            yaml_bytes = await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.read_file,
+                self.bucket_name,
+                yaml_key,
             )
             yaml_content = yaml_bytes.decode('utf-8')
 
             # Cache YAML
-            self.cache_manager.add(yaml_cache_key, yaml_content, expiry=self.cache_ttl)
+            await self.cache_manager.try_aadd(
+                yaml_cache_key, yaml_content, expiry=self.cache_ttl
+            )
         except CloudStorageFileNotFoundError:
             logger.error(
                 f'YAML not found in cloud storage for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
@@ -591,7 +597,9 @@ class WorkflowCrudService:
         # Upload YAML to cloud storage
         yaml_key = get_workflow_yaml_key(namespace, name, 1)
         yaml_bytes = yaml_content.encode('utf-8')
-        self.cloud_storage_manager.save_small_file(
+        await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.save_small_file,
             file_content=yaml_bytes,
             bucket_name=self.bucket_name,
             key=yaml_key,
@@ -605,17 +613,19 @@ class WorkflowCrudService:
 
         # Cache workflow metadata
         workflow_cache_key = get_workflow_by_id_cache_key(workflow.id)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             workflow_cache_key, json.dumps(workflow.to_dict()), expiry=self.cache_ttl
         )
 
         # Cache YAML content
         yaml_cache_key = get_workflow_yaml_cache_key(namespace, name, 1)
-        self.cache_manager.add(yaml_cache_key, yaml_content, expiry=self.cache_ttl)
+        await self.cache_manager.try_aadd(
+            yaml_cache_key, yaml_content, expiry=self.cache_ttl
+        )
 
         # Invalidate list caches
-        self.cache_manager.remove(get_workflows_list_cache_key(None))
-        self.cache_manager.remove(get_workflows_list_cache_key(namespace))
+        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
+        await self.cache_manager.try_aremove(get_workflows_list_cache_key(namespace))
 
         logger.info(
             f'Successfully created workflow - namespace: {namespace}, name: {name}'
@@ -641,7 +651,7 @@ class WorkflowCrudService:
         """
         # Try cache first
         cache_key = get_workflow_by_id_cache_key(workflow_id)
-        cached_workflow = self.cache_manager.get_str(cache_key)
+        cached_workflow = await self.cache_manager.try_aget_str(cache_key)
 
         if cached_workflow:
             logger.info(f'Cache hit for workflow ID: {workflow_id}')
@@ -657,7 +667,7 @@ class WorkflowCrudService:
             workflow_dict = workflow.to_dict()
 
             # Cache workflow metadata
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 cache_key, json.dumps(workflow_dict), expiry=self.cache_ttl
             )
 
@@ -678,7 +688,7 @@ class WorkflowCrudService:
         yaml_cache_key = get_workflow_yaml_cache_key(
             workflow_dict['namespace'], workflow_dict['name'], resolved_version
         )
-        cached_yaml = self.cache_manager.get_str(yaml_cache_key)
+        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
         if cached_yaml:
             logger.info(
@@ -693,13 +703,16 @@ class WorkflowCrudService:
             logger.info(f'Fetching workflow YAML from storage - key: {yaml_key}')
 
             try:
-                yaml_bytes = self.cloud_storage_manager.read_file(
-                    self.bucket_name, yaml_key
+                yaml_bytes = await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.read_file,
+                    self.bucket_name,
+                    yaml_key,
                 )
                 yaml_content = yaml_bytes.decode('utf-8')
 
                 # Cache YAML
-                self.cache_manager.add(
+                await self.cache_manager.try_aadd(
                     yaml_cache_key, yaml_content, expiry=self.cache_ttl
                 )
             except CloudStorageFileNotFoundError:
@@ -799,7 +812,9 @@ class WorkflowCrudService:
             workflow.namespace, workflow.name, write_version
         )
         yaml_bytes = yaml_content.encode('utf-8')
-        self.cloud_storage_manager.save_small_file(
+        await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.save_small_file,
             file_content=yaml_bytes,
             bucket_name=self.bucket_name,
             key=yaml_key,
@@ -810,11 +825,13 @@ class WorkflowCrudService:
         yaml_cache_key = get_workflow_yaml_cache_key(
             workflow.namespace, workflow.name, write_version
         )
-        self.cache_manager.remove(yaml_cache_key)
+        await self.cache_manager.try_aremove(yaml_cache_key)
 
         # Invalidate list caches
-        self.cache_manager.remove(get_workflows_list_cache_key(None))
-        self.cache_manager.remove(get_workflows_list_cache_key(workflow.namespace))
+        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
+        await self.cache_manager.try_aremove(
+            get_workflows_list_cache_key(workflow.namespace)
+        )
 
         # Build response
         workflow_dict = workflow.to_dict()
@@ -868,20 +885,22 @@ class WorkflowCrudService:
             yaml_cache_key = get_workflow_yaml_cache_key(
                 workflow.namespace, workflow.name, version
             )
-            self.cache_manager.remove(yaml_cache_key)
+            await self.cache_manager.try_aremove(yaml_cache_key)
 
         await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
 
         # Invalidate caches
         workflow_cache_key = get_workflow_by_id_cache_key(workflow_id)
-        self.cache_manager.remove(workflow_cache_key)
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(workflow_cache_key)
+        await self.cache_manager.try_aremove(
             get_workflow_current_version_cache_key(workflow.namespace, workflow.name)
         )
 
         # Invalidate list caches
-        self.cache_manager.remove(get_workflows_list_cache_key(None))
-        self.cache_manager.remove(get_workflows_list_cache_key(workflow.namespace))
+        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
+        await self.cache_manager.try_aremove(
+            get_workflows_list_cache_key(workflow.namespace)
+        )
 
         logger.info(f'Successfully deleted workflow - ID: {workflow_id}')
         return True
@@ -898,7 +917,7 @@ class WorkflowCrudService:
         """
         # Try cache first
         cache_key = get_workflows_list_cache_key(namespace)
-        cached_list = self.cache_manager.get_str(cache_key)
+        cached_list = await self.cache_manager.try_aget_str(cache_key)
 
         if cached_list:
             logger.info(f'Cache hit for workflows list - namespace: {namespace}')
@@ -915,7 +934,7 @@ class WorkflowCrudService:
         workflows_list = [workflow.to_dict() for workflow in workflows]
 
         # Cache the result (shorter TTL for lists)
-        self.cache_manager.add(
+        await self.cache_manager.try_aadd(
             cache_key, json.dumps(workflows_list), expiry=1800
         )  # 30 min
 
@@ -956,12 +975,14 @@ class WorkflowCrudService:
             {'id': workflow_id}, current_version=version, refresh=True
         )
 
-        self.cache_manager.remove(get_workflow_by_id_cache_key(workflow_id))
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(get_workflow_by_id_cache_key(workflow_id))
+        await self.cache_manager.try_aremove(
             get_workflow_current_version_cache_key(workflow.namespace, workflow.name)
         )
-        self.cache_manager.remove(get_workflows_list_cache_key(None))
-        self.cache_manager.remove(get_workflows_list_cache_key(workflow.namespace))
+        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
+        await self.cache_manager.try_aremove(
+            get_workflows_list_cache_key(workflow.namespace)
+        )
 
         logger.info(
             f'Successfully promoted workflow {workflow_id} to version {version}'
@@ -1043,7 +1064,7 @@ class WorkflowCrudService:
             {'workflow_id': workflow.id, 'version': version}, is_deleted=True
         )
 
-        self.cache_manager.remove(
+        await self.cache_manager.try_aremove(
             get_workflow_yaml_cache_key(workflow.namespace, workflow.name, version)
         )
 

@@ -167,7 +167,7 @@ class MockApiServicesManager:
     async def get_all_api_services(self):
         return self._repository.find()
 
-    def fetch_service_def(self, service_record):
+    async def fetch_service_def(self, service_record):
         return self._yaml_map[service_record.id]
 
     async def get_api_service(self, id: str):

@@ -505,7 +505,7 @@ class ApiProxy:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
-        stored_yaml = self.api_services_manager.fetch_service_def(service)
+        stored_yaml = await self.api_services_manager.fetch_service_def(service)
         service_yaml = await self._validate_secrets(
             service_yaml, stored_yaml=stored_yaml
         )

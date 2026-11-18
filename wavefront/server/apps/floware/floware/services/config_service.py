@@ -1,4 +1,5 @@
 from typing import Any
+from common_module.blocking_io import run_in_pool
 
 from fastapi import UploadFile, File, HTTPException
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -72,7 +73,9 @@ class ConfigService:
 
         file_content = await file.read() if file else None
         if file_content:
-            self.cloud_storage_manager.save_small_file(
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
                 file_content,
                 config_credentials['asset_storage_bucket'],
                 config_credentials['config_file_name'],
@@ -96,7 +99,9 @@ class ConfigService:
             return None, None
         config_path = config_record.get('app_icon')
         config_credentials = self._get_floware_credentials()
-        url = self.cloud_storage_manager.generate_presigned_url(
+        url = await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.generate_presigned_url,
             config_credentials['asset_storage_bucket'],
             config_path,
             'get',

@@ -10,8 +10,9 @@ from common_module.feature.feature_flag import (
     INACTIVE_ACCOUNT_DISABLE_FLAG,
     FeatureFlags,
 )
+from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
@@ -173,17 +174,18 @@ async def authenticate(
         user_id=user.id, device_info=device_info, id=uuid4()
     )
 
-    # Cache session data
+    # Cache session data. If Redis is down the login still succeeds: the auth
+    # middleware reads the session from the database on a cache miss.
     session_cache_key = get_session_cache_key(session.id)
     session_data = {
         'id': str(session.id),
         'user_id': str(session.user_id),
         'device_info': session.device_info,
     }
-    cache_manager.add(
+    await cache_manager.try_aadd(
         session_cache_key,
         json.dumps(session_data),
-        token_service.token_expiry,
+        expiry=token_service.token_expiry,
     )
 
     role_id = await user_service.get_user_role_for_scope(
@@ -312,9 +314,20 @@ async def logout(
     # Delete the session from database
     await session_repository.delete_all(id=current_session.session_id)
 
-    # Clear both user and session cache
-    cache_manager.remove(current_session.user_id)
-    cache_manager.remove(get_session_cache_key(current_session.session_id))
+    # Clear both user and session cache. Strict on purpose: the middleware
+    # trusts a cached session before the database, so a delete that silently
+    # failed would keep the logged-out token working until the cache expires.
+    try:
+        await cache_manager.aremove(current_session.user_id)
+        await cache_manager.aremove(get_session_cache_key(current_session.session_id))
+    except CacheUnavailableError as e:
+        logger.error(f'Logout could not clear the cached session: {e}')
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=response_formatter.buildErrorResponse(
+                'Logout could not be completed. Please try again shortly.'
+            ),
+        )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

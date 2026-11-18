@@ -84,6 +84,7 @@ Provider implementations are split into cipher vs signer classes
 | `REDIS_MAX_RETRIES` / `REDIS_INITIAL_BACKOFF` / `REDIS_MAX_BACKOFF`              | `[redis] max_retries` / `initial_backoff` / `max_backoff` (floware; attempts per call, wait in seconds)         |
 | `REDIS_ASYNC_POOL_SIZE` / `REDIS_ASYNC_COMMAND_TIMEOUT`                          | `[redis] async_pool_size` / `async_command_timeout` (floware; async client for the auth session lookup; default 20 / 1 s) |
 | `JWT_PUBLIC_KEY_CACHE_SECONDS` / `JWT_PUBLIC_KEY_REFRESH_MIN_SECONDS`            | `[jwt_token] public_key_cache_seconds` / `public_key_refresh_min_seconds` (floware, floconsole; default 600 / 60; 0 = no cache) |
+| `MESSAGE_PROCESSOR_YAML_CACHE_SECONDS`                                           | `[message_processor] yaml_cache_seconds` (floware; Redis cache of processor YAML; default 3600; 0 = no cache) |
 | `BLOCKING_IO_KMS_MAX_THREADS` / `BLOCKING_IO_STORAGE_MAX_THREADS`                | `[blocking_io] kms_max_threads` / `storage_max_threads` (floware; default 8 / 16)                               |
 | `BLOCKING_IO_CPU_MAX_THREADS` / `BLOCKING_IO_QUEUE_WAIT_SECONDS`                 | `[blocking_io] cpu_max_threads` / `queue_wait_seconds` (floware; default 4 / 10)                                |
 | `EVENT_LOOP_MONITOR_ENABLED` / `EVENT_LOOP_LAG_THRESHOLD_MS`                     | `[event_loop_monitor] enabled` / `threshold_ms` (floware; default true / 50)                                    |

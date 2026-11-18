@@ -8,6 +8,7 @@ from common_module.middleware.request_id_middleware import get_current_request_i
 from common_module.response_formatter import ResponseFormatter
 from common_module.telemetry import record_exception_on_span
 from datasource.executor import DatasourceBusyError, limits
+from db_repo_module.cache.cache_manager import CacheUnavailableError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from flo_ai.llm.guarded_llm import GuardrailBlocked
@@ -54,6 +55,23 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
             headers={'Retry-After': str(retry_after_seconds())},
             content=ResponseFormatter().buildErrorResponse(
                 error='The server is busy. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(CacheUnavailableError)
+    async def cache_unavailable_handler(request: Request, exc: CacheUnavailableError):
+        """Redis is down on a path that must not skip it (logout, revoking old
+        sessions at login). The failure is fast and temporary, so a 503."""
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'Cache unavailable on {request.method} {request.url.path} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': '5'},
+            content=ResponseFormatter().buildErrorResponse(
+                error='The service is temporarily unavailable. Please try again shortly.'
             ),
         )
 
