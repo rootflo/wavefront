@@ -20,6 +20,7 @@ burst of requests on an expired cache causes one KMS call, not one per request.
 
 from __future__ import annotations
 
+import asyncio
 import math
 import threading
 import time
@@ -70,6 +71,11 @@ class PublicKeyCache:
         self.refresh_min_seconds = seconds_setting(refresh_min_seconds, 60)
         self._key: Optional[Key] = None
         self._fetched_at = float('-inf')
+        # Last rotation refetch, successful or not: a KMS outage must not let
+        # every forged token trigger another call.
+        self._last_refetch_attempt = float('-inf')
+        # One in-flight cache-miss fetch per event loop, shared by all waiters.
+        self._inflight: dict = {}
         self._state_lock = threading.Lock()  # guards _key and _fetched_at
         self._fetch_lock = threading.Lock()  # one fetch at a time
 
@@ -90,13 +96,38 @@ class PublicKeyCache:
         """Async ``verify``: key fetches go to the ``kms`` pool; decoding runs inline."""
         key = self.cached()
         if key is None:
-            key = await run_in_pool('kms', self.get)
+            key = await self._aget()
         result = decode(key)
-        if result is None and self._refetch_allowed():
+        # Check before taking a pool slot: a refetch the throttle would refuse
+        # must not queue behind a busy kms pool and turn into a 503.
+        if result is None and self._refetch_allowed() and self._refetch_due():
             new_key = await run_in_pool('kms', self.refetch_if_rotated, key)
             if new_key is not None:
                 result = decode(new_key)
         return result
+
+    async def _aget(self) -> Key:
+        """``get`` on the kms pool, with concurrent misses sharing one fetch.
+
+        Without this, every miss would take a worker and all but one would sit
+        waiting on the fetch lock, so a slow KMS could fill the pool.
+        """
+        if self.cache_seconds <= 0:  # cache off: each request fetches its own
+            return await run_in_pool('kms', self.get)
+        loop = asyncio.get_running_loop()
+        task = self._inflight.get(loop)
+        if task is None:
+            task = loop.create_task(run_in_pool('kms', self.get))
+            self._inflight[loop] = task
+
+            def done(finished: asyncio.Task) -> None:
+                self._inflight.pop(loop, None)
+                if not finished.cancelled():
+                    finished.exception()  # mark retrieved; waiters see it too
+
+            task.add_done_callback(done)
+        # shield: one caller going away must not cancel the fetch for the rest.
+        return await asyncio.shield(task)
 
     # -- key access ----------------------------------------------------------------
 
@@ -130,10 +161,21 @@ class PublicKeyCache:
                 current, fetched_at = self._key, self._fetched_at
             if current is not None and current != key_used:
                 return current  # another request already refreshed it
-            if time.monotonic() - fetched_at < self.refresh_min_seconds:
+            now = time.monotonic()
+            if now - max(fetched_at, self._last_refetch_attempt) < (
+                self.refresh_min_seconds
+            ):
                 return None
+            self._last_refetch_attempt = now
             new_key = self._fetch_and_store()
         return new_key if new_key != key_used else None
+
+    def _refetch_due(self) -> bool:
+        """Whether the refetch limit allows another refetch now (a hint: the
+        authoritative check is repeated under the lock in refetch_if_rotated)."""
+        with self._state_lock:
+            last = max(self._fetched_at, self._last_refetch_attempt)
+        return time.monotonic() - last >= self.refresh_min_seconds
 
     def _refetch_allowed(self) -> bool:
         # With the cache off, the key was fetched for this very request already.

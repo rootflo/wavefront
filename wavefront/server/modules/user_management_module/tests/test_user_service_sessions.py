@@ -62,3 +62,25 @@ async def test_invalidate_user_sessions_keeps_rows_when_cache_remove_fails():
         await service.invalidate_user_sessions('uid')
 
     session_repository.delete_all.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'user, role, expected',
+    [
+        (SimpleNamespace(deleted=False, password='h1'), 'r1', True),
+        (SimpleNamespace(deleted=True, password='h1'), 'r1', False),  # disabled
+        (SimpleNamespace(deleted=False, password='h2'), 'r1', False),  # new password
+        (SimpleNamespace(deleted=False, password='h1'), 'r2', False),  # role changed
+        (None, 'r1', False),  # gone
+    ],
+    ids=['unchanged', 'disabled', 'password-changed', 'role-changed', 'gone'],
+)
+async def test_login_is_only_valid_while_the_user_is_unchanged(user, role, expected):
+    service, _ = _service([], add_async_cache_methods(MagicMock()))
+    service.user_repository = MagicMock(find_one=AsyncMock(return_value=user))
+    service.get_user_role_for_scope = AsyncMock(return_value=role)
+
+    assert (
+        await service.is_login_still_valid('uid', 'r1', password_hash='h1') is expected
+    )

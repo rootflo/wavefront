@@ -242,3 +242,40 @@ async def test_plugin_email_password_failed_signing_keeps_existing_sessions():
 
     user_service.invalidate_user_sessions.assert_not_awaited()
     session_repository.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_plugin_email_password_refuses_an_account_disabled_during_login():
+    """The user was read before bcrypt and signing; the account may be gone by now."""
+    user = SimpleNamespace(
+        deleted=False,
+        email='u@example.com',
+        password=hash_password('Correct@123'),
+        id='uid',
+    )
+    user_repository = AsyncMock()
+    user_repository.find_one = AsyncMock(return_value=user)
+    session_repository = AsyncMock()
+    user_service = AsyncMock()
+    user_service.get_user_role_for_scope = AsyncMock(return_value='role')
+    user_service.is_login_still_valid = AsyncMock(return_value=False)
+    token_service = add_async_token_methods(MagicMock())
+    token_service.create_token.return_value = 'jwt'
+    token_service.token_expiry = 3600
+    request = MagicMock()
+    request.headers = {'User-Agent': 'ua'}
+
+    response = await _handle_email_password_auth(
+        {'email': 'u@example.com', 'password': 'Correct@123'},
+        request,
+        _formatter(),
+        user_service,
+        user_repository,
+        session_repository,
+        add_async_cache_methods(MagicMock()),
+        token_service,
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    user_service.invalidate_user_sessions.assert_not_awaited()
+    session_repository.create.assert_not_awaited()

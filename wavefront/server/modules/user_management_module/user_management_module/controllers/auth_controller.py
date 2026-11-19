@@ -191,6 +191,16 @@ async def authenticate(
         expiry=token_service.token_expiry,
     )
 
+    # The account, password or console role may have changed while we waited on
+    # bcrypt and signing.
+    if not await user_service.is_login_still_valid(
+        str(user.id), role_id, password_hash=user.password
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse('User account is disabled'),
+        )
+
     await user_service.invalidate_user_sessions(str(user.id))
 
     # Create new session

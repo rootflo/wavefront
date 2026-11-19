@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import contextvars
 import functools
 import socket
 import threading
@@ -60,6 +61,12 @@ def _is_retryable_redis_error(exc: BaseException) -> bool:
     return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
 
 
+# Attempts a caller asked for on one a* call, applied to the sync fallback too.
+_attempts_override: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    'cache_attempts_override', default=None
+)
+
+
 def _with_retry(method: F) -> F:
     """Retry a CacheManager method with the instance's settings.
 
@@ -70,7 +77,11 @@ def _with_retry(method: F) -> F:
 
     @functools.wraps(method)
     def wrapper(self: 'CacheManager', *args: Any, **kwargs: Any) -> Any:
-        return self._retry_policy.copy()(method, self, *args, **kwargs)
+        policy = self._retry_policy.copy()
+        attempts = _attempts_override.get()
+        if attempts:
+            policy = policy.copy(stop=stop_after_attempt(attempts))
+        return policy(method, self, *args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
 
@@ -291,7 +302,8 @@ class CacheManager(CommonCache):
         """Close the async client. Call on the loop it was bound to."""
         client, self._async_redis, self._async_loop = self._async_redis, None, None
         if client is not None:
-            await client.aclose()
+            # The pool was supplied from outside, so close it explicitly too.
+            await client.aclose(close_connection_pool=True)
 
     async def _run_async(
         self,
@@ -312,7 +324,14 @@ class CacheManager(CommonCache):
                 self._async_redis is None
                 or asyncio.get_running_loop() is not self._async_loop
             ):
-                return await asyncio.wait_for(asyncio.to_thread(sync_fallback), limit)
+                # to_thread copies the context, so the thread sees the same attempts.
+                token = _attempts_override.set(attempts)
+                try:
+                    return await asyncio.wait_for(
+                        asyncio.to_thread(sync_fallback), limit
+                    )
+                finally:
+                    _attempts_override.reset(token)
 
             client = self._async_redis
             retrying = AsyncRetrying(

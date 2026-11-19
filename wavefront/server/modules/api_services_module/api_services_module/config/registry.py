@@ -50,6 +50,14 @@ class ServiceRegistry:
         self._definitions: Dict[str, ServiceDefinition] = {}
         # secret name -> ids of the services that reference it
         self._secret_refs: Dict[str, Set[str]] = {}
+        # Per service id: a counter ticked by every load start and removal, the
+        # counter value at the last removal, and the load that registered last.
+        # A load registers only if it started after the last removal and after
+        # the load whose result is already in place, so a slow, older fetch can't
+        # bring back a removed service or overwrite a newer definition.
+        self._load_seq: Dict[str, int] = {}
+        self._removed_at: Dict[str, int] = {}
+        self._registered_seq: Dict[str, int] = {}
         self.parser = ServiceDefinitionParser()
 
     def register_service(
@@ -123,6 +131,9 @@ class ServiceRegistry:
         Returns:
             True if service was removed, False if not found
         """
+        self._removed_at[service_id] = self._load_seq[service_id] = (
+            self._load_seq.get(service_id, 0) + 1
+        )
         if service_id in self._services:
             self.deregister_service(service_id)
             return True
@@ -171,6 +182,7 @@ class ServiceRegistry:
 
     async def load_service_from_db(self, service_id: str):
         self._ensure_manager()
+        seq = self._load_seq[service_id] = self._load_seq.get(service_id, 0) + 1
 
         service = await self.api_service_manager.get_api_service(id=service_id)
         if not service:
@@ -180,6 +192,12 @@ class ServiceRegistry:
         service_def_yaml = await self.api_service_manager.fetch_service_def(service)
         service_def = self.parser.parse_yaml_string(service_def_yaml)
         execution_def = await self.resolve_secrets(service_def)
+        if seq <= self._removed_at.get(service_id, 0) or seq <= (
+            self._registered_seq.get(service_id, 0)
+        ):
+            logger.info(f'Dropped a stale load of service: {service_id}')
+            return
+        self._registered_seq[service_id] = seq
         self.register_service(service_def, execution_def)
 
         logger.info(f'Loaded service from db: {service_id}')

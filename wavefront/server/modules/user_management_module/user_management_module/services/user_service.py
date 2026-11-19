@@ -306,6 +306,26 @@ class UserService:
             result: Result = await session.execute(statement)
             return result.scalar()
 
+    async def is_login_still_valid(
+        self, user_id: str, role_id: str, password_hash: Optional[str] = None
+    ) -> bool:
+        """Whether a login that read the user earlier may still create a session.
+
+        Login waits on bcrypt and token signing after it reads the user, the
+        password and the console role. This asks again, right before the session
+        is created: the account must still be enabled, the password unchanged
+        (when one was checked) and the console role the token carries unchanged.
+        """
+        user = await self.user_repository.find_one(id=user_id)
+        if not user or user.deleted:
+            return False
+        if password_hash is not None and user.password != password_hash:
+            return False
+        current_role = await self.get_user_role_for_scope(
+            user_id=user_id, scope=ResourceScope.CONSOLE
+        )
+        return current_role == role_id
+
     async def invalidate_user_sessions(self, user_id: str) -> None:
         """Drop every live session for a user, cache and DB alike.
 

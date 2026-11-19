@@ -12,7 +12,7 @@ from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
@@ -508,6 +508,8 @@ class WorkflowCrudService:
             raise InvalidDefinitionError(
                 f'Invalid workflow YAML configuration: {str(e)}'
             ) from e
+        except BlockingPoolBusyError:
+            raise  # retryable overload: the app answers 503, not a 400
         except Exception as e:
             # Not a validation error: keep the details in the log, out of the response
             logger.exception(

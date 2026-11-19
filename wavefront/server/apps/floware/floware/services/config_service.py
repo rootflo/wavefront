@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 from common_module.blocking_io import run_in_pool
 
@@ -42,6 +43,7 @@ class ConfigService:
         self.knowledge_base_repository = knowledge_base_repository
         self.cloud_storage_manager = cloud_storage_manager
         self.config = config
+        self._store_lock = asyncio.Lock()
 
     def _get_floware_credentials(self) -> dict[str, Any]:
         storage = self.config.get('storage')
@@ -72,26 +74,38 @@ class ConfigService:
             raise HTTPException(status_code=400, detail='File size is too large')
 
         file_content = await file.read() if file else None
-        if file_content:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.save_small_file,
-                file_content,
-                config_credentials['asset_storage_bucket'],
-                config_credentials['config_file_name'],
-            )
-        # if atleast one icon or file_content is there then allow the all_config to be saved
-        config_data = await self.app_config_repository.get()
-        if config_data and config_data.get('app_icon') or file_content:
-            await self.app_config_repository.upsert(
-                {
-                    'app_icon': config_credentials['config_file_name'],
-                    'app_config': app_config if app_config else {},
-                }
-            )
-        else:
-            raise HTTPException(status_code=400, detail='App icon is not set')
-        return
+        # Shielded and serialized: a cancelled request must not leave its upload
+        # running in a worker while a later update writes the same object key.
+        await asyncio.shield(
+            self._store_app_config(file_content, config_credentials, app_config)
+        )
+
+    async def _store_app_config(
+        self,
+        file_content: bytes | None,
+        config_credentials: dict[str, Any],
+        app_config: dict[str, Any] | None,
+    ):
+        async with self._store_lock:
+            if file_content:
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.save_small_file,
+                    file_content,
+                    config_credentials['asset_storage_bucket'],
+                    config_credentials['config_file_name'],
+                )
+            # if atleast one icon or file_content is there then allow the all_config to be saved
+            config_data = await self.app_config_repository.get()
+            if config_data and config_data.get('app_icon') or file_content:
+                await self.app_config_repository.upsert(
+                    {
+                        'app_icon': config_credentials['config_file_name'],
+                        'app_config': app_config if app_config else {},
+                    }
+                )
+            else:
+                raise HTTPException(status_code=400, detail='App icon is not set')
 
     async def get_app_config(self):
         config_record = await self.app_config_repository.get()

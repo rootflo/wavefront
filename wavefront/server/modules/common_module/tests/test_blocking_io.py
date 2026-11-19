@@ -3,6 +3,7 @@
 import asyncio
 import contextvars
 import threading
+import time
 
 import pytest
 
@@ -152,3 +153,28 @@ def test_retry_after_rounds_up():
 def test_queue_wait_must_be_finite_and_positive(bad):
     with pytest.raises(ValueError):
         configure_blocking_io({'queue_wait_seconds': bad})
+
+
+async def test_call_queued_past_its_deadline_does_not_run():
+    """A stalled loop can leave a call queued past the limit; it must not run then."""
+    configure_blocking_io({'kms_max_threads': '1', 'queue_wait_seconds': '0.05'})
+    release = threading.Event()
+    started = threading.Event()
+
+    def hold():
+        started.set()
+        release.wait(5)
+
+    holding = asyncio.ensure_future(run_in_pool('kms', hold))
+    await asyncio.to_thread(started.wait, 5)
+    ran = []
+    queued = asyncio.ensure_future(run_in_pool('kms', ran.append, 'late'))
+    await asyncio.sleep(0)  # let it reach the executor queue
+    time.sleep(0.2)  # stall the loop past the queue limit
+    release.set()
+
+    with pytest.raises(BlockingPoolBusyError):
+        await queued
+    _ = await holding
+    await asyncio.sleep(0.05)
+    assert ran == []

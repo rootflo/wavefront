@@ -30,6 +30,7 @@ import asyncio
 import contextvars
 import math
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, fields
 from typing import Any, Callable, Dict, Literal, Mapping, Optional, TypeVar
@@ -159,8 +160,17 @@ async def run_in_pool(
     context = contextvars.copy_context()
     attributes = {'pool': pool}
 
+    wait = _limits.queue_wait_seconds
+    deadline = time.monotonic() + wait
+
     def call() -> T:
         _queued.add(-1, attributes)
+        if time.monotonic() > deadline:
+            # A stalled event loop can leave this call queued past its limit while
+            # the timeout handler hasn't run yet. The caller is told "busy", so the
+            # call must not run now: that would be a side effect nobody expects.
+            _rejected.add(1, attributes)
+            raise BlockingPoolBusyError(pool, wait)
         _active.add(1, attributes)
         try:
             try:
@@ -174,7 +184,6 @@ async def run_in_pool(
     _queued.add(1, attributes)
     pending: Future = executor.submit(call)
     result = asyncio.wrap_future(pending)
-    wait = _limits.queue_wait_seconds
     try:
         try:
             await asyncio.wait_for(started.wait(), timeout=wait)

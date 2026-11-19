@@ -33,6 +33,14 @@ def _parse_json(file_content, projection):
     return data
 
 
+def _json_response(file_content, projection, response_formatter) -> JSONResponse:
+    data = _parse_json(file_content, projection)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'data': data}),
+    )
+
+
 class StorageFileType(str, Enum):
     json = 'json'
 
@@ -99,13 +107,11 @@ async def read_storage_file(
         )
 
         if type == StorageFileType.json:
-            # A large object can take long to parse: keep it off the event loop.
-            data = await run_in_pool('cpu', _parse_json, file_content, projection)
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse({'data': data}),
-        )
+            # A large object is slow to parse, project and encode: all three run
+            # on the cpu pool, not the event loop.
+            return await run_in_pool(
+                'cpu', _json_response, file_content, projection, response_formatter
+            )
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

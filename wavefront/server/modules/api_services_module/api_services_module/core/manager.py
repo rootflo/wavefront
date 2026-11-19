@@ -120,7 +120,7 @@ class ApiServicesManager:
                     f'Could not delete {service_def_path} from storage; '
                     f'deleting the API service anyway: {e}'
                 )
-            await self.api_services_repository.delete_all(filters={'id': id})
+            await self.api_services_repository.delete_all(id=id)
         return True
 
     async def deactivate_api_service(self, id: str) -> bool:

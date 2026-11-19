@@ -90,6 +90,10 @@ class ImageService:
         )
 
     async def _validate_image(self, image_data: bytes) -> bytes:
+        # Decoding and re-encoding is CPU work: keep it off the event loop.
+        return await run_in_pool('cpu', self._validate_image_sync, image_data)
+
+    def _validate_image_sync(self, image_data: bytes) -> bytes:
         try:
             with Image.open(
                 io.BytesIO(image_data), formats=SUPPORTED_PILLOW_FORMATS

@@ -161,3 +161,13 @@ async def test_db_failure_after_storage_still_invalidates():
         await manager.delete_api_service('acme')
 
     assert calls == ['cache', 'storage', 'db', 'cache']
+
+
+async def test_delete_passes_the_id_as_a_repository_filter():
+    """SQLAlchemyRepository.delete_all takes **filters, one keyword per column."""
+    manager = make_manager(make_cache(), Storage())
+    manager.api_services_repository.delete_all = AsyncMock()
+
+    await manager.delete_api_service('acme')
+
+    manager.api_services_repository.delete_all.assert_awaited_once_with(id='acme')

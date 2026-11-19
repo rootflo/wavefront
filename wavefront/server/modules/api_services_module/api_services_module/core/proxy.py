@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 import yaml
 from fastapi import HTTPException
 from fastapi.responses import Response
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from ..models.pipeline import PipelineContext, PipelineException
 from ..models.service import ProxyResponse, ServiceDefinition, ApiConfig
@@ -225,6 +226,8 @@ class ApiProxy:
                 http_status_code=502,  # Bad Gateway for pipeline errors
             )
 
+        except BlockingPoolBusyError:
+            raise  # retryable overload: the app answers 503 with Retry-After
         except Exception as e:
             logger.error(f'Exception: {str(e)}', exc_info=True)
             context.add_trace('proxy', f'Unexpected error: {str(e)}')

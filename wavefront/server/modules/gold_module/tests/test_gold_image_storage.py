@@ -99,3 +99,19 @@ async def test_invalid_image_is_rejected_before_upload():
         await service.process_image(b'not an image', {})
 
     assert storage.calls == []
+
+
+async def test_image_decoding_runs_off_the_loop(monkeypatch):
+    service, _ = make_service(Storage())
+    threads = []
+    real = service._validate_image_sync
+
+    def recording(data):
+        threads.append(threading.get_ident())
+        return real(data)
+
+    monkeypatch.setattr(service, '_validate_image_sync', recording)
+
+    await service.save_image(jpeg_bytes(), 'a.jpg')
+
+    assert threads and threads[0] != threading.get_ident()

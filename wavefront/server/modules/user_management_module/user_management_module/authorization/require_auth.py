@@ -554,7 +554,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             # Middleware errors skip the app's exception handlers, so answer here.
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.warning(
-                f'Auth busy on {request.method} {request.url.path}: {exc} [Request ID: {request_id}]'
+                f'Auth busy on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
             )
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -568,7 +568,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             # which clients treat as "logged out".
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(
-                f'Token key unavailable on {request.method} {request.url.path}: {exc} [Request ID: {request_id}]'
+                f'Token key unavailable on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
             )
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

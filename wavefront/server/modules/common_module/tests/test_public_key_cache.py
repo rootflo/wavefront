@@ -1,5 +1,6 @@
 """PublicKeyCache: TTL, cache-off mode, rotation refetch limits, single-flight."""
 
+import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -170,3 +171,39 @@ def test_seconds_setting():
 def test_seconds_setting_rejects_non_finite_and_negative(bad):
     with pytest.raises(ValueError):
         seconds_setting(bad, 60)
+
+
+def test_failed_rotation_fetch_counts_towards_the_refetch_limit():
+    fetch = Fetcher()
+    cache = PublicKeyCache(fetch)
+    cache.verify(accept_only('k1'))
+    cache._fetched_at -= 120  # old enough for a refetch
+
+    def failing():
+        fetch.calls += 1
+        raise RuntimeError('kms down')
+
+    cache._fetch = failing
+    failures = 0
+
+    for _ in range(20):
+        try:
+            cache.verify(accept_only('forged'))
+        except PublicKeyUnavailableError:
+            failures += 1
+
+    assert failures == 1  # the one allowed refetch; the rest were throttled
+    assert fetch.calls == 2  # the first load plus that refetch
+
+
+async def test_concurrent_async_misses_share_one_kms_job():
+    fetch = Fetcher(delay=0.1)
+    cache = PublicKeyCache(fetch)
+
+    results = await asyncio.gather(
+        *(cache.averify(accept_only('k1')) for _ in range(8))
+    )
+
+    assert results == [{'ok': True}] * 8
+    assert fetch.calls == 1
+    assert len(set(fetch.threads)) == 1
