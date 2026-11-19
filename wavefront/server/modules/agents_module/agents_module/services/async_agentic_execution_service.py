@@ -606,11 +606,8 @@ class AsyncAgenticExecutionService:
             # The cache holds the raw record, not the response, so it is shared
             # across both values of include_error without leaking either way.
             # Presigning output URLs can be a network call (GCS), so off the loop.
-            return await run_in_pool(
-                'storage',
-                self._build_status_response,
-                json.loads(cached),
-                include_error=include_error,
+            return await self._status_response(
+                json.loads(cached), include_error=include_error
             )
 
         record = await self.repo.find_one(id=execution_id)
@@ -629,6 +626,17 @@ class AsyncAgenticExecutionService:
             self.cache.add, cache_key, json.dumps(record_dict), ttl, nx=True
         )
 
+        return await self._status_response(record_dict, include_error=include_error)
+
+    async def _status_response(
+        self, record_dict: Dict, include_error: bool
+    ) -> AgenticExecutionStatusResponse:
+        """Build the status response; only presigning needs the storage pool."""
+        needs_presign = record_dict.get('input_bucket') and (
+            record_dict.get('output_file') or record_dict.get('history_file')
+        )
+        if not needs_presign:
+            return self._build_status_response(record_dict, include_error=include_error)
         return await run_in_pool(
             'storage',
             self._build_status_response,

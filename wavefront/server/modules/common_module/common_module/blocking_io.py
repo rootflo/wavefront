@@ -99,9 +99,9 @@ def configure_blocking_io(settings: Optional[Mapping[str, Any]]) -> BlockingIoLi
         if raw in (None, ''):
             continue
         value = float(raw) if field.type in ('float', float) else int(raw)
-        if value <= 0:
+        if not math.isfinite(value) or value <= 0:
             raise ValueError(
-                f'[blocking_io] {field.name} must be positive, got {raw!r}'
+                f'[blocking_io] {field.name} must be finite and positive, got {raw!r}'
             )
         values[field.name] = value
     with _pools_lock:

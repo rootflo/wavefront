@@ -14,6 +14,7 @@ from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from user_management_module.constants.cache import USER_DATA_PATTERN
 from user_management_module.constants.cache import get_session_cache_key
 from common_module.response_formatter import ResponseFormatter
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from user_management_module.utils.password_utils import hash_password_async
 from user_management_module.models.user_schema import NewUser
@@ -447,6 +448,9 @@ class UserService:
                     ),
                 )
 
+        except BlockingPoolBusyError:
+            # Retryable: let the app's 503 handler answer instead of a 500.
+            raise
         except Exception as e:
             logger.error(f'Failed to reactivate user {existing_user.id}: {str(e)}')
             return JSONResponse(

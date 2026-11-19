@@ -45,6 +45,27 @@ async def test_last_login_cache_write_is_tolerant():
     assert json.loads(value)['id'] == 'u1'
 
 
+async def test_last_login_completes_when_the_cache_write_fails():
+    cache = tolerant_cache()
+    cache.try_aadd.return_value = False  # Redis rejected the best-effort write
+    repository = MagicMock(find_one_and_update=AsyncMock(return_value=user()))
+    service = AccountInactivityService(repository, cache)
+
+    await service.update_last_login(user())
+
+    repository.find_one_and_update.assert_awaited_once()
+
+
+async def test_lockout_completes_when_the_cache_write_fails():
+    cache = tolerant_cache()
+    cache.try_aadd.return_value = False
+    service = AccountLockoutService(MagicMock(), cache)
+
+    await service._cache_user(user(), expiry=120)  # must not raise
+
+    cache.try_aadd.assert_awaited_once()
+
+
 async def test_lockout_cache_write_is_tolerant():
     cache = tolerant_cache()
     service = AccountLockoutService(MagicMock(), cache)

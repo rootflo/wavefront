@@ -2,6 +2,7 @@
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -94,13 +95,16 @@ def test_rotation_refetch_is_rate_limited():
 def test_concurrent_misses_fetch_once():
     fetch = Fetcher(delay=0.1)
     cache = PublicKeyCache(fetch)
-    threads = [threading.Thread(target=cache.get) for _ in range(8)]
+    start_together = threading.Barrier(8)
 
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    def reader():
+        start_together.wait(5)  # all eight callers miss at the same moment
+        return cache.get()
 
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = [f.result(10) for f in [executor.submit(reader) for _ in range(8)]]
+
+    assert results == ['k1'] * 8
     assert fetch.calls == 1
 
 
@@ -142,3 +146,9 @@ def test_seconds_setting():
     assert seconds_setting('2.5', 600) == 2.5
     with pytest.raises(ValueError):
         seconds_setting('-1', 600)
+
+
+@pytest.mark.parametrize('bad', ['inf', 'nan', '-1'])
+def test_seconds_setting_rejects_non_finite_and_negative(bad):
+    with pytest.raises(ValueError):
+        seconds_setting(bad, 60)

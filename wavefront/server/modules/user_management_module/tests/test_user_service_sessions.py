@@ -31,6 +31,13 @@ async def test_invalidate_user_sessions_clears_every_cache_key_then_rows():
     cache_manager = add_async_cache_methods(MagicMock())
     sessions = [SimpleNamespace(id='s1'), SimpleNamespace(id='s2')]
     service, session_repository = _service(sessions, cache_manager)
+    order = []
+    cache_manager.remove.side_effect = lambda key: order.append(('cache', key))
+
+    async def record_delete(**_kwargs):
+        order.append(('db', None))
+
+    session_repository.delete_all.side_effect = record_delete
 
     await service.invalidate_user_sessions('uid')
 
@@ -38,6 +45,8 @@ async def test_invalidate_user_sessions_clears_every_cache_key_then_rows():
     cache_manager.remove.assert_any_call(get_session_cache_key('s2'))
     cache_manager.remove.assert_any_call('uid')
     session_repository.delete_all.assert_awaited_once_with(user_id='uid')
+    # All three cache deletes happen before the rows go.
+    assert [kind for kind, _ in order] == ['cache', 'cache', 'cache', 'db']
 
 
 @pytest.mark.asyncio

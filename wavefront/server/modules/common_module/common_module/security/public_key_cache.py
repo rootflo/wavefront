@@ -19,6 +19,7 @@ burst of requests on an expired cache causes one KMS call, not one per request.
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from typing import Callable, Optional, TypeVar, Union
@@ -34,8 +35,10 @@ def seconds_setting(value: Union[float, str, None], default: float) -> float:
     if value is None or value == '':
         return float(default)
     seconds = float(value)
-    if seconds < 0:
-        raise ValueError(f'Expected a non-negative number of seconds, got {value!r}')
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(
+            f'Expected a finite, non-negative number of seconds, got {value!r}'
+        )
     return seconds
 
 

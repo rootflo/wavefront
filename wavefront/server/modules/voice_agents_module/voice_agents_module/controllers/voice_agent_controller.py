@@ -7,6 +7,7 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Body, Depends, Path, Request, status
 from fastapi.responses import JSONResponse, Response
 
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -597,6 +598,8 @@ async def get_welcome_audio_url(
             content=response_formatter.buildSuccessResponse({'url': url}),
         )
 
+    except BlockingPoolBusyError:
+        raise  # overload: the app answers 503 with Retry-After
     except Exception as e:
         logger.error(f'Failed to get welcome audio URL for agent {agent_id}: {str(e)}')
         return JSONResponse(

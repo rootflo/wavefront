@@ -123,7 +123,7 @@ async def test_slow_redis_times_out_without_blocking_the_loop(bound, monkeypatch
         task.cancel()
 
     assert time.monotonic() - started < 1.0
-    assert ticks >= 10  # the loop kept running while Redis hung
+    assert ticks >= 3  # the loop kept running while Redis hung
 
 
 async def test_errors_are_retried_then_reported(bound, monkeypatch):

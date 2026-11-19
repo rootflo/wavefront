@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, fields
 
 
@@ -35,4 +36,13 @@ class RedisSettings:
                 self,
                 'socket_keepalive',
                 self.socket_keepalive.strip().lower() in ('1', 'true', 'yes'),
+            )
+        if int(self.async_pool_size) < 1:
+            raise ValueError(
+                f'async_pool_size must be at least 1, got {self.async_pool_size!r}'
+            )
+        timeout = float(self.async_command_timeout)
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError(
+                f'async_command_timeout must be finite and positive, got {self.async_command_timeout!r}'
             )

@@ -45,6 +45,16 @@ class Collector:
         with self._cond:
             return self._cond.wait_for(lambda: len(self.events) >= count, timeout)
 
+    def wait_for_event(self, predicate, timeout=3.0):
+        """The first recorded event matching ``predicate``, or None on timeout."""
+
+        def find():
+            return next((e for e in self.events if predicate(e)), None)
+
+        with self._cond:
+            self._cond.wait_for(lambda: find() is not None, timeout)
+            return find()
+
 
 @pytest.fixture
 def collector():
@@ -81,9 +91,9 @@ async def test_block_is_reported_with_lag_and_stack(monitor, collector):
     block_the_loop_for_a_while(1.0)
     await asyncio.sleep(0.05)
 
-    assert collector.wait_for(1)
-    event = collector.events[0]
-    assert event.lag_s >= 0.9
+    # Pick the event for the deliberate block, not an earlier startup hiccup.
+    event = collector.wait_for_event(lambda e: e.lag_s >= 0.9)
+    assert event is not None
     assert event.service == 'test-service'
     assert event.stack is not None
     assert 'block_the_loop_for_a_while' in event.stack
@@ -108,8 +118,10 @@ async def test_short_block_has_no_stack(reader, collector):
         block_the_loop_for_a_while(0.15)
         await asyncio.sleep(0.05)
 
-        assert collector.wait_for(1)
-        assert collector.events[0].stack is None
+        # The event for the deliberate 150 ms block, not an earlier startup hiccup.
+        event = collector.wait_for_event(lambda e: e.lag_s >= 0.14)
+        assert event is not None
+        assert event.stack is None
     finally:
         await m.stop()
 
@@ -162,9 +174,11 @@ async def test_failing_listener_does_not_stop_monitoring(monitor, collector):
 async def test_listeners_run_off_the_event_loop(monitor, collector):
     loop_thread = threading.get_ident()
     threads = []
+    recorded = threading.Event()
 
     def record_thread(_event):
         threads.append(threading.get_ident())
+        recorded.set()
 
     add_loop_block_listener(record_thread)
     try:
@@ -172,6 +186,7 @@ async def test_listeners_run_off_the_event_loop(monitor, collector):
         await asyncio.sleep(0.05)
 
         assert collector.wait_for(1)
+        assert recorded.wait(3)  # our listener may run after the collector's
         assert threads and loop_thread not in threads
     finally:
         remove_loop_block_listener(record_thread)
@@ -248,3 +263,9 @@ async def test_start_helper_starts_and_stops():
         assert monitor._task is not None
     finally:
         await monitor.stop()
+
+
+@pytest.mark.parametrize('bad', ['inf', 'nan'])
+def test_settings_reject_non_finite_numbers(bad):
+    with pytest.raises(ValueError):
+        LoopMonitorSettings.from_mapping({'threshold_ms': bad})

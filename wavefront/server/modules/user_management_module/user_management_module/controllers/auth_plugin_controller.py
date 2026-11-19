@@ -22,6 +22,7 @@ from db_repo_module.models.authenticator import Authenticator
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from common_module.blocking_io import BlockingPoolBusyError
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services.authenticator_services import (
     get_authenticator_instance,
@@ -241,6 +242,9 @@ async def unified_authenticate(
             content=response_formatter.buildSuccessResponse({'user': response_data}),
         )
 
+    except BlockingPoolBusyError:
+        # Retryable overload: the app's 503 handler adds Retry-After.
+        raise
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -886,6 +890,9 @@ async def _handle_email_password_auth(
             content=response_formatter.buildSuccessResponse({'user': response_data}),
         )
 
+    except BlockingPoolBusyError:
+        # Retryable overload: the app's 503 handler adds Retry-After.
+        raise
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

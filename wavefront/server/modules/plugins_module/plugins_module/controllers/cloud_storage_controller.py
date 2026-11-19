@@ -17,6 +17,22 @@ from plugins_module.plugins_container import PluginsContainer
 cloud_storage_router = APIRouter()
 
 
+def _parse_json(file_content, projection):
+    data = json.loads(file_content)
+    if projection:
+        fields = {f.strip() for f in projection.split(',') if f.strip()}
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k in fields}
+        elif isinstance(data, list):
+            data = [
+                {k: v for k, v in item.items() if k in fields}
+                if isinstance(item, dict)
+                else item
+                for item in data
+            ]
+    return data
+
+
 class StorageFileType(str, Enum):
     json = 'json'
 
@@ -83,18 +99,8 @@ async def read_storage_file(
         )
 
         if type == StorageFileType.json:
-            data = json.loads(file_content)
-            if projection:
-                fields = {f.strip() for f in projection.split(',') if f.strip()}
-                if isinstance(data, dict):
-                    data = {k: v for k, v in data.items() if k in fields}
-                elif isinstance(data, list):
-                    data = [
-                        {k: v for k, v in item.items() if k in fields}
-                        if isinstance(item, dict)
-                        else item
-                        for item in data
-                    ]
+            # A large object can take long to parse: keep it off the event loop.
+            data = await run_in_pool('cpu', _parse_json, file_content, projection)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,

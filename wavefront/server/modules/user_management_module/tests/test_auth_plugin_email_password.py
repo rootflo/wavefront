@@ -147,8 +147,9 @@ async def test_plugin_email_password_success_mints_session():
         token_service,
     )
     assert response.status_code == status.HTTP_200_OK
-    token_service.create_token.assert_called_once()
-    cache_manager.add.assert_called()
+    # The async entry points, so the handler can't fall back to blocking calls.
+    token_service.create_token_async.assert_awaited_once()
+    cache_manager.try_aadd.assert_awaited()
     user_service.invalidate_user_sessions.assert_awaited_once_with('uid')
 
 

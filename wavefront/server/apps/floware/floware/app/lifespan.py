@@ -201,6 +201,13 @@ async def lifespan(app: FastAPI):
         logger.error(f'Error during application lifecycle: {str(e)}')
         raise
     finally:
+        # All idempotent: they cover error exits that skipped the normal shutdown.
+        shutdown_pools()
+        shutdown_blocking_io()
+        try:
+            await application_container.db.cache_manager().aclose()
+        except Exception as exc:
+            logger.warning(f'Closing the async cache client failed: {exc}')
         if loop_monitor is not None:
             await loop_monitor.stop()
         # In a `finally` so buffered spans and metrics are still flushed when

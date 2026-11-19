@@ -3,6 +3,7 @@ from typing import List, Optional
 from urllib.parse import quote
 
 from common_module.feature.feature_flag import ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
@@ -294,6 +295,9 @@ async def create_user(
                 ),
             )
 
+        except BlockingPoolBusyError:
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f'Error while creating user, {e}')

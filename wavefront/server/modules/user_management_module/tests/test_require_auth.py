@@ -595,7 +595,30 @@ async def test_cache_miss_caches_the_session_and_tolerates_a_failed_write():
 
 
 @pytest.mark.asyncio
-async def test_busy_kms_pool_answers_503():
+async def test_session_cache_outage_still_rejects_a_session_of_another_user():
+    """The database fallback must keep checking who owns the session."""
+    deps = _jwt_deps()
+    deps['cache_manager'].aget_str = AsyncMock(
+        side_effect=CacheUnavailableError('down')
+    )
+    session_repository = AsyncMock()
+    session_repository.find_one.return_value = _db_session(user_id='u2')
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    secret_access = await _secret_access_after_dispatch(
+        _middleware(), request, session_repository=session_repository, **deps
+    )
+
+    assert secret_access is None  # rejected: never reached the route
+
+
+@pytest.mark.asyncio
+async def test_busy_kms_pool_answers_503(monkeypatch):
+    # Retry-After comes from the configured queue wait, not from the exception.
+    monkeypatch.setattr(
+        'user_management_module.authorization.require_auth.retry_after_seconds',
+        lambda: 10,
+    )
     deps = _jwt_deps()
     deps['token_service'].decode_token_async = AsyncMock(
         side_effect=BlockingPoolBusyError('kms', 10)

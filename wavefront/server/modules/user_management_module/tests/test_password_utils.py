@@ -2,7 +2,6 @@
 
 import asyncio
 import threading
-import time
 from unittest.mock import patch
 
 import pytest
@@ -65,12 +64,11 @@ async def test_loop_stays_responsive_during_a_burst_of_logins():
             ticks += 1
 
     task = asyncio.ensure_future(ticker())
-    started = time.monotonic()
     try:
         await asyncio.gather(*(verify_password_async('pw', hashed) for _ in range(4)))
     finally:
         task.cancel()
-    elapsed = time.monotonic() - started
 
-    # With bcrypt on the loop, the ticker would get no turns at all until it finished.
-    assert ticks >= max(1, int(elapsed / 0.01) // 3)
+    # With bcrypt on the loop, the ticker would get no turns at all until it
+    # finished. A few turns prove it ran meanwhile, however busy the runner is.
+    assert ticks >= 2

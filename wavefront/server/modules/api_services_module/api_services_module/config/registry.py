@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 from ..models.service import ServiceDefinition
 from .parser import ServiceDefinitionParser
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from ..core.manager import ApiServicesManager
 from ..secrets.references import find_definition_refs, substitute_definition
@@ -138,8 +139,17 @@ class ServiceRegistry:
         self.clear_all()
 
         for service in services:
-            yaml_content = await self.api_service_manager.fetch_service_def(service)
-            service_definition = self.parser.parse_yaml_string(yaml_content)
+            try:
+                yaml_content = await self.api_service_manager.fetch_service_def(service)
+                service_definition = self.parser.parse_yaml_string(yaml_content)
+            except BlockingPoolBusyError:
+                raise  # retryable overload: don't silently drop services
+            except Exception as e:
+                # One unreadable definition must not keep the others from loading.
+                logger.error(
+                    f'Skipping service {getattr(service, "id", service)}: definition unreadable: {e}'
+                )
+                continue
             try:
                 execution_definition = await self.resolve_secrets(service_definition)
             except Exception as e:

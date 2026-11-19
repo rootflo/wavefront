@@ -24,7 +24,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         """
         request_id = getattr(request.state, 'request_id', get_current_request_id())
         logger.warning(
-            f'Datasource busy on {request.method} {request.url.path} '
+            f'Datasource busy on {request.method} {request.url.path!r} '
             f'[Request ID: {request_id}]: {exc}'
         )
         return JSONResponse(
@@ -47,7 +47,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         """
         request_id = getattr(request.state, 'request_id', get_current_request_id())
         logger.warning(
-            f'{exc.pool} pool busy on {request.method} {request.url.path} '
+            f'{exc.pool} pool busy on {request.method} {request.url.path!r} '
             f'[Request ID: {request_id}]: {exc}'
         )
         return JSONResponse(
@@ -64,7 +64,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         sessions at login). The failure is fast and temporary, so a 503."""
         request_id = getattr(request.state, 'request_id', get_current_request_id())
         logger.warning(
-            f'Cache unavailable on {request.method} {request.url.path} '
+            f'Cache unavailable on {request.method} {request.url.path!r} '
             f'[Request ID: {request_id}]: {exc}'
         )
         return JSONResponse(
@@ -104,7 +104,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
             else logger.warning
         )
         emit(
-            f'Guardrail blocked {request.method} {request.url.path} '
+            f'Guardrail blocked {request.method} {request.url.path!r} '
             f'[Request ID: {request_id}]: {detail}'
         )
 

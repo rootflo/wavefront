@@ -60,8 +60,14 @@ async def test_context_variables_carry_over():
 async def test_full_pool_refuses_after_the_queue_wait():
     configure_blocking_io({'kms_max_threads': '1', 'queue_wait_seconds': '0.1'})
     release = threading.Event()
-    holding = asyncio.ensure_future(run_in_pool('kms', release.wait, 5))
-    await asyncio.sleep(0.05)  # the only thread is now busy
+    started = threading.Event()
+
+    def hold():
+        started.set()
+        release.wait(5)
+
+    holding = asyncio.ensure_future(run_in_pool('kms', hold))
+    await asyncio.to_thread(started.wait, 5)  # the only thread is now busy
     ran = []
 
     try:
@@ -69,7 +75,7 @@ async def test_full_pool_refuses_after_the_queue_wait():
             await run_in_pool('kms', ran.append, 'should not run')
     finally:
         release.set()
-        await holding
+        _ = await holding  # surface any error from the held call
 
     assert excinfo.value.pool == 'kms'
     await asyncio.sleep(0.05)
@@ -80,14 +86,20 @@ async def test_pools_are_independent():
     """A full kms pool doesn't hold up storage calls."""
     configure_blocking_io({'kms_max_threads': '1', 'queue_wait_seconds': '0.1'})
     release = threading.Event()
-    holding = asyncio.ensure_future(run_in_pool('kms', release.wait, 5))
-    await asyncio.sleep(0.05)
+    started = threading.Event()
+
+    def hold():
+        started.set()
+        release.wait(5)
+
+    holding = asyncio.ensure_future(run_in_pool('kms', hold))
+    await asyncio.to_thread(started.wait, 5)  # the kms pool is saturated
 
     try:
         assert await run_in_pool('storage', lambda: 'ok') == 'ok'
     finally:
         release.set()
-        await holding
+        _ = await holding  # surface any error from the held call
 
 
 async def test_unknown_pool_is_rejected():
@@ -134,3 +146,9 @@ def test_retry_after_rounds_up():
     configure_blocking_io({'queue_wait_seconds': '2.5'})
 
     assert module.retry_after_seconds() == 3
+
+
+@pytest.mark.parametrize('bad', ['inf', 'nan', '0'])
+def test_queue_wait_must_be_finite_and_positive(bad):
+    with pytest.raises(ValueError):
+        configure_blocking_io({'queue_wait_seconds': bad})

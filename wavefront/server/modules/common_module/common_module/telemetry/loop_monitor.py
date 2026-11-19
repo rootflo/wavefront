@@ -23,6 +23,7 @@ exception they raise is logged and ignored.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import queue
 import sys
@@ -92,9 +93,9 @@ class LoopMonitorSettings:
             if value in (None, ''):
                 return getattr(defaults, name)
             parsed = float(value)
-            if parsed <= 0:
+            if not math.isfinite(parsed) or parsed <= 0:
                 raise ValueError(
-                    f'[event_loop_monitor] {name} must be positive, got {value!r}'
+                    f'[event_loop_monitor] {name} must be finite and positive, got {value!r}'
                 )
             return parsed
 
@@ -161,6 +162,9 @@ class EventLoopMonitor:
         """Start on the running event loop. Call from the loop's thread."""
         if self._task is not None:
             return
+        if self._watchdog is not None and self._watchdog.is_alive():
+            logger.warning('Event loop watchdog still running; monitor not restarted')
+            return
         self._loop_thread_id = threading.get_ident()
         self._stop.clear()
         self._watchdog = threading.Thread(
@@ -183,13 +187,22 @@ class EventLoopMonitor:
         try:
             await self._task
         except asyncio.CancelledError:
-            pass
-        self._task = None
-        self._stop.set()
-        self._events.put(None)  # wake the watchdog so it can exit
-        if self._watchdog is not None:
-            self._watchdog.join(timeout=2)
-            self._watchdog = None
+            pass  # expected: we just cancelled the heartbeat
+        except Exception as exc:
+            # The heartbeat already failed (e.g. a broken meter): still stop the watchdog.
+            logger.warning(f'Event loop heartbeat had failed before stop: {exc}')
+        finally:
+            self._task = None
+            self._stop.set()
+            self._events.put(None)  # wake the watchdog so it can exit
+        watchdog = self._watchdog
+        if watchdog is not None:
+            # join() can wait on a slow log sink: keep it off the event loop.
+            await asyncio.to_thread(watchdog.join, 2)
+            if watchdog.is_alive():
+                logger.warning('Event loop watchdog did not stop within 2s')
+            else:
+                self._watchdog = None
 
     # -- heartbeat (event loop) ------------------------------------------------
 
