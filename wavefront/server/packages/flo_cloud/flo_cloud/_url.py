@@ -10,7 +10,7 @@ def normalize_asset_url(asset_url: Optional[str]) -> Optional[str]:
     parts = urlsplit(value)
     if (
         parts.scheme not in ('http', 'https')
-        or not parts.netloc
+        or not parts.hostname
         or parts.query
         or parts.fragment
     ):

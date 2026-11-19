@@ -58,7 +58,7 @@ Set `APPLICATION_STORAGE_URL` when users' networks allow your own domain but not
 The value is an `http(s)://` URL, optionally with a path prefix, such as `https://app.example.com/storage`. A prefix on the app's own domain needs no extra whitelist entry or CORS rule. The route behind it must:
 
 - strip the path prefix, then forward the rest of the path and the query string unchanged (no decoding or normalising)
-- set `Host` to the storage endpoint: `<account>.blob.core.windows.net`, `storage.googleapis.com`, or for S3 `s3.<region>.amazonaws.com` (`s3.amazonaws.com` in us-east-1), with `CLOUD_REGION` set to the bucket's region
+- set `Host` to the storage endpoint: `<account>.blob.core.windows.net`, `storage.googleapis.com`, or for S3 `s3.<region>.amazonaws.com` (in us-east-1, `s3.amazonaws.com` by default, or `s3.us-east-1.amazonaws.com` when `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT=regional` is set), with `CLOUD_REGION` set to the bucket's region
 - not cache responses
 - allow GET, HEAD, PUT and OPTIONS
 - not add its own authentication to requests sent to storage (on AWS, turn off CloudFront OAC/OAI for this route; on Azure and GCP, leave origin authentication off). The link is already signed, and storage rejects a request that carries two credentials
