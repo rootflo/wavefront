@@ -206,6 +206,8 @@ class AgentCrudService:
             raise InvalidDefinitionError(
                 f'Invalid agent YAML configuration: {str(e)}'
             ) from e
+        except BlockingPoolBusyError:
+            raise  # retryable overload: the app answers 503, not a validation error
         except Exception as e:
             # Not a validation error: keep the details in the log, out of the response
             logger.exception(

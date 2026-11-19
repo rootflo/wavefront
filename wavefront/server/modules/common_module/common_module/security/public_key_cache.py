@@ -6,8 +6,9 @@ The public key changes only on rotation, so this caches it and the token
 services verify signatures locally with it.
 
 - ``cache_seconds``: how long a fetched key is reused. 0 disables the cache: the
-  key is fetched for every verification (still off the event loop), which gives
-  instant revocation when a key is disabled.
+  key is fetched for every verification (still off the event loop). That picks up
+  rotation at once, but it is not a revocation mechanism: AWS KMS still returns
+  the public key of a disabled signing key.
 - ``refresh_min_seconds``: tokens carry no key id, so a token whose signature
   doesn't match the cached key may mean the key was rotated. That triggers a
   refetch, but at most one per ``refresh_min_seconds``, so forged tokens can't

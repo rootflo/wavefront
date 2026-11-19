@@ -65,6 +65,17 @@ async def test_process_image_uploads_image_and_metadata_off_the_loop():
     assert queue.add_message.call_args[0][0]['key'] == 'item-7'
 
 
+async def test_process_image_publishes_off_the_loop():
+    """Brokers wait on the network, so the publish must not run on the loop."""
+    service, queue = make_service(Storage())
+    threads = []
+    queue.add_message.side_effect = lambda _m: threads.append(threading.get_ident())
+
+    await service.process_image(jpeg_bytes(), {'item_id': 'item-7'})
+
+    assert threads and threads[0] != threading.get_ident()
+
+
 async def test_process_image_lets_a_busy_pool_through(monkeypatch):
     """Overload must reach the client as a 503, not be wrapped as a failure."""
 

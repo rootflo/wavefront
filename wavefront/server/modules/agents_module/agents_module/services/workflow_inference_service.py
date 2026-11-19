@@ -12,7 +12,7 @@ from agents_module.utils.agent_guardrails import (
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
 from agents_module.utils.cache_utils import (
@@ -217,6 +217,8 @@ class WorkflowInferenceService:
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent: {agent_ref}')
 
+            except BlockingPoolBusyError:
+                raise  # retryable overload: the app answers 503, not a build error
             except Exception as e:
                 logger.error(f'Error building referenced agent {agent_ref}: {str(e)}')
                 raise ValueError(
@@ -286,6 +288,8 @@ class WorkflowInferenceService:
                 agents_dict[agent_name] = agent
                 logger.info(f'Successfully built inline agent: {agent_name}')
 
+            except BlockingPoolBusyError:
+                raise  # retryable overload: the app answers 503, not a build error
             except Exception as e:
                 logger.error(f'Error building inline agent {agent_name}: {str(e)}')
                 raise ValueError(f'Failed to build inline agent {agent_name}: {str(e)}')

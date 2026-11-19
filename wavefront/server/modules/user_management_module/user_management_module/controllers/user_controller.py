@@ -1005,6 +1005,11 @@ async def reset_password(
     if not code:
         return _password_reset_invalid_response(response_formatter)
 
+    # Hash first: if the CPU pool is full this raises (503) before the code is
+    # burned, so the user can retry the same link. The token is signed and passed
+    # recaptcha by now, so this is not a cheap way to spend CPU.
+    hashed_password = await hash_password_async(reset_user.new_password)
+
     # pop_str is GETDEL: two concurrent requests cannot both win the token.
     # The token is burned before the write, so a failed update means
     # requesting a fresh link — that is the price of a single-use guarantee.
@@ -1016,7 +1021,6 @@ async def reset_password(
     if not user or user.deleted:
         return _password_reset_invalid_response(response_formatter)
 
-    hashed_password = await hash_password_async(reset_user.new_password)
     updated_user = await user_repository.find_one_and_update(
         {'id': existing_user_id}, password=hashed_password
     )

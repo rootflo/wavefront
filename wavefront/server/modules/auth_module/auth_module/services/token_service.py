@@ -125,9 +125,10 @@ class TokenService:
     # already did a full signature check with the same key and algorithm, so the
     # remote verify added a network call and no protection.
     #
-    # Trade-off: a KMS key that is disabled or rotated is noticed when the cache
-    # refreshes, not instantly. public_key_cache_seconds = 0 turns the cache off
-    # (key fetched on every request, off the loop) for instant revocation.
+    # Trade-off: a rotated KMS key is noticed when the cache refreshes, not
+    # instantly. public_key_cache_seconds = 0 turns the cache off (key fetched on
+    # every request, off the loop). Neither revokes tokens: on AWS KMS a disabled
+    # key still returns its public key, so its tokens verify until they expire.
 
     def decode_token(self, token: str) -> dict:
         """Verify and decode ``token``. Blocking on a cache miss: for sync callers only."""

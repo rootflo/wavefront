@@ -64,7 +64,10 @@ class ImageService:
                 'application/json',
             )
 
-            message_id = self.message_queue.add_message(message)
+            # Brokers wait on the network (SQS, Pub/Sub, Azure): keep it off the loop.
+            message_id = await run_in_pool(
+                'storage', self.message_queue.add_message, message
+            )
             logger.info(f'Successfully sent message to gold queue: {message_id}')
 
             return {
