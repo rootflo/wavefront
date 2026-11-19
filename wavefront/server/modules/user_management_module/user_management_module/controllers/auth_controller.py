@@ -1,4 +1,3 @@
-import json
 from typing import Optional
 from uuid import uuid4
 
@@ -167,27 +166,6 @@ async def authenticate(
     # Get device info from headers
     device_info = request.headers.get('User-Agent')
 
-    await user_service.invalidate_user_sessions(str(user.id))
-
-    # Create new session
-    session = await session_repository.create(
-        user_id=user.id, device_info=device_info, id=uuid4()
-    )
-
-    # Cache session data. If Redis is down the login still succeeds: the auth
-    # middleware reads the session from the database on a cache miss.
-    session_cache_key = get_session_cache_key(session.id)
-    session_data = {
-        'id': str(session.id),
-        'user_id': str(session.user_id),
-        'device_info': session.device_info,
-    }
-    await cache_manager.try_aadd(
-        session_cache_key,
-        json.dumps(session_data),
-        expiry=token_service.token_expiry,
-    )
-
     role_id = await user_service.get_user_role_for_scope(
         user_id=str(user.id), scope=ResourceScope.CONSOLE
     )
@@ -200,13 +178,24 @@ async def authenticate(
             ),
         )
 
-    # Include session_id in token payload
+    # Sign the token BEFORE touching existing sessions: if signing fails (KMS
+    # down, kms pool busy) the user keeps their current session instead of
+    # ending up logged out with no replacement. The session id is chosen up
+    # front so the token can carry it.
+    session_id = uuid4()
     token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=role_id,
-        payload={'session_id': str(session.id)},
+        payload={'session_id': str(session_id)},
         expiry=token_service.token_expiry,
+    )
+
+    await user_service.invalidate_user_sessions(str(user.id))
+
+    # Create new session
+    await session_repository.create(
+        user_id=user.id, device_info=device_info, id=session_id
     )
 
     response_data = {'access_token': token, 'token_type': 'bearer'}
@@ -313,26 +302,23 @@ async def logout(
 
     session_cache_key = get_session_cache_key(current_session.session_id)
 
-    # Clear the cache BEFORE deleting the DB row, and strictly: the middleware
-    # trusts a cached session before the database. If Redis fails here nothing
-    # has changed yet, so the 503 is clean and a retry works. (Deleting the row
-    # first would leave a cached session that works again once Redis recovers.)
+    # The middleware trusts a cached session before the database, so the DB
+    # delete is wrapped in a cache invalidation: strict before it (Redis down:
+    # 503 with nothing changed, retry-safe), best-effort after it, and fills
+    # that raced the logout can never bring the session back.
     try:
-        await cache_manager.aremove(current_session.user_id)
-        await cache_manager.aremove(session_cache_key)
+        async with cache_manager.invalidating(
+            current_session.user_id, session_cache_key
+        ):
+            await session_repository.delete_all(id=current_session.session_id)
     except CacheUnavailableError as e:
-        logger.error(f'Logout could not clear the cached session: {e}')
+        logger.error(f'Logout could not invalidate the cached session: {e}')
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=response_formatter.buildErrorResponse(
                 'Logout could not be completed. Please try again shortly.'
             ),
         )
-
-    await session_repository.delete_all(id=current_session.session_id)
-    # A concurrent request could have re-cached the session from the DB between
-    # the clear above and the delete; clear it once more (best effort).
-    await cache_manager.try_aremove(session_cache_key)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

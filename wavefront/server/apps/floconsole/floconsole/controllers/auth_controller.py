@@ -66,20 +66,23 @@ async def authenticate(
     # Get device info from headers
     device_info = request.headers.get('User-Agent')
 
-    await session_repository.delete_all(user_id=user.id)
-
-    # Create new session
-    session = await session_repository.create(
-        user_id=user.id, device_info=device_info, id=uuid4()
-    )
-
-    # Include session_id in token payload
+    # Sign the token BEFORE touching existing sessions: if signing fails (KMS
+    # down, kms pool busy) the user keeps their current session instead of
+    # ending up logged out with no replacement.
+    session_id = uuid4()
     token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=AUTH_ROLE_ID,
-        payload={'session_id': str(session.id)},
+        payload={'session_id': str(session_id)},
         expiry=token_service.token_expiry,
+    )
+
+    await session_repository.delete_all(user_id=user.id)
+
+    # Create new session
+    await session_repository.create(
+        user_id=user.id, device_info=device_info, id=session_id
     )
 
     response_data = {'access_token': token, 'token_type': 'bearer'}

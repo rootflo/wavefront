@@ -1,9 +1,20 @@
 import asyncio
+import contextlib
 import functools
 import socket
 import threading
 import time
-from typing import Any, Awaitable, Callable, List, Optional, TypeVar, Union
+import uuid
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
@@ -425,6 +436,179 @@ class CacheManager(CommonCache):
                 f'Cache delete failed for {key}; it may be stale until it expires: {e}'
             )
             return False
+
+    # ------------------------------------------------------------------
+    # Generation-checked cache-aside (read_through / invalidating)
+    #
+    # Plain get / fill / delete has a race once reads await: a reader loads
+    # the old value from the source, a writer commits and deletes the key,
+    # then the reader's late fill puts the old value back. NX fills don't help
+    # (the key is absent after the delete). Instead every key K has a random
+    # token in G(K):
+    #   - a reader captures the token BEFORE loading the source, and fills only
+    #     if the token is unchanged (atomic compare-and-set in Lua); a hit is
+    #     valid only if the value carries the current token;
+    #   - a writer replaces the token strictly before its change (Redis down:
+    #     CacheUnavailableError, a 503, nothing changed) and again best-effort
+    #     after it (defeats a reader that captured the token in between). It
+    #     never writes the new value; the next read fills it.
+    # A missing token never validates anything (the read creates a fresh one),
+    # so correctness does not depend on any TTL or eviction policy. Keys live
+    # under a separate ``rt/`` prefix, and K and G(K) share a {hash tag}.
+    # ------------------------------------------------------------------
+
+    _RT_GENERATION_TTL = 86400  # seconds; affects hit rate only, never correctness
+
+    _RT_READ = """
+local token = redis.call('GET', KEYS[2])
+if not token then
+  token = ARGV[1]
+  redis.call('SET', KEYS[2], token, 'EX', ARGV[2])
+end
+return {token, redis.call('GET', KEYS[1])}
+"""
+
+    _RT_FILL = """
+if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1] .. '\\n' .. ARGV[2], 'EX', ARGV[3])
+return 1
+"""
+
+    def _rt_keys(self, key: str) -> tuple[str, str]:
+        base = f'{self.namespace}/rt/{{{key}}}'
+        return base, f'{base}:gen'
+
+    @staticmethod
+    def _new_token() -> str:
+        return uuid.uuid4().hex
+
+    @staticmethod
+    def _as_str(value: Any) -> Optional[str]:
+        if value is None or isinstance(value, str):
+            return value
+        return value.decode('utf-8')
+
+    async def read_through(
+        self,
+        key: str,
+        loader: Callable[[], Awaitable[Optional[str]]],
+        *,
+        ttl: int,
+    ) -> Optional[str]:
+        """The cached value for ``key``, or ``loader()`` from the source of truth.
+
+        ``loader`` returns the string to cache, or None for "not found" (not
+        cached). Redis failures never fail the read: the loader's value is
+        returned and the fill is skipped.
+        """
+        value_key, gen_key = self._rt_keys(key)
+        token: Optional[str] = None
+        try:
+            new_token = self._new_token()
+
+            async def read(client: aioredis.Redis) -> Any:
+                return await client.eval(
+                    self._RT_READ,
+                    2,
+                    value_key,
+                    gen_key,
+                    new_token,
+                    self._RT_GENERATION_TTL,
+                )
+
+            def read_sync() -> Any:
+                return self.redis.eval(
+                    self._RT_READ,
+                    2,
+                    value_key,
+                    gen_key,
+                    new_token,
+                    self._RT_GENERATION_TTL,
+                )
+
+            raw_token, raw_value = await self._run_async(
+                'READ', read, read_sync, attempts=1, timeout=None
+            )
+            token, cached = self._as_str(raw_token), self._as_str(raw_value)
+            if cached is not None:
+                tag, _, payload = cached.partition('\n')
+                if tag == token:
+                    return payload
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache read skipped for {key}: {e}')
+            return await loader()
+
+        value = await loader()
+        if value is None or token is None:
+            return value
+        try:
+
+            async def fill(client: aioredis.Redis) -> Any:
+                return await client.eval(
+                    self._RT_FILL, 2, value_key, gen_key, token, value, ttl
+                )
+
+            def fill_sync() -> Any:
+                return self.redis.eval(
+                    self._RT_FILL, 2, value_key, gen_key, token, value, ttl
+                )
+
+            await self._run_async('FILL', fill, fill_sync, attempts=1, timeout=None)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache fill skipped for {key}: {e}')
+        return value
+
+    async def _rotate(self, keys: tuple[str, ...]) -> None:
+        """Give each key a new token and drop its value. Raises on failure.
+
+        Also deletes the plain ``get_str``/``add`` key of the same name, so code
+        (or old workers mid-deploy) still using the plain API never keeps
+        serving a value this change made stale.
+        """
+        for key in keys:
+            value_key, gen_key = self._rt_keys(key)
+            plain_key = f'{self.namespace}/{key}'
+            token = self._new_token()
+
+            async def rotate(client: aioredis.Redis) -> Any:
+                pipe = client.pipeline(transaction=False)
+                pipe.set(gen_key, token, ex=self._RT_GENERATION_TTL)
+                pipe.delete(value_key)
+                pipe.delete(plain_key)
+                return await pipe.execute()
+
+            def rotate_sync() -> Any:
+                pipe = self.redis.pipeline(transaction=False)
+                pipe.set(gen_key, token, ex=self._RT_GENERATION_TTL)
+                pipe.delete(value_key)
+                pipe.delete(plain_key)
+                return pipe.execute()
+
+            await self._run_async('ROTATE', rotate, rotate_sync, None, None)
+
+    @contextlib.asynccontextmanager
+    async def invalidating(self, *keys: str) -> AsyncIterator[None]:
+        """Wrap a change to the source of truth behind ``keys``.
+
+        Before the body: strict. If Redis is down this raises
+        CacheUnavailableError (a 503) and the body never runs, so nothing has
+        changed and a retry is safe. After the body (success or failure):
+        best-effort, closing the window for a reader that loaded the old value
+        while the change was in flight.
+        """
+        await self._rotate(keys)
+        try:
+            yield
+        finally:
+            try:
+                await self._rotate(keys)
+            except CacheUnavailableError as e:
+                logger.warning(
+                    f'Cache invalidation after a change failed for {keys}; a read '
+                    f'racing the change could serve the old value until its TTL: {e}'
+                )
 
     def _create_redis_connection(self) -> Redis:
         logger.info('Creating Redis connection from pool...')

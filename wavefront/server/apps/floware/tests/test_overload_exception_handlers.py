@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from common_module.blocking_io import BlockingPoolBusyError
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from datasource.executor import DatasourceBusyError
 from db_repo_module.cache.cache_manager import CacheUnavailableError
 
@@ -38,8 +39,9 @@ def client_raising(exc: Exception) -> TestClient:
     [
         BlockingPoolBusyError('storage', 10.0),
         CacheUnavailableError('Redis DEL failed: TimeoutError'),
+        PublicKeyUnavailableError('Could not fetch the token public key'),
     ],
-    ids=['pool-busy', 'cache-unavailable'],
+    ids=['pool-busy', 'cache-unavailable', 'kms-unavailable'],
 )
 def test_overload_is_a_503_with_retry_after(exc):
     response = client_raising(exc).get('/boom')

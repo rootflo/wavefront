@@ -33,7 +33,6 @@ from plugins_module.utils.email_helper import is_allowed_client_redirect
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password_async
-from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
 
 from authenticator import AuthenticatorType
@@ -195,26 +194,6 @@ async def unified_authenticate(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        await cache_manager.try_aadd(
-            session_cache_key,
-            json.dumps(session_data),
-            expiry=token_service.token_expiry,
-        )
-
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
@@ -227,13 +206,23 @@ async def unified_authenticate(
                 ),
             )
 
-        # Include session_id in token payload
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
         token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id)},
+            payload={'session_id': str(session_id)},
             expiry=token_service.token_expiry,
+        )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
         )
 
         response_data = {'access_token': token, 'token_type': 'bearer'}
@@ -681,26 +670,6 @@ async def _handle_oauth_callback(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        await cache_manager.try_aadd(
-            session_cache_key,
-            json.dumps(session_data),
-            expiry=token_service.token_expiry,
-        )
-
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
@@ -717,13 +686,23 @@ async def _handle_oauth_callback(
                 {'provider': provider, 'error': 'User has no access to the console'},
             )
 
-        # Include session_id in token payload
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
         token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id)},
+            payload={'session_id': str(session_id)},
             expiry=token_service.token_expiry,
+        )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        session = await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
         )
 
         # Success: redirect to success URL with access token
@@ -837,26 +816,6 @@ async def _handle_email_password_auth(
         # Get device info
         device_info = request.headers.get('User-Agent')
 
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        await cache_manager.try_aadd(
-            session_cache_key,
-            json.dumps(session_data),
-            expiry=token_service.token_expiry,
-        )
-
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
@@ -869,13 +828,23 @@ async def _handle_email_password_auth(
                 ),
             )
 
-        # Create JWT token with session information
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
         token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id), 'auth_provider': 'email_password'},
+            payload={'session_id': str(session_id), 'auth_provider': 'email_password'},
             expiry=token_service.token_expiry,
+        )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        session = await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
         )
 
         response_data = {

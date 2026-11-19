@@ -3,13 +3,15 @@ Service for managing and executing functions stored in cloud storage buckets.
 YAML files are stored directly in buckets, and only the file URL is stored in the database.
 """
 
+import contextlib
+
 import yaml
 from typing import Dict, Any, Optional, List
 from uuid import uuid4
 import flo_lib.http as http
 
 from common_module.blocking_io import run_in_pool
-from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
+from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -138,16 +140,16 @@ class MessageProcessorService:
 
         # Store YAML file in bucket
         yaml_bytes = yaml_content.encode('utf-8')
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.save_small_file,
-            file_content=yaml_bytes,
-            bucket_name=self.bucket_name,
-            key=file_path,
-            disable_cache=True,
-        )
+        async with self._invalidating(file_path):
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
+                file_content=yaml_bytes,
+                bucket_name=self.bucket_name,
+                key=file_path,
+                disable_cache=True,
+            )
         logger.info(f'Stored YAML file at {self.bucket_name}/{file_path}')
-        await self._cache_yaml(file_path, yaml_content)
 
     async def get_message_processor(self, **kwargs) -> Optional[MessageProcessors]:
         return await self.message_processor_repository.find_one(**kwargs)
@@ -156,16 +158,21 @@ class MessageProcessorService:
         self, processor: MessageProcessors
     ) -> str:
         filepath = f'{self.prefix}/{processor.source}'
-        cached = await self._cached_yaml(filepath)
-        if cached is not None:
-            return cached
 
-        yaml_bytes = await run_in_pool(
-            'storage', self.cloud_storage_manager.read_file, self.bucket_name, filepath
+        async def load() -> str:
+            yaml_bytes = await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.read_file,
+                self.bucket_name,
+                filepath,
+            )
+            return yaml_bytes.decode('utf-8')
+
+        if self.cache_manager is None:
+            return await load()
+        return await self.cache_manager.read_through(
+            self._yaml_cache_key(filepath), load, ttl=self.yaml_cache_seconds
         )
-        yaml_content = yaml_bytes.decode('utf-8')
-        await self._cache_yaml(filepath, yaml_content)
-        return yaml_content
 
     async def list_message_processors(self) -> List[MessageProcessors]:
         processors = await self.message_processor_repository.find()
@@ -197,14 +204,14 @@ class MessageProcessorService:
             return False
 
         file_path = f'{self.prefix}/{processor.source}'
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.delete_file,
-            self.bucket_name,
-            file_path,
-        )
+        async with self._invalidating(file_path):
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.delete_file,
+                self.bucket_name,
+                file_path,
+            )
         logger.info(f'Deleted YAML file at {self.bucket_name}/{file_path}')
-        await self._forget_yaml(file_path)
 
         await self.message_processor_repository.delete_all(id=processor_id)
         return True
@@ -217,44 +224,15 @@ class MessageProcessorService:
         )
         return result
 
-    # YAML cache. A Redis failure only costs a storage read, so it is logged,
-    # never raised.
+    # YAML cache: generation-checked (CacheManager.read_through/invalidating),
+    # so a read racing an update or delete can never put the old YAML back.
+    # Writes are strict: with Redis down they fail (503) before storage changes.
 
     @staticmethod
     def _yaml_cache_key(file_path: str) -> str:
         return f'message_processor_yaml/{file_path}'
 
-    async def _cached_yaml(self, file_path: str) -> Optional[str]:
+    def _invalidating(self, file_path: str):
         if self.cache_manager is None:
-            return None
-        try:
-            return await self.cache_manager.aget_str(self._yaml_cache_key(file_path))
-        except CacheUnavailableError as e:
-            logger.warning(f'Message processor YAML cache read failed: {e}')
-            return None
-
-    async def _cache_yaml(self, file_path: str, yaml_content: str) -> None:
-        if self.cache_manager is None:
-            return
-        try:
-            await self.cache_manager.aadd(
-                self._yaml_cache_key(file_path),
-                yaml_content,
-                expiry=self.yaml_cache_seconds,
-            )
-        except CacheUnavailableError as e:
-            logger.warning(
-                f'Message processor YAML cache write failed for {file_path}; '
-                f'a stale copy may be served for up to {self.yaml_cache_seconds}s: {e}'
-            )
-
-    async def _forget_yaml(self, file_path: str) -> None:
-        if self.cache_manager is None:
-            return
-        try:
-            await self.cache_manager.aremove(self._yaml_cache_key(file_path))
-        except CacheUnavailableError as e:
-            logger.warning(
-                f'Message processor YAML cache delete failed for {file_path}; '
-                f'it expires within {self.yaml_cache_seconds}s: {e}'
-            )
+            return contextlib.nullcontext()
+        return self.cache_manager.invalidating(self._yaml_cache_key(file_path))

@@ -66,13 +66,12 @@ async def resolve_entity_current_version(
     Raises:
         ValueError: If no entity matches name+namespace
     """
-    cached_version = await cache_manager.try_aget_str(cache_key)
-    if cached_version:
-        return int(cached_version)
 
-    entity = await repository.find_one(name=name, namespace=namespace)
-    if not entity:
+    async def load() -> Optional[str]:
+        entity = await repository.find_one(name=name, namespace=namespace)
+        return str(entity.current_version) if entity else None
+
+    cached_version = await cache_manager.read_through(cache_key, load, ttl=ttl)
+    if cached_version is None:
         raise ValueError(not_found_message)
-
-    await cache_manager.try_aadd(cache_key, str(entity.current_version), expiry=ttl)
-    return entity.current_version
+    return int(cached_version)

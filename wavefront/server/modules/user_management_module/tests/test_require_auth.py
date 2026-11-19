@@ -541,7 +541,7 @@ async def test_session_cache_hit_skips_the_database():
     )
 
     assert request.state.session.user_id == 'u1'
-    deps['cache_manager'].aget_str.assert_awaited_once()
+    deps['cache_manager'].read_through.assert_awaited_once()
     session_repository.find_one.assert_not_awaited()
 
 
@@ -549,9 +549,7 @@ async def test_session_cache_hit_skips_the_database():
 async def test_session_cache_outage_falls_back_to_the_database():
     """Redis down must not fail auth: the database is the source of truth."""
     deps = _jwt_deps()
-    deps['cache_manager'].aget_str = AsyncMock(
-        side_effect=CacheUnavailableError('down')
-    )
+    deps['cache_manager'].get_str.side_effect = CacheUnavailableError('down')
     session_repository = AsyncMock()
     session_repository.find_one.return_value = _db_session()
     request = _http_request(headers={'Authorization': 'Bearer token'})
@@ -563,25 +561,13 @@ async def test_session_cache_outage_falls_back_to_the_database():
     assert secret_access is False  # reached the route
     assert request.state.session.user_id == 'u1'
     session_repository.find_one.assert_awaited_once_with(id='s1')
-    # Redis just failed; don't spend another timeout trying to write to it.
-    deps['cache_manager'].aadd.assert_not_awaited()
+    deps['cache_manager'].add.assert_not_called()  # no fill while Redis is down
 
 
 @pytest.mark.asyncio
-async def test_session_cache_lookup_uses_one_attempt():
-    deps = _jwt_deps()
-    request = _http_request(headers={'Authorization': 'Bearer token'})
-
-    await _secret_access_after_dispatch(_middleware(), request, **deps)
-
-    assert deps['cache_manager'].aget_str.await_args.kwargs['attempts'] == 1
-
-
-@pytest.mark.asyncio
-async def test_cache_miss_caches_the_session_and_tolerates_a_failed_write():
+async def test_cache_miss_loads_from_the_database_and_fills():
     deps = _jwt_deps()
     deps['cache_manager'].get_str.return_value = None
-    deps['cache_manager'].aadd = AsyncMock(side_effect=CacheUnavailableError('down'))
     session_repository = AsyncMock()
     session_repository.find_one.return_value = _db_session()
     request = _http_request(headers={'Authorization': 'Bearer token'})
@@ -590,17 +576,19 @@ async def test_cache_miss_caches_the_session_and_tolerates_a_failed_write():
         _middleware(), request, session_repository=session_repository, **deps
     )
 
-    assert secret_access is False  # the failed cache write didn't fail the request
-    deps['cache_manager'].aadd.assert_awaited_once()
+    assert secret_access is False
+    deps['cache_manager'].add.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_session_cache_outage_still_rejects_a_session_of_another_user():
-    """The database fallback must keep checking who owns the session."""
+@pytest.mark.parametrize('redis_down', [False, True])
+async def test_session_of_another_user_is_rejected(redis_down):
+    """Ownership is checked on every path, including the database fallback."""
     deps = _jwt_deps()
-    deps['cache_manager'].aget_str = AsyncMock(
-        side_effect=CacheUnavailableError('down')
-    )
+    if redis_down:
+        deps['cache_manager'].get_str.side_effect = CacheUnavailableError('down')
+    else:
+        deps['cache_manager'].get_str.return_value = None
     session_repository = AsyncMock()
     session_repository.find_one.return_value = _db_session(user_id='u2')
     request = _http_request(headers={'Authorization': 'Bearer token'})
@@ -610,6 +598,21 @@ async def test_session_cache_outage_still_rejects_a_session_of_another_user():
     )
 
     assert secret_access is None  # rejected: never reached the route
+
+
+@pytest.mark.asyncio
+async def test_unknown_session_is_rejected():
+    deps = _jwt_deps()
+    deps['cache_manager'].get_str.return_value = None
+    session_repository = AsyncMock()
+    session_repository.find_one.return_value = None
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    secret_access = await _secret_access_after_dispatch(
+        _middleware(), request, session_repository=session_repository, **deps
+    )
+
+    assert secret_access is None
 
 
 @pytest.mark.asyncio
@@ -677,3 +680,33 @@ async def test_invalid_token_answers_401_not_500(error):
     )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_unreachable_kms_answers_503_not_401():
+    """A KMS outage must not look like a logout: the token may be valid."""
+    from common_module.security.public_key_cache import PublicKeyUnavailableError
+
+    deps = _jwt_deps()
+    deps['token_service'].decode_token_async = AsyncMock(
+        side_effect=PublicKeyUnavailableError('KMS down')
+    )
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'unavailable'}
+    request = _http_request(headers={'Authorization': 'Bearer token'})
+
+    async def call_next(_req):
+        raise AssertionError('must not reach the route')
+
+    response = await _middleware().dispatch(
+        request,
+        call_next,
+        response_formatter=formatter,
+        session_repository=AsyncMock(),
+        auth_secrets_repository=AsyncMock(),
+        secret_cipher=_cipher(False),
+        **deps,
+    )
+
+    assert response.status_code == 503
+    assert 'Retry-After' in response.headers

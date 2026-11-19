@@ -45,16 +45,17 @@ async def test_invalidate_user_sessions_clears_every_cache_key_then_rows():
     cache_manager.remove.assert_any_call(get_session_cache_key('s2'))
     cache_manager.remove.assert_any_call('uid')
     session_repository.delete_all.assert_awaited_once_with(user_id='uid')
-    # All three cache deletes happen before the rows go.
-    assert [kind for kind, _ in order] == ['cache', 'cache', 'cache', 'db']
+    # Every key is invalidated before the rows go, and again after (so a fill
+    # that raced the revocation can't revive a session).
+    assert [kind for kind, _ in order] == ['cache'] * 3 + ['db'] + ['cache'] * 3
 
 
 @pytest.mark.asyncio
 async def test_invalidate_user_sessions_keeps_rows_when_cache_remove_fails():
     # A failed cache delete must surface before the DB rows go, so the caller
     # fails instead of reporting success while the cached session still works.
-    cache_manager = MagicMock()
-    cache_manager.aremove = AsyncMock(side_effect=CacheUnavailableError('redis down'))
+    cache_manager = add_async_cache_methods(MagicMock())
+    cache_manager.remove.side_effect = CacheUnavailableError('redis down')
     service, session_repository = _service([SimpleNamespace(id='s1')], cache_manager)
 
     with pytest.raises(CacheUnavailableError):

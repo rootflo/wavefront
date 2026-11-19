@@ -276,42 +276,30 @@ class WorkflowCrudService:
                     f'Workflow YAML not found for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
                 )
 
-        # Try YAML cache first
-        yaml_cache_key = get_workflow_yaml_cache_key(
-            namespace, workflow_name, resolved_version
-        )
-        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
-
-        if cached_yaml:
-            logger.info(
-                f'Cache hit for workflow YAML - namespace: {namespace}, name: {workflow_name}, version: {resolved_version}'
-            )
-            return cached_yaml
-
-        # Fetch YAML from cloud storage
         yaml_key = get_workflow_yaml_key(namespace, workflow_name, resolved_version)
-        logger.info(f'Fetching workflow YAML from storage - key: {yaml_key}')
 
-        try:
-            yaml_bytes = await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.read_file,
-                self.bucket_name,
-                yaml_key,
-            )
-            yaml_content = yaml_bytes.decode('utf-8')
+        async def load_yaml() -> str:
+            try:
+                yaml_bytes = await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.read_file,
+                    self.bucket_name,
+                    yaml_key,
+                )
+            except CloudStorageFileNotFoundError:
+                logger.error(
+                    f'YAML not found in cloud storage for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
+                )
+                raise ValueError(
+                    f'Workflow YAML not found for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
+                )
+            return yaml_bytes.decode('utf-8')
 
-            # Cache YAML
-            await self.cache_manager.try_aadd(
-                yaml_cache_key, yaml_content, expiry=self.cache_ttl
-            )
-        except CloudStorageFileNotFoundError:
-            logger.error(
-                f'YAML not found in cloud storage for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
-            )
-            raise ValueError(
-                f'Workflow YAML not found for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
-            )
+        yaml_content = await self.cache_manager.read_through(
+            get_workflow_yaml_cache_key(namespace, workflow_name, resolved_version),
+            load_yaml,
+            ttl=self.cache_ttl,
+        )
 
         logger.info(
             f'Successfully retrieved workflow YAML - namespace: {namespace}, name: {workflow_name}, version: {resolved_version}'
@@ -576,67 +564,59 @@ class WorkflowCrudService:
                 f'Workflow already exists with name: {name} in namespace: {namespace_dict["name"]}'
             )
 
-        # Create workflow identity row, then its first version row. These are two
-        # separate, non-atomic calls; if the second one fails, compensate by
-        # removing the identity row rather than leaving an orphaned workflow with
-        # zero versions that would permanently block this (name, namespace) pair.
-        workflow = await self.workflow_repository.create(
-            name=name, namespace=namespace_dict['name'], current_version=1
-        )
-        try:
-            await self.workflow_version_repository.create(
-                workflow_id=workflow.id, version=1, is_deleted=False
+        # Strict invalidation around the creation (lists, and any lookup of this
+        # name); the new workflow is cached by its first read, never written here.
+        async with self.cache_manager.invalidating(
+            get_workflows_list_cache_key(None),
+            get_workflows_list_cache_key(namespace),
+            get_workflow_current_version_cache_key(namespace, name),
+            get_workflow_yaml_cache_key(namespace, name, 1),
+        ):
+            # Create workflow identity row, then its first version row. These are two
+            # separate, non-atomic calls; if the second one fails, compensate by
+            # removing the identity row rather than leaving an orphaned workflow with
+            # zero versions that would permanently block this (name, namespace) pair.
+            workflow = await self.workflow_repository.create(
+                name=name, namespace=namespace_dict['name'], current_version=1
             )
-        except Exception:
-            logger.error(
-                f'Failed to create first version for workflow {workflow.id} - rolling back identity row'
-            )
-            await self.workflow_repository.delete_all(id=workflow.id)
-            raise
+            try:
+                await self.workflow_version_repository.create(
+                    workflow_id=workflow.id, version=1, is_deleted=False
+                )
+            except Exception:
+                logger.error(
+                    f'Failed to create first version for workflow {workflow.id} - rolling back identity row'
+                )
+                await self.workflow_repository.delete_all(id=workflow.id)
+                raise
 
-        # Upload YAML to cloud storage. If this fails (storage error, busy pool,
-        # cancelled request), roll back the identity and version rows (the FK
-        # cascade removes the version row), as agent create does, so a failed
-        # upload doesn't leave a YAML-less workflow blocking this name.
-        yaml_key = get_workflow_yaml_key(namespace, name, 1)
-        yaml_bytes = yaml_content.encode('utf-8')
-        try:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.save_small_file,
-                file_content=yaml_bytes,
-                bucket_name=self.bucket_name,
-                key=yaml_key,
-                disable_cache=True,
-            )
-        except BaseException:
-            # Roll back, then re-raise: a busy pool still answers 503.
-            logger.error(
-                f'Failed to upload YAML for new workflow {workflow.id} - rolling back identity and version rows'
-            )
-            await self.workflow_repository.delete_all(id=workflow.id)
-            raise
+            # Upload YAML to cloud storage. If this fails (storage error, busy pool,
+            # cancelled request), roll back the identity and version rows (the FK
+            # cascade removes the version row), as agent create does, so a failed
+            # upload doesn't leave a YAML-less workflow blocking this name.
+            yaml_key = get_workflow_yaml_key(namespace, name, 1)
+            yaml_bytes = yaml_content.encode('utf-8')
+            try:
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.save_small_file,
+                    file_content=yaml_bytes,
+                    bucket_name=self.bucket_name,
+                    key=yaml_key,
+                    disable_cache=True,
+                )
+            except BaseException:
+                # Roll back, then re-raise: a busy pool still answers 503.
+                logger.error(
+                    f'Failed to upload YAML for new workflow {workflow.id} - rolling back identity and version rows'
+                )
+                await self.workflow_repository.delete_all(id=workflow.id)
+                raise
 
         # Build response with YAML content
         workflow_dict = workflow.to_dict()
         workflow_dict['version'] = 1
         workflow_dict['yaml_content'] = yaml_content
-
-        # Cache workflow metadata
-        workflow_cache_key = get_workflow_by_id_cache_key(workflow.id)
-        await self.cache_manager.try_aadd(
-            workflow_cache_key, json.dumps(workflow.to_dict()), expiry=self.cache_ttl
-        )
-
-        # Cache YAML content
-        yaml_cache_key = get_workflow_yaml_cache_key(namespace, name, 1)
-        await self.cache_manager.try_aadd(
-            yaml_cache_key, yaml_content, expiry=self.cache_ttl
-        )
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
-        await self.cache_manager.try_aremove(get_workflows_list_cache_key(namespace))
 
         logger.info(
             f'Successfully created workflow - namespace: {namespace}, name: {name}'
@@ -660,27 +640,17 @@ class WorkflowCrudService:
         Raises:
             ValueError: If workflow not found
         """
-        # Try cache first
-        cache_key = get_workflow_by_id_cache_key(workflow_id)
-        cached_workflow = await self.cache_manager.try_aget_str(cache_key)
 
-        if cached_workflow:
-            logger.info(f'Cache hit for workflow ID: {workflow_id}')
-            workflow_dict = json.loads(cached_workflow)
-        else:
-            # Fetch from DB
-            logger.info(f'Fetching workflow from DB - ID: {workflow_id}')
+        async def load_workflow() -> Optional[str]:
             workflow = await self.workflow_repository.find_one(id=workflow_id)
+            return json.dumps(workflow.to_dict()) if workflow else None
 
-            if not workflow:
-                raise ValueError(f'Workflow not found with ID: {workflow_id}')
-
-            workflow_dict = workflow.to_dict()
-
-            # Cache workflow metadata
-            await self.cache_manager.try_aadd(
-                cache_key, json.dumps(workflow_dict), expiry=self.cache_ttl
-            )
+        cached_workflow = await self.cache_manager.read_through(
+            get_workflow_by_id_cache_key(workflow_id), load_workflow, ttl=self.cache_ttl
+        )
+        if cached_workflow is None:
+            raise ValueError(f'Workflow not found with ID: {workflow_id}')
+        workflow_dict = json.loads(cached_workflow)
 
         resolved_version = (
             version if version is not None else workflow_dict['current_version']
@@ -696,35 +666,17 @@ class WorkflowCrudService:
                 )
 
         # Fetch YAML from cloud storage (with caching)
-        yaml_cache_key = get_workflow_yaml_cache_key(
+        yaml_key = get_workflow_yaml_key(
             workflow_dict['namespace'], workflow_dict['name'], resolved_version
         )
-        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
-        if cached_yaml:
-            logger.info(
-                f'Cache hit for workflow YAML - namespace: {workflow_dict["namespace"]}, name: {workflow_dict["name"]}, version: {resolved_version}'
-            )
-            yaml_content = cached_yaml
-        else:
-            # Fetch YAML from cloud storage
-            yaml_key = get_workflow_yaml_key(
-                workflow_dict['namespace'], workflow_dict['name'], resolved_version
-            )
-            logger.info(f'Fetching workflow YAML from storage - key: {yaml_key}')
-
+        async def load_yaml() -> str:
             try:
                 yaml_bytes = await run_in_pool(
                     'storage',
                     self.cloud_storage_manager.read_file,
                     self.bucket_name,
                     yaml_key,
-                )
-                yaml_content = yaml_bytes.decode('utf-8')
-
-                # Cache YAML
-                await self.cache_manager.try_aadd(
-                    yaml_cache_key, yaml_content, expiry=self.cache_ttl
                 )
             except CloudStorageFileNotFoundError:
                 logger.error(
@@ -733,6 +685,15 @@ class WorkflowCrudService:
                 raise ValueError(
                     f'Workflow YAML not found for workflow ID: {workflow_id}, version: {resolved_version}'
                 )
+            return yaml_bytes.decode('utf-8')
+
+        yaml_content = await self.cache_manager.read_through(
+            get_workflow_yaml_cache_key(
+                workflow_dict['namespace'], workflow_dict['name'], resolved_version
+            ),
+            load_yaml,
+            ttl=self.cache_ttl,
+        )
 
         # Add version/YAML to response
         workflow_dict['version'] = resolved_version
@@ -818,45 +779,43 @@ class WorkflowCrudService:
                 )
             write_version = target_version
 
-        # Write YAML to cloud storage at the resolved version's key. If this
-        # fails while branching a new version, roll back only that new version
-        # row (prior versions untouched), as agent update does; an in-place edit
-        # has no new row to remove.
-        yaml_key = get_workflow_yaml_key(
-            workflow.namespace, workflow.name, write_version
-        )
-        yaml_bytes = yaml_content.encode('utf-8')
+        # Strict invalidation around the write: with Redis down this fails (503)
+        # before storage changes, and a read racing the edit can never put the
+        # old YAML back for this version. When branching, the new version row
+        # already exists, so it is rolled back on ANY failure before the upload
+        # lands: the strict pre-invalidation, a refused or failed upload, or a
+        # cancelled request. An in-place edit has no new row to remove.
+        uploaded = False
         try:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.save_small_file,
-                file_content=yaml_bytes,
-                bucket_name=self.bucket_name,
-                key=yaml_key,
-                disable_cache=True,
-            )
+            async with self.cache_manager.invalidating(
+                get_workflow_yaml_cache_key(
+                    workflow.namespace, workflow.name, write_version
+                ),
+                get_workflows_list_cache_key(None),
+                get_workflows_list_cache_key(workflow.namespace),
+            ):
+                yaml_key = get_workflow_yaml_key(
+                    workflow.namespace, workflow.name, write_version
+                )
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.save_small_file,
+                    file_content=yaml_content.encode('utf-8'),
+                    bucket_name=self.bucket_name,
+                    key=yaml_key,
+                    disable_cache=True,
+                )
+                uploaded = True
         except BaseException:
-            # Roll back, then re-raise: a busy pool still answers 503.
-            if create_new_version:
+            # Roll back, then re-raise: a busy pool or Redis outage still answers 503.
+            if create_new_version and not uploaded:
                 logger.error(
-                    f'Failed to upload YAML for new version {write_version} of workflow {workflow_id} - rolling back the new version row'
+                    f'Failed to write YAML for new version {write_version} of workflow {workflow_id} - rolling back the new version row'
                 )
                 await self.workflow_version_repository.delete_all(
                     workflow_id=workflow.id, version=write_version
                 )
             raise
-
-        # Invalidate caches
-        yaml_cache_key = get_workflow_yaml_cache_key(
-            workflow.namespace, workflow.name, write_version
-        )
-        await self.cache_manager.try_aremove(yaml_cache_key)
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
-        await self.cache_manager.try_aremove(
-            get_workflows_list_cache_key(workflow.namespace)
-        )
 
         # Build response
         workflow_dict = workflow.to_dict()
@@ -894,38 +853,34 @@ class WorkflowCrudService:
             workflow_id=workflow.id, limit=100000
         )
 
-        # Delete from DB (cascades to workflow_versions)
-        await self.workflow_repository.delete_all(id=workflow_id)
+        cache_keys = [
+            get_workflow_by_id_cache_key(workflow_id),
+            get_workflow_current_version_cache_key(workflow.namespace, workflow.name),
+            get_workflows_list_cache_key(None),
+            get_workflows_list_cache_key(workflow.namespace),
+        ] + [
+            get_workflow_yaml_cache_key(workflow.namespace, workflow.name, v.version)
+            for v in versions
+        ]
+        async with self.cache_manager.invalidating(*cache_keys):
+            # Delete from DB (cascades to workflow_versions)
+            await self.workflow_repository.delete_all(id=workflow_id)
 
-        async def _delete_version_yaml(version: int) -> None:
-            yaml_key = get_workflow_yaml_key(workflow.namespace, workflow.name, version)
-            try:
-                await asyncio.to_thread(
-                    self.cloud_storage_manager.delete_file, self.bucket_name, yaml_key
+            async def _delete_version_yaml(version: int) -> None:
+                yaml_key = get_workflow_yaml_key(
+                    workflow.namespace, workflow.name, version
                 )
-            except Exception as e:
-                logger.error(f'Failed to delete YAML from cloud storage: {str(e)}')
-                # Continue - DB record is deleted
+                try:
+                    await asyncio.to_thread(
+                        self.cloud_storage_manager.delete_file,
+                        self.bucket_name,
+                        yaml_key,
+                    )
+                except Exception as e:
+                    logger.error(f'Failed to delete YAML from cloud storage: {str(e)}')
+                    # Continue - DB record is deleted
 
-            yaml_cache_key = get_workflow_yaml_cache_key(
-                workflow.namespace, workflow.name, version
-            )
-            await self.cache_manager.try_aremove(yaml_cache_key)
-
-        await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
-
-        # Invalidate caches
-        workflow_cache_key = get_workflow_by_id_cache_key(workflow_id)
-        await self.cache_manager.try_aremove(workflow_cache_key)
-        await self.cache_manager.try_aremove(
-            get_workflow_current_version_cache_key(workflow.namespace, workflow.name)
-        )
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
-        await self.cache_manager.try_aremove(
-            get_workflows_list_cache_key(workflow.namespace)
-        )
+            await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
 
         logger.info(f'Successfully deleted workflow - ID: {workflow_id}')
         return True
@@ -940,28 +895,21 @@ class WorkflowCrudService:
         Returns:
             List[dict]: List of workflows (without YAML content)
         """
-        # Try cache first
-        cache_key = get_workflows_list_cache_key(namespace)
-        cached_list = await self.cache_manager.try_aget_str(cache_key)
 
-        if cached_list:
-            logger.info(f'Cache hit for workflows list - namespace: {namespace}')
-            return json.loads(cached_list)
+        async def load() -> str:
+            if namespace:
+                workflows = await self.workflow_repository.find(namespace=namespace)
+            else:
+                workflows = await self.workflow_repository.find()
+            return json.dumps([workflow.to_dict() for workflow in workflows])
 
-        # Fetch from DB
-        logger.info(f'Fetching workflows list from DB - namespace: {namespace}')
-
-        if namespace:
-            workflows = await self.workflow_repository.find(namespace=namespace)
-        else:
-            workflows = await self.workflow_repository.find()
-
-        workflows_list = [workflow.to_dict() for workflow in workflows]
-
-        # Cache the result (shorter TTL for lists)
-        await self.cache_manager.try_aadd(
-            cache_key, json.dumps(workflows_list), expiry=1800
-        )  # 30 min
+        workflows_list = json.loads(
+            await self.cache_manager.read_through(
+                get_workflows_list_cache_key(namespace),
+                load,
+                ttl=1800,  # 30 min
+            )
+        )
 
         logger.info(
             f'Successfully retrieved {len(workflows_list)} workflows - namespace: {namespace}'
@@ -996,18 +944,17 @@ class WorkflowCrudService:
                 f'Workflow {workflow_id} has no live version {version} to promote'
             )
 
-        updated_workflow = await self.workflow_repository.find_one_and_update(
-            {'id': workflow_id}, current_version=version, refresh=True
-        )
-
-        await self.cache_manager.try_aremove(get_workflow_by_id_cache_key(workflow_id))
-        await self.cache_manager.try_aremove(
-            get_workflow_current_version_cache_key(workflow.namespace, workflow.name)
-        )
-        await self.cache_manager.try_aremove(get_workflows_list_cache_key(None))
-        await self.cache_manager.try_aremove(
-            get_workflows_list_cache_key(workflow.namespace)
-        )
+        # Strict: default reads resolve current_version through these keys, so
+        # an acknowledged promotion must be visible to them.
+        async with self.cache_manager.invalidating(
+            get_workflow_by_id_cache_key(workflow_id),
+            get_workflow_current_version_cache_key(workflow.namespace, workflow.name),
+            get_workflows_list_cache_key(None),
+            get_workflows_list_cache_key(workflow.namespace),
+        ):
+            updated_workflow = await self.workflow_repository.find_one_and_update(
+                {'id': workflow_id}, current_version=version, refresh=True
+            )
 
         logger.info(
             f'Successfully promoted workflow {workflow_id} to version {version}'
@@ -1085,13 +1032,12 @@ class WorkflowCrudService:
                 f'Workflow {workflow_id} has no live version {version} to delete'
             )
 
-        await self.workflow_version_repository.find_one_and_update(
-            {'workflow_id': workflow.id, 'version': version}, is_deleted=True
-        )
-
-        await self.cache_manager.try_aremove(
+        async with self.cache_manager.invalidating(
             get_workflow_yaml_cache_key(workflow.namespace, workflow.name, version)
-        )
+        ):
+            await self.workflow_version_repository.find_one_and_update(
+                {'workflow_id': workflow.id, 'version': version}, is_deleted=True
+            )
 
         logger.info(f'Successfully deleted workflow {workflow_id} version {version}')
         return True

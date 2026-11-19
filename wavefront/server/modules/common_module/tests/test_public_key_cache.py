@@ -7,7 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from common_module.blocking_io import shutdown_blocking_io
-from common_module.security.public_key_cache import PublicKeyCache, seconds_setting
+from common_module.security.public_key_cache import (
+    PublicKeyCache,
+    PublicKeyUnavailableError,
+    seconds_setting,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -135,8 +139,22 @@ def test_fetch_errors_propagate():
 
     cache = PublicKeyCache(broken)
 
-    with pytest.raises(RuntimeError, match='KMS down'):
+    with pytest.raises(PublicKeyUnavailableError, match='KMS down'):
         cache.verify(accept_only('k1'))
+
+
+async def test_fetch_errors_are_never_jwt_errors():
+    """A KMS outage must not be mistaken for an invalid token (401)."""
+    import jwt
+
+    def broken():
+        raise jwt.InvalidTokenError('looks like a token problem')
+
+    cache = PublicKeyCache(broken)
+
+    with pytest.raises(PublicKeyUnavailableError) as raised:
+        await cache.averify(accept_only('k1'))
+    assert not isinstance(raised.value, jwt.InvalidTokenError)
 
 
 def test_seconds_setting():

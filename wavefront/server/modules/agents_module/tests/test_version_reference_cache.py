@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from agents_module.utils.version_reference_utils import resolve_entity_current_version
+from flo_testing import add_async_cache_methods
 
 
 def make_cache(cached=None):
-    cache = Mock()
-    cache.try_aget_str = AsyncMock(return_value=cached)
-    cache.try_aadd = AsyncMock(return_value=True)
+    cache = add_async_cache_methods(Mock())
+    cache.get_str.return_value = cached
     return cache
 
 
@@ -38,7 +38,7 @@ async def test_cache_miss_reads_the_database_and_fills_the_cache():
     repository = Mock(find_one=AsyncMock(return_value=Mock(current_version=3)))
 
     assert await resolve(cache, repository) == 3
-    cache.try_aadd.assert_awaited_once_with('current-version/ns/flow', '3', expiry=30)
+    cache.add.assert_called_once_with('current-version/ns/flow', '3', 30)
 
 
 async def test_unknown_entity_raises():
@@ -75,4 +75,4 @@ async def test_workflow_yaml_is_read_off_the_loop_and_cached():
 
     assert yaml_content == 'arium: {}\n'
     assert threads and threading.get_ident() not in threads
-    service.cache_manager.try_aadd.assert_awaited_once()
+    service.cache_manager.add.assert_called_once()

@@ -7,6 +7,10 @@ from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 
 
+# Same TTL the definition cache had before (CacheManager's add default).
+_DEFINITION_CACHE_SECONDS = 3600
+
+
 class ApiServicesManager:
     """Manager for API services."""
 
@@ -29,32 +33,34 @@ class ApiServicesManager:
     ) -> ApiServices | None:
         """Create a new API service."""
         service_def_path = f'api_services/{id}.yaml'
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.save_small_file,
-            file_content=service_def_yaml.encode('utf-8'),
-            bucket_name=self.application_bucket,
-            key=service_def_path,
-            content_type='application/yaml',
-        )
-        await self.cache_manager.try_aadd(service_def_path, service_def_yaml)
-        return await self.api_services_repository.create(
-            id=id, service_def_path=service_def_path
-        )
+        async with self.cache_manager.invalidating(service_def_path):
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
+                file_content=service_def_yaml.encode('utf-8'),
+                bucket_name=self.application_bucket,
+                key=service_def_path,
+                content_type='application/yaml',
+            )
+            return await self.api_services_repository.create(
+                id=id, service_def_path=service_def_path
+            )
 
     async def fetch_service_def(self, api_services: ApiServices) -> str:
         service_def_path = f'api_services/{api_services.id}.yaml'
-        cache_entry = await self.cache_manager.try_aget_str(service_def_path)
-        if cache_entry:
-            return cache_entry
-        yaml_bytes: bytes = await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.read_file,
-            bucket_name=self.application_bucket,
-            file_path=service_def_path,
+
+        async def load() -> str:
+            yaml_bytes: bytes = await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.read_file,
+                bucket_name=self.application_bucket,
+                file_path=service_def_path,
+            )
+            return yaml_bytes.decode('utf-8')
+
+        return await self.cache_manager.read_through(
+            service_def_path, load, ttl=_DEFINITION_CACHE_SECONDS
         )
-        yaml_content = yaml_bytes.decode('utf-8')
-        return yaml_content
 
     async def get_api_service(self, id: str) -> ApiServices | None:
         """Get an API service by id."""
@@ -65,24 +71,26 @@ class ApiServicesManager:
         return await self.api_services_repository.find()
 
     async def update_api_service(self, id: str, service_def_yaml: str) -> bool:
-        """Update an API service."""
+        """Update an API service.
+
+        The reload that follows reads the definition through the cache, so the
+        change is wrapped in a strict invalidation: with Redis down this fails
+        (503) before anything changes, and the old definition can never be
+        reloaded after a successful update.
+        """
         service_def_path = f'api_services/{id}.yaml'
-        await run_in_pool(
-            'storage',
-            self.cloud_storage_manager.save_small_file,
-            file_content=service_def_yaml.encode('utf-8'),
-            bucket_name=self.application_bucket,
-            key=service_def_path,
-            content_type='application/yaml',
-        )
-        await self.api_services_repository.find_one_and_update(
-            filters={'id': id}, update_data={'service_def_path': service_def_path}
-        )
-        # Strict: the cache holds the previous definition under the same key, and
-        # the reload that follows reads the cache first. A silently failed write
-        # would re-register the old URL and secrets on every worker for up to an
-        # hour. On failure this is a 503; storage and DB writes are safe to retry.
-        await self.cache_manager.aadd(service_def_path, service_def_yaml)
+        async with self.cache_manager.invalidating(service_def_path):
+            await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.save_small_file,
+                file_content=service_def_yaml.encode('utf-8'),
+                bucket_name=self.application_bucket,
+                key=service_def_path,
+                content_type='application/yaml',
+            )
+            await self.api_services_repository.find_one_and_update(
+                filters={'id': id}, update_data={'service_def_path': service_def_path}
+            )
         return True
 
     async def delete_api_service(self, id: str) -> bool:
@@ -97,22 +105,22 @@ class ApiServicesManager:
         file is harmless, but a row whose file is gone could never be deleted.
         """
         service_def_path = f'api_services/{id}.yaml'
-        try:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.delete_file,
-                bucket_name=self.application_bucket,
-                file_path=service_def_path,
-            )
-        except BlockingPoolBusyError:
-            raise
-        except Exception as e:
-            logger.warning(
-                f'Could not delete {service_def_path} from storage; '
-                f'deleting the API service anyway: {e}'
-            )
-        await self.api_services_repository.delete_all(filters={'id': id})
-        await self.cache_manager.try_aremove(service_def_path)
+        async with self.cache_manager.invalidating(service_def_path):
+            try:
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.delete_file,
+                    bucket_name=self.application_bucket,
+                    file_path=service_def_path,
+                )
+            except BlockingPoolBusyError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f'Could not delete {service_def_path} from storage; '
+                    f'deleting the API service anyway: {e}'
+                )
+            await self.api_services_repository.delete_all(filters={'id': id})
         return True
 
     async def deactivate_api_service(self, id: str) -> bool:

@@ -149,7 +149,6 @@ async def test_plugin_email_password_success_mints_session():
     assert response.status_code == status.HTTP_200_OK
     # The async entry points, so the handler can't fall back to blocking calls.
     token_service.create_token_async.assert_awaited_once()
-    cache_manager.try_aadd.assert_awaited()
     user_service.invalidate_user_sessions.assert_awaited_once_with('uid')
 
 
@@ -202,3 +201,44 @@ async def test_plugin_email_password_clears_old_sessions_before_creating_new():
 
     assert response.status_code == status.HTTP_200_OK
     assert calls == ['invalidate', 'create']
+
+
+@pytest.mark.asyncio
+async def test_plugin_email_password_failed_signing_keeps_existing_sessions():
+    # Signing happens before old sessions are revoked: a KMS or pool failure
+    # must not leave the user logged out with no replacement session.
+    from common_module.blocking_io import BlockingPoolBusyError
+
+    user = SimpleNamespace(
+        deleted=False,
+        email='u@example.com',
+        password=hash_password('Correct@123'),
+        id='uid',
+    )
+    user_repository = AsyncMock()
+    user_repository.find_one = AsyncMock(return_value=user)
+    session_repository = AsyncMock()
+    user_service = AsyncMock()
+    user_service.get_user_role_for_scope = AsyncMock(return_value='role')
+    token_service = add_async_token_methods(MagicMock())
+    token_service.create_token_async = AsyncMock(
+        side_effect=BlockingPoolBusyError('kms', 10.0)
+    )
+    token_service.token_expiry = 3600
+    request = MagicMock()
+    request.headers = {'User-Agent': 'ua'}
+
+    with pytest.raises(BlockingPoolBusyError):
+        await _handle_email_password_auth(
+            {'email': 'u@example.com', 'password': 'Correct@123'},
+            request,
+            _formatter(),
+            user_service,
+            user_repository,
+            session_repository,
+            add_async_cache_methods(MagicMock()),
+            token_service,
+        )
+
+    user_service.invalidate_user_sessions.assert_not_awaited()
+    session_repository.create.assert_not_awaited()

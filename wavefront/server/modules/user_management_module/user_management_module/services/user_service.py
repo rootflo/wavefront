@@ -323,10 +323,11 @@ class UserService:
         instead of holding the event loop.
         """
         sessions = await self.session_repository.find(user_id=user_id, limit=100)
-        for s in sessions:
-            await self.cache_manager.aremove(get_session_cache_key(s.id))
-        await self.cache_manager.aremove(str(user_id))
-        await self.session_repository.delete_all(user_id=user_id)
+        keys = [get_session_cache_key(s.id) for s in sessions] + [str(user_id)]
+        # Strict before the delete (CacheUnavailableError: a 503, rows kept),
+        # best-effort after; a fill racing the revocation can't revive a session.
+        async with self.cache_manager.invalidating(*keys):
+            await self.session_repository.delete_all(user_id=user_id)
 
     async def delete_user(self, user_id: str) -> bool:
         await self.user_role_repository.delete_all(user_id=user_id)

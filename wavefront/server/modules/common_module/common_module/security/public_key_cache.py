@@ -30,6 +30,14 @@ Key = Union[bytes, str]
 T = TypeVar('T')
 
 
+class PublicKeyUnavailableError(RuntimeError):
+    """The public key could not be fetched (KMS down or unreachable).
+
+    Deliberately not a JWT error: the token may be perfectly valid, so callers
+    must answer 503 (try again), never 401 (which clients treat as logged out).
+    """
+
+
 def seconds_setting(value: Union[float, str, None], default: float) -> float:
     """A non-negative number of seconds from config; missing means the default."""
     if value is None or value == '':
@@ -131,7 +139,14 @@ class PublicKeyCache:
         return self.cache_seconds > 0
 
     def _fetch_and_store(self) -> Key:
-        key = self._fetch()
+        try:
+            key = self._fetch()
+        except PublicKeyUnavailableError:
+            raise
+        except Exception as e:
+            raise PublicKeyUnavailableError(
+                f'Could not fetch the token public key: {type(e).__name__}: {e}'
+            ) from e
         with self._state_lock:
             self._key = key
             self._fetched_at = time.monotonic()

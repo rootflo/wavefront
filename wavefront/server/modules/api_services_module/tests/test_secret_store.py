@@ -544,7 +544,8 @@ async def test_delete_api_service_removes_cache_key():
 
     await manager.delete_api_service('acme')
 
-    cache_manager.remove.assert_called_once_with('api_services/acme.yaml')
+    # Invalidated before and after the delete.
+    assert cache_manager.remove.call_args_list == [(('api_services/acme.yaml',),)] * 2
 
 
 # ---- admin API ---------------------------------------------------------------------

@@ -146,23 +146,16 @@ class WorkflowInferenceService:
             namespace, workflow_name, resolved_version
         )
 
-        # Try to get from cache first
-        cached_result = await self.cache_manager.try_aget_str(cache_key)
-        if cached_result:
-            logger.info(
-                f'Cache hit fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
+        async def load() -> str:
+            yaml_bytes: bytes = await run_in_pool(
+                'storage',
+                self.cloud_storage_manager.read_file,
+                self.bucket_name,
+                yaml_key,
             )
-            return cached_result
+            return yaml_bytes.decode('utf-8')
 
-        logger.info(
-            f'Fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
-        )
-        yaml_bytes: bytes = await run_in_pool(
-            'storage', self.cloud_storage_manager.read_file, self.bucket_name, yaml_key
-        )
-        yaml_content = yaml_bytes.decode('utf-8')
-
-        await self.cache_manager.try_aadd(cache_key, yaml_content, expiry=3600)
+        yaml_content = await self.cache_manager.read_through(cache_key, load, ttl=3600)
 
         logger.info(
             f'Successfully fetched workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'

@@ -148,3 +148,20 @@ async def test_async_bcrypt_helpers_round_trip():
 
     assert await verify_password_async('pw', hashed) is True
     assert await verify_password_async('pw', hash_password('other')) is False
+
+
+async def test_kms_outage_is_not_an_invalid_token(signer):
+    """A valid token during a KMS outage must give 503 upstream, not 401."""
+    from common_module.security.public_key_cache import PublicKeyUnavailableError
+
+    service = make_service(signer)
+    token = make_token(service)
+
+    def kms_down(**_kwargs):
+        raise RuntimeError('KMS unreachable')
+
+    signer.get_public_key_pem = kms_down
+
+    with pytest.raises(PublicKeyUnavailableError) as raised:
+        await service.decode_token_async(token)
+    assert not isinstance(raised.value, jwt.InvalidTokenError)

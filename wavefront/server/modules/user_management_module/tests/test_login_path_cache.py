@@ -5,7 +5,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from flo_testing import add_async_cache_methods
 from db_repo_module.cache.cache_manager import CacheUnavailableError
 from user_management_module.constants.cache import (
     get_session_cache_key,
@@ -91,14 +91,10 @@ def formatter():
     )
 
 
-async def test_logout_clears_the_cache_before_deleting_the_session():
+async def test_logout_invalidates_around_the_session_delete():
     calls = []
-    cache = MagicMock(
-        aremove=AsyncMock(side_effect=lambda key: calls.append(('cache', key)) or True),
-        try_aremove=AsyncMock(
-            side_effect=lambda key: calls.append(('cache-again', key)) or True
-        ),
-    )
+    cache = add_async_cache_methods(MagicMock())
+    cache.remove.side_effect = lambda key: calls.append(('cache', key))
     sessions = MagicMock(
         delete_all=AsyncMock(side_effect=lambda **kw: calls.append(('db', kw['id'])))
     )
@@ -111,21 +107,21 @@ async def test_logout_clears_the_cache_before_deleting_the_session():
     )
 
     assert response.status_code == 200
+    session_key = get_session_cache_key('s1')
     assert calls == [
         ('cache', 'u1'),
-        ('cache', get_session_cache_key('s1')),
+        ('cache', session_key),
         ('db', 's1'),
-        ('cache-again', get_session_cache_key('s1')),
+        ('cache', 'u1'),
+        ('cache', session_key),
     ]
 
 
-@pytest.mark.parametrize('fail_on', [0, 1])
-async def test_logout_fails_cleanly_when_the_cache_cannot_be_cleared(fail_on):
+async def test_logout_fails_cleanly_when_the_cache_cannot_be_invalidated():
     """503 with the DB session untouched, so a retry (or the old token after
     Redis recovers) still finds a consistent state."""
-    outcomes = [True, True]
-    outcomes[fail_on] = CacheUnavailableError('redis down')
-    cache = MagicMock(aremove=AsyncMock(side_effect=outcomes), try_aremove=AsyncMock())
+    cache = add_async_cache_methods(MagicMock())
+    cache.remove.side_effect = CacheUnavailableError('redis down')
     sessions = MagicMock(delete_all=AsyncMock())
 
     response = await logout(

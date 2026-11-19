@@ -179,13 +179,17 @@ async def test_malformed_token_raises_invalid_token(signer):
         await service.decode_token_async('not-a-jwt')
 
 
-async def test_kms_failure_raises_invalid_token(signer):
+async def test_kms_failure_is_unavailable_not_invalid(signer):
+    """A KMS outage gives 503 upstream (retry), never 401 (logged out)."""
+    from common_module.security.public_key_cache import PublicKeyUnavailableError
+
     service = make_service(signer)
     token = make_token(service)
     signer.fail_fetch = True
 
-    with pytest.raises(jwt.InvalidTokenError):
+    with pytest.raises(PublicKeyUnavailableError) as raised:
         await service.decode_token_async(token)
+    assert not isinstance(raised.value, jwt.InvalidTokenError)
 
 
 def test_sync_decode_uses_the_same_cache(signer):

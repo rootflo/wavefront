@@ -4,6 +4,7 @@ from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Request
@@ -135,6 +136,17 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 headers={'Retry-After': str(retry_after_seconds())},
                 content=response_formatter.buildErrorResponse(
                     error='The server is busy. Please try again shortly.'
+                ),
+            )
+        except PublicKeyUnavailableError as exc:
+            # KMS is down: the token may be valid, so 503 (retry), never 401,
+            # which clients treat as "logged out".
+            logger.error(f'Token key unavailable: {exc}')
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='Authentication is temporarily unavailable. Please try again shortly.'
                 ),
             )
         except jwt.ExpiredSignatureError as exc:

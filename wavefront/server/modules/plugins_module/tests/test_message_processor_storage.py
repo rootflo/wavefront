@@ -1,9 +1,11 @@
 """Message processor YAML: storage calls run off the event loop, reads are cached.
 
-Every write goes through MessageProcessorService, so it also keeps the cache
-current. Redis failures only cost a storage read and are never raised.
+Reads go through the generation-checked cache and fall back to storage if
+Redis fails; writes invalidate strictly, so with Redis down they fail before
+storage changes.
 """
 
+import contextlib
 import threading
 from unittest.mock import AsyncMock, Mock
 
@@ -58,21 +60,33 @@ class FakeStorage:
 
 
 class FakeCache:
+    """read_through / invalidating with CacheManager's failure semantics:
+    reads fall back to the loader, writes are strict before the change."""
+
     def __init__(self):
         self.data = {}
-        self.aget_str = AsyncMock(side_effect=self._get)
-        self.aadd = AsyncMock(side_effect=self._add)
-        self.aremove = AsyncMock(side_effect=self._remove)
+        self.down = False
+        self.read_through = AsyncMock(side_effect=self._read_through)
 
-    async def _get(self, key, default=None, **_kwargs):
-        return self.data.get(key, default)
+    async def _read_through(self, key, loader, *, ttl):
+        if self.down:
+            return await loader()
+        if key in self.data:
+            return self.data[key]
+        value = await loader()
+        if value is not None:
+            self.data[key] = value
+        return value
 
-    async def _add(self, key, value, expiry=3600, **_kwargs):
-        self.data[key] = value
-        return True
-
-    async def _remove(self, key, **_kwargs):
-        return self.data.pop(key, None) is not None
+    @contextlib.asynccontextmanager
+    async def invalidating(self, *keys):
+        if self.down:
+            raise CacheUnavailableError('down')
+        for key in keys:
+            self.data.pop(key, None)
+        yield
+        for key in keys:
+            self.data.pop(key, None)
 
 
 def make_service(storage, cache=None):
@@ -105,8 +119,7 @@ async def test_read_runs_off_the_loop_and_is_cached():
 
 async def test_redis_down_on_read_falls_back_to_storage():
     storage, cache = FakeStorage(), FakeCache()
-    cache.aget_str.side_effect = CacheUnavailableError('down')
-    cache.aadd.side_effect = CacheUnavailableError('down')
+    cache.down = True
     service = make_service(storage, cache)
 
     assert await service.get_message_processor_yaml_content(processor()) == VALID_YAML
@@ -124,7 +137,7 @@ async def test_update_replaces_the_cached_yaml():
     )
 
     assert await service.get_message_processor_yaml_content(processor()) == updated
-    assert storage.count('read_file') == 1  # the update refreshed the cache
+    assert storage.count('read_file') == 2  # the update invalidated the cache
     assert threading.get_ident() not in [thread for _, thread in storage.calls]
 
 
@@ -152,13 +165,21 @@ async def test_delete_removes_the_file_and_the_cached_yaml():
     assert threading.get_ident() not in [thread for _, thread in storage.calls]
 
 
-async def test_failed_cache_delete_does_not_fail_the_delete():
+async def test_redis_down_stops_writes_before_storage_changes():
+    """Strict invalidation: a 503 with nothing changed, never a stale cache."""
     storage, cache = FakeStorage(), FakeCache()
-    cache.aremove.side_effect = CacheUnavailableError('down')
+    cache.down = True
     service = make_service(storage, cache)
 
-    assert await service.delete_message_processor('p1') is True
-    assert storage.count('delete_file') == 1
+    with pytest.raises(CacheUnavailableError):
+        await service.delete_message_processor('p1')
+    with pytest.raises(CacheUnavailableError):
+        await service.save_message_processor_yaml(
+            yaml_content=VALID_YAML, file_path='message_processors/v1/p1.yaml'
+        )
+
+    assert storage.count('delete_file') == 0
+    assert storage.count('save_small_file') == 0
 
 
 async def test_zero_seconds_turns_the_cache_off():
@@ -176,8 +197,7 @@ async def test_zero_seconds_turns_the_cache_off():
     await service.get_message_processor_yaml_content(processor())
 
     assert storage.count('read_file') == 2
-    cache.aget_str.assert_not_awaited()
-    cache.aadd.assert_not_awaited()
+    cache.read_through.assert_not_awaited()
 
 
 def test_cache_seconds_setting():

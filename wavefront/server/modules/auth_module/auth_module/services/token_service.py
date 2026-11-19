@@ -176,10 +176,9 @@ class TokenService:
             raise jwt.InvalidTokenError('Invalid token') from e
 
     def _fetch_public_key(self) -> bytes | str:
-        try:
-            return self.kms_signer.get_public_key_pem()
-        except Exception as e:
-            raise jwt.InvalidTokenError('Invalid token') from e
+        # A KMS failure surfaces as PublicKeyUnavailableError (a 503), never as
+        # an invalid token: the token itself may be fine.
+        return self.kms_signer.get_public_key_pem()
 
     def _base64url_encode(self, data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')

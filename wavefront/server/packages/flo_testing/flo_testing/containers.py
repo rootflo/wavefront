@@ -9,6 +9,7 @@ the matching ``unwire()`` in teardown.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from dataclasses import field
@@ -17,6 +18,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import Mock
 
 import pytest
+from db_repo_module.cache.cache_manager import CacheUnavailableError
 
 DEFAULT_CONFIG: dict[str, Any] = {
     'web': {'url': 'http://test.example.com'},
@@ -41,7 +43,7 @@ PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
 def add_async_cache_methods(cache_manager: Mock) -> Mock:
-    """Give a CacheManager mock ``aget_str``/``aadd``/``aremove`` that forward to the sync mocks.
+    """Give a CacheManager mock its async API, forwarding to the sync mocks.
 
     Tests that configure or assert on ``get_str``/``add``/``remove`` keep covering code
     that now calls the async versions.
@@ -62,9 +64,63 @@ def add_async_cache_methods(cache_manager: Mock) -> Mock:
     cache_manager.aget_str = AsyncMock(side_effect=aget_str)
     cache_manager.aadd = AsyncMock(side_effect=aadd)
     cache_manager.aremove = AsyncMock(side_effect=aremove)
-    cache_manager.try_aget_str = AsyncMock(side_effect=aget_str)
-    cache_manager.try_aadd = AsyncMock(side_effect=aadd)
-    cache_manager.try_aremove = AsyncMock(side_effect=aremove)
+
+    # Tolerant versions behave like CacheManager's: they go through the strict
+    # mock (so a test can make it raise) and swallow CacheUnavailableError.
+    async def try_aget_str(key, default=None, **_kwargs):
+        try:
+            return await cache_manager.aget_str(key, default)
+        except CacheUnavailableError:
+            return default
+
+    async def try_aadd(key, value, expiry=3600, nx=False, **_kwargs):
+        try:
+            return await cache_manager.aadd(key, value, expiry, nx)
+        except CacheUnavailableError:
+            return False
+
+    async def try_aremove(key, **_kwargs):
+        try:
+            return await cache_manager.aremove(key)
+        except CacheUnavailableError:
+            return False
+
+    cache_manager.try_aget_str = AsyncMock(side_effect=try_aget_str)
+    cache_manager.try_aadd = AsyncMock(side_effect=try_aadd)
+    cache_manager.try_aremove = AsyncMock(side_effect=try_aremove)
+
+    # read_through / invalidating, mapped onto the sync mocks: a hit is
+    # get_str, a fill is add(key, value, ttl), each rotation is remove(key).
+    async def read_through(key, loader, *, ttl):
+        try:
+            cached = cache_manager.get_str(key)
+        except CacheUnavailableError:
+            return await loader()
+        if cached is not None:
+            return cached
+        value = await loader()
+        if value is not None:
+            try:
+                cache_manager.add(key, value, ttl)
+            except CacheUnavailableError:
+                pass
+        return value
+
+    @contextlib.asynccontextmanager
+    async def invalidating(*keys):
+        for key in keys:
+            cache_manager.remove(key)  # strict: a raise stops the change
+        try:
+            yield
+        finally:
+            for key in keys:
+                try:
+                    cache_manager.remove(key)
+                except CacheUnavailableError:
+                    pass
+
+    cache_manager.read_through = AsyncMock(side_effect=read_through)
+    cache_manager.invalidating = Mock(side_effect=invalidating)
     return cache_manager
 
 

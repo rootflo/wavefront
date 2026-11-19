@@ -359,68 +359,62 @@ class AgentCrudService:
                 f'Agent already exists with name: {name} in namespace: {namespace_dict["name"]}'
             )
 
-        # Create agent identity row, then its first version row. These are two
-        # separate, non-atomic calls; if the second one fails, compensate by
-        # removing the identity row rather than leaving an orphaned agent with
-        # zero versions that would permanently block this (name, namespace) pair.
-        agent = await self.agent_repository.create(
-            name=name, namespace=namespace_dict['name'], current_version=1
-        )
-        try:
-            await self.agent_version_repository.create(
-                agent_id=agent.id, version=1, is_deleted=False
+        # Invalidate every key a reader could have cached for this name (e.g. a
+        # "not found" current-version lookup is never cached, but lists are):
+        # strict before the change, best-effort after. The new agent is cached
+        # by its first read, never written here.
+        async with self.cache_manager.invalidating(
+            get_agents_list_cache_key(None),
+            get_agents_list_cache_key(namespace),
+            get_agent_current_version_cache_key(namespace, name),
+            get_agent_yaml_cache_key(namespace, name, 1),
+        ):
+            # Create agent identity row, then its first version row. These are two
+            # separate, non-atomic calls; if the second one fails, compensate by
+            # removing the identity row rather than leaving an orphaned agent with
+            # zero versions that would permanently block this (name, namespace) pair.
+            agent = await self.agent_repository.create(
+                name=name, namespace=namespace_dict['name'], current_version=1
             )
-        except Exception:
-            logger.error(
-                f'Failed to create first version for agent {agent.id} - rolling back identity row'
-            )
-            await self.agent_repository.delete_all(id=agent.id)
-            raise
+            try:
+                await self.agent_version_repository.create(
+                    agent_id=agent.id, version=1, is_deleted=False
+                )
+            except Exception:
+                logger.error(
+                    f'Failed to create first version for agent {agent.id} - rolling back identity row'
+                )
+                await self.agent_repository.delete_all(id=agent.id)
+                raise
 
-        # Upload YAML to cloud storage. If this fails, roll back the identity and
-        # version rows (the FK cascade removes the version row) so a failed upload
-        # doesn't leave an orphaned, YAML-less agent that blocks this (name,
-        # namespace) pair.
-        yaml_key = get_agent_yaml_key(namespace, name, 1)
-        yaml_bytes = yaml_content.encode('utf-8')
-        try:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.save_small_file,
-                file_content=yaml_bytes,
-                bucket_name=self.bucket_name,
-                key=yaml_key,
-                disable_cache=True,
-            )
-        except BaseException:
-            # Roll back, then re-raise: a busy pool still answers 503. Also on
-            # cancellation (client gone), so no YAML-less row is left behind.
-            logger.error(
-                f'Failed to upload YAML for new agent {agent.id} - rolling back identity and version rows'
-            )
-            await self.agent_repository.delete_all(id=agent.id)
-            raise
+            # Upload YAML to cloud storage. If this fails, roll back the identity and
+            # version rows (the FK cascade removes the version row) so a failed upload
+            # doesn't leave an orphaned, YAML-less agent that blocks this (name,
+            # namespace) pair.
+            yaml_key = get_agent_yaml_key(namespace, name, 1)
+            yaml_bytes = yaml_content.encode('utf-8')
+            try:
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.save_small_file,
+                    file_content=yaml_bytes,
+                    bucket_name=self.bucket_name,
+                    key=yaml_key,
+                    disable_cache=True,
+                )
+            except BaseException:
+                # Roll back, then re-raise: a busy pool still answers 503. Also on
+                # cancellation (client gone), so no YAML-less row is left behind.
+                logger.error(
+                    f'Failed to upload YAML for new agent {agent.id} - rolling back identity and version rows'
+                )
+                await self.agent_repository.delete_all(id=agent.id)
+                raise
 
         # Build response with YAML content
         agent_dict = agent.to_dict()
         agent_dict['version'] = 1
         agent_dict['yaml_content'] = yaml_content
-
-        # Cache agent metadata
-        agent_cache_key = get_agent_by_id_cache_key(agent.id)
-        await self.cache_manager.try_aadd(
-            agent_cache_key, json.dumps(agent.to_dict()), expiry=self.cache_ttl
-        )
-
-        # Cache YAML content
-        yaml_cache_key = get_agent_yaml_cache_key(namespace, name, 1)
-        await self.cache_manager.try_aadd(
-            yaml_cache_key, yaml_content, expiry=self.cache_ttl
-        )
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(namespace))
 
         logger.info(
             f'Successfully created agent - namespace: {namespace}, name: {name}'
@@ -442,27 +436,17 @@ class AgentCrudService:
         Raises:
             ValueError: If agent not found
         """
-        # Try cache first
-        cache_key = get_agent_by_id_cache_key(agent_id)
-        cached_agent = await self.cache_manager.try_aget_str(cache_key)
 
-        if cached_agent:
-            logger.info(f'Cache hit for agent ID: {agent_id}')
-            agent_dict = json.loads(cached_agent)
-        else:
-            # Fetch from DB
-            logger.info(f'Fetching agent from DB - ID: {agent_id}')
+        async def load_agent() -> Optional[str]:
             agent = await self.agent_repository.find_one(id=agent_id)
+            return json.dumps(agent.to_dict()) if agent else None
 
-            if not agent:
-                raise ValueError(f'Agent not found with ID: {agent_id}')
-
-            agent_dict = agent.to_dict()
-
-            # Cache agent metadata
-            await self.cache_manager.try_aadd(
-                cache_key, json.dumps(agent_dict), expiry=self.cache_ttl
-            )
+        cached_agent = await self.cache_manager.read_through(
+            get_agent_by_id_cache_key(agent_id), load_agent, ttl=self.cache_ttl
+        )
+        if cached_agent is None:
+            raise ValueError(f'Agent not found with ID: {agent_id}')
+        agent_dict = json.loads(cached_agent)
 
         resolved_version = (
             version if version is not None else agent_dict['current_version']
@@ -478,35 +462,17 @@ class AgentCrudService:
                 )
 
         # Fetch YAML from cloud storage (with caching)
-        yaml_cache_key = get_agent_yaml_cache_key(
+        yaml_key = get_agent_yaml_key(
             agent_dict['namespace'], agent_dict['name'], resolved_version
         )
-        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
 
-        if cached_yaml:
-            logger.info(
-                f'Cache hit for agent YAML - namespace: {agent_dict["namespace"]}, name: {agent_dict["name"]}, version: {resolved_version}'
-            )
-            yaml_content = cached_yaml
-        else:
-            # Fetch YAML from cloud storage
-            yaml_key = get_agent_yaml_key(
-                agent_dict['namespace'], agent_dict['name'], resolved_version
-            )
-            logger.info(f'Fetching agent YAML from storage - key: {yaml_key}')
-
+        async def load_yaml() -> str:
             try:
                 yaml_bytes = await run_in_pool(
                     'storage',
                     self.cloud_storage_manager.read_file,
                     self.bucket_name,
                     yaml_key,
-                )
-                yaml_content = yaml_bytes.decode('utf-8')
-
-                # Cache YAML
-                await self.cache_manager.try_aadd(
-                    yaml_cache_key, yaml_content, expiry=self.cache_ttl
                 )
             except CloudStorageFileNotFoundError:
                 logger.error(
@@ -515,6 +481,15 @@ class AgentCrudService:
                 raise ValueError(
                     f'Agent YAML not found for agent ID: {agent_id}, version: {resolved_version}'
                 )
+            return yaml_bytes.decode('utf-8')
+
+        yaml_content = await self.cache_manager.read_through(
+            get_agent_yaml_cache_key(
+                agent_dict['namespace'], agent_dict['name'], resolved_version
+            ),
+            load_yaml,
+            ttl=self.cache_ttl,
+        )
 
         # Add version/YAML to response
         agent_dict['version'] = resolved_version
@@ -532,21 +507,21 @@ class AgentCrudService:
         Resolve current_version for an agent by name+namespace, via a short-TTL cache
         so name-based lookups (no explicit version) don't hit the DB on every call.
         """
-        cache_key = get_agent_current_version_cache_key(namespace, agent_name)
-        cached_version = await self.cache_manager.try_aget_str(cache_key)
-        if cached_version:
-            return int(cached_version)
 
-        agent = await self.agent_repository.find_one(
-            name=agent_name, namespace=namespace
+        async def load() -> Optional[str]:
+            agent = await self.agent_repository.find_one(
+                name=agent_name, namespace=namespace
+            )
+            return str(agent.current_version) if agent else None
+
+        cached_version = await self.cache_manager.read_through(
+            get_agent_current_version_cache_key(namespace, agent_name),
+            load,
+            ttl=self.current_version_cache_ttl,
         )
-        if not agent:
+        if cached_version is None:
             raise ValueError(f'Agent not found: {namespace}/{agent_name}')
-
-        await self.cache_manager.try_aadd(
-            cache_key, str(agent.current_version), expiry=self.current_version_cache_ttl
-        )
-        return agent.current_version
+        return int(cached_version)
 
     async def get_agent_yaml_from_bucket(
         self, agent_name: str, namespace: str, version: Optional[int] = None
@@ -587,42 +562,30 @@ class AgentCrudService:
                     f'Agent YAML not found for agent: {namespace}/{agent_name}, version: {resolved_version}'
                 )
 
-        # Try YAML cache first
-        yaml_cache_key = get_agent_yaml_cache_key(
-            namespace, agent_name, resolved_version
-        )
-        cached_yaml = await self.cache_manager.try_aget_str(yaml_cache_key)
-
-        if cached_yaml:
-            logger.info(
-                f'Cache hit for agent YAML - namespace: {namespace}, name: {agent_name}, version: {resolved_version}'
-            )
-            return cached_yaml
-
-        # Fetch YAML from cloud storage
         yaml_key = get_agent_yaml_key(namespace, agent_name, resolved_version)
-        logger.info(f'Fetching agent YAML from storage - key: {yaml_key}')
 
-        try:
-            yaml_bytes = await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.read_file,
-                self.bucket_name,
-                yaml_key,
-            )
-            yaml_content = yaml_bytes.decode('utf-8')
+        async def load_yaml() -> str:
+            try:
+                yaml_bytes = await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.read_file,
+                    self.bucket_name,
+                    yaml_key,
+                )
+            except CloudStorageFileNotFoundError:
+                logger.error(
+                    f'YAML not found in cloud storage for agent: {namespace}/{agent_name}, version: {resolved_version}'
+                )
+                raise ValueError(
+                    f'Agent YAML not found for agent: {namespace}/{agent_name}, version: {resolved_version}'
+                )
+            return yaml_bytes.decode('utf-8')
 
-            # Cache YAML
-            await self.cache_manager.try_aadd(
-                yaml_cache_key, yaml_content, expiry=self.cache_ttl
-            )
-        except CloudStorageFileNotFoundError:
-            logger.error(
-                f'YAML not found in cloud storage for agent: {namespace}/{agent_name}, version: {resolved_version}'
-            )
-            raise ValueError(
-                f'Agent YAML not found for agent: {namespace}/{agent_name}, version: {resolved_version}'
-            )
+        yaml_content = await self.cache_manager.read_through(
+            get_agent_yaml_cache_key(namespace, agent_name, resolved_version),
+            load_yaml,
+            ttl=self.cache_ttl,
+        )
 
         logger.info(
             f'Successfully retrieved agent YAML - namespace: {namespace}, name: {agent_name}, version: {resolved_version}'
@@ -711,42 +674,41 @@ class AgentCrudService:
                 )
             write_version = target_version
 
-        # Write YAML to cloud storage at the resolved version's key. If this fails
-        # while branching a new version, roll back only that newly created version
-        # row (leaving prior versions untouched); an in-place edit has no new row
-        # to remove.
-        yaml_key = get_agent_yaml_key(agent.namespace, agent.name, write_version)
-        yaml_bytes = yaml_content.encode('utf-8')
+        # Strict invalidation around the write: with Redis down this fails (503)
+        # before storage changes, and a read racing the edit can never put the
+        # old YAML back for this version. When branching, the new version row
+        # already exists, so it is rolled back on ANY failure before the upload
+        # lands: the strict pre-invalidation, a refused or failed upload, or a
+        # cancelled request. An in-place edit has no new row to remove.
+        uploaded = False
         try:
-            await run_in_pool(
-                'storage',
-                self.cloud_storage_manager.save_small_file,
-                file_content=yaml_bytes,
-                bucket_name=self.bucket_name,
-                key=yaml_key,
-                disable_cache=True,
-            )
+            async with self.cache_manager.invalidating(
+                get_agent_yaml_cache_key(agent.namespace, agent.name, write_version),
+                get_agents_list_cache_key(None),
+                get_agents_list_cache_key(agent.namespace),
+            ):
+                yaml_key = get_agent_yaml_key(
+                    agent.namespace, agent.name, write_version
+                )
+                await run_in_pool(
+                    'storage',
+                    self.cloud_storage_manager.save_small_file,
+                    file_content=yaml_content.encode('utf-8'),
+                    bucket_name=self.bucket_name,
+                    key=yaml_key,
+                    disable_cache=True,
+                )
+                uploaded = True
         except BaseException:
-            # Roll back, then re-raise: a busy pool still answers 503. Also on
-            # cancellation (client gone), so no YAML-less row is left behind.
-            if create_new_version:
+            # Roll back, then re-raise: a busy pool or Redis outage still answers 503.
+            if create_new_version and not uploaded:
                 logger.error(
-                    f'Failed to upload YAML for new version {write_version} of agent {agent_id} - rolling back the new version row'
+                    f'Failed to write YAML for new version {write_version} of agent {agent_id} - rolling back the new version row'
                 )
                 await self.agent_version_repository.delete_all(
                     agent_id=agent.id, version=write_version
                 )
             raise
-
-        # Invalidate caches
-        yaml_cache_key = get_agent_yaml_cache_key(
-            agent.namespace, agent.name, write_version
-        )
-        await self.cache_manager.try_aremove(yaml_cache_key)
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
 
         # Build response
         agent_dict = agent.to_dict()
@@ -784,36 +746,32 @@ class AgentCrudService:
             agent_id=agent.id, limit=100000
         )
 
-        # Delete from DB (cascades to agent_versions)
-        await self.agent_repository.delete_all(id=agent_id)
+        cache_keys = [
+            get_agent_by_id_cache_key(agent_id),
+            get_agent_current_version_cache_key(agent.namespace, agent.name),
+            get_agents_list_cache_key(None),
+            get_agents_list_cache_key(agent.namespace),
+        ] + [
+            get_agent_yaml_cache_key(agent.namespace, agent.name, v.version)
+            for v in versions
+        ]
+        async with self.cache_manager.invalidating(*cache_keys):
+            # Delete from DB (cascades to agent_versions)
+            await self.agent_repository.delete_all(id=agent_id)
 
-        async def _delete_version_yaml(version: int) -> None:
-            yaml_key = get_agent_yaml_key(agent.namespace, agent.name, version)
-            try:
-                await asyncio.to_thread(
-                    self.cloud_storage_manager.delete_file, self.bucket_name, yaml_key
-                )
-            except Exception as e:
-                logger.error(f'Failed to delete YAML from cloud storage: {str(e)}')
-                # Continue - DB record is deleted
+            async def _delete_version_yaml(version: int) -> None:
+                yaml_key = get_agent_yaml_key(agent.namespace, agent.name, version)
+                try:
+                    await asyncio.to_thread(
+                        self.cloud_storage_manager.delete_file,
+                        self.bucket_name,
+                        yaml_key,
+                    )
+                except Exception as e:
+                    logger.error(f'Failed to delete YAML from cloud storage: {str(e)}')
+                    # Continue - DB record is deleted
 
-            yaml_cache_key = get_agent_yaml_cache_key(
-                agent.namespace, agent.name, version
-            )
-            await self.cache_manager.try_aremove(yaml_cache_key)
-
-        await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
-
-        # Invalidate caches
-        agent_cache_key = get_agent_by_id_cache_key(agent_id)
-        await self.cache_manager.try_aremove(agent_cache_key)
-        await self.cache_manager.try_aremove(
-            get_agent_current_version_cache_key(agent.namespace, agent.name)
-        )
-
-        # Invalidate list caches
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
+            await asyncio.gather(*(_delete_version_yaml(v.version) for v in versions))
 
         logger.info(f'Successfully deleted agent - ID: {agent_id}')
         return True
@@ -828,28 +786,21 @@ class AgentCrudService:
         Returns:
             List[dict]: List of agents (without YAML content)
         """
-        # Try cache first
-        cache_key = get_agents_list_cache_key(namespace)
-        cached_list = await self.cache_manager.try_aget_str(cache_key)
 
-        if cached_list:
-            logger.info(f'Cache hit for agents list - namespace: {namespace}')
-            return json.loads(cached_list)
+        async def load() -> str:
+            if namespace:
+                agents = await self.agent_repository.find(namespace=namespace)
+            else:
+                agents = await self.agent_repository.find()
+            return json.dumps([agent.to_dict() for agent in agents])
 
-        # Fetch from DB
-        logger.info(f'Fetching agents list from DB - namespace: {namespace}')
-
-        if namespace:
-            agents = await self.agent_repository.find(namespace=namespace)
-        else:
-            agents = await self.agent_repository.find()
-
-        agents_list = [agent.to_dict() for agent in agents]
-
-        # Cache the result (shorter TTL for lists)
-        await self.cache_manager.try_aadd(
-            cache_key, json.dumps(agents_list), expiry=1800
-        )  # 30 min
+        agents_list = json.loads(
+            await self.cache_manager.read_through(
+                get_agents_list_cache_key(namespace),
+                load,
+                ttl=1800,  # 30 min
+            )
+        )
 
         logger.info(
             f'Successfully retrieved {len(agents_list)} agents - namespace: {namespace}'
@@ -884,16 +835,17 @@ class AgentCrudService:
                 f'Agent {agent_id} has no live version {version} to promote'
             )
 
-        updated_agent = await self.agent_repository.find_one_and_update(
-            {'id': agent_id}, current_version=version, refresh=True
-        )
-
-        await self.cache_manager.try_aremove(get_agent_by_id_cache_key(agent_id))
-        await self.cache_manager.try_aremove(
-            get_agent_current_version_cache_key(agent.namespace, agent.name)
-        )
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(None))
-        await self.cache_manager.try_aremove(get_agents_list_cache_key(agent.namespace))
+        # Strict: default reads resolve current_version through these keys, so
+        # an acknowledged promotion must be visible to them.
+        async with self.cache_manager.invalidating(
+            get_agent_by_id_cache_key(agent_id),
+            get_agent_current_version_cache_key(agent.namespace, agent.name),
+            get_agents_list_cache_key(None),
+            get_agents_list_cache_key(agent.namespace),
+        ):
+            updated_agent = await self.agent_repository.find_one_and_update(
+                {'id': agent_id}, current_version=version, refresh=True
+            )
 
         logger.info(f'Successfully promoted agent {agent_id} to version {version}')
         return updated_agent.to_dict()
@@ -967,13 +919,12 @@ class AgentCrudService:
                 f'Agent {agent_id} has no live version {version} to delete'
             )
 
-        await self.agent_version_repository.find_one_and_update(
-            {'agent_id': agent.id, 'version': version}, is_deleted=True
-        )
-
-        await self.cache_manager.try_aremove(
+        async with self.cache_manager.invalidating(
             get_agent_yaml_cache_key(agent.namespace, agent.name, version)
-        )
+        ):
+            await self.agent_version_repository.find_one_and_update(
+                {'agent_id': agent.id, 'version': version}, is_deleted=True
+            )
 
         logger.info(f'Successfully deleted agent {agent_id} version {version}')
         return True

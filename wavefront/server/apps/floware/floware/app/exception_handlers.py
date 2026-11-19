@@ -6,6 +6,7 @@ from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from common_module.telemetry import record_exception_on_span
 from datasource.executor import DatasourceBusyError, limits
 from db_repo_module.cache.cache_manager import CacheUnavailableError
@@ -72,6 +73,25 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
             headers={'Retry-After': '5'},
             content=ResponseFormatter().buildErrorResponse(
                 error='The service is temporarily unavailable. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(PublicKeyUnavailableError)
+    async def public_key_unavailable_handler(
+        request: Request, exc: PublicKeyUnavailableError
+    ):
+        """KMS is down while verifying a token outside the auth middleware (for
+        example a password-reset link). The token may be valid: 503, not 401."""
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.error(
+            f'Token key unavailable on {request.method} {request.url.path} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': str(retry_after_seconds())},
+            content=ResponseFormatter().buildErrorResponse(
+                error='Authentication is temporarily unavailable. Please try again shortly.'
             ),
         )
 
