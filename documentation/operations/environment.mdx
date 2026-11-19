@@ -20,7 +20,7 @@ The worker builds and runs the same workflows as the API, so it needs most of th
 | `CLOUD_PROVIDER`, `CLOUD_REGION`, `CLOUD_PROJECT_ID` | Where object storage lives |
 | `APPLICATION_BUCKET` | The bucket (or container) for definitions and execution files |
 | `STORAGE_ACCOUNT_URL` | For Azure Blob Storage: the storage account URL |
-| `STORAGE_PUBLIC_URL` | Optional. Your own domain for presigned/SAS links in place of the provider's; see [Custom storage domain](#custom-storage-domain) |
+| `APPLICATION_STORAGE_URL` | Optional. Your own domain for presigned/SAS links in place of the provider's; see [Custom storage domain](#custom-storage-domain) |
 | `HERMES_URL` | The function sandbox |
 | `ASYNC_AGENTIC_EXEC_RESULTS_STREAM` | The stream the worker publishes results on; floware consumes the same name |
 
@@ -53,7 +53,7 @@ Missing **`APPLICATION_BUCKET`**, **`STORAGE_ACCOUNT_URL`** (Azure) or **`ROOTFL
 
 ## Custom storage domain
 
-Set `STORAGE_PUBLIC_URL` when users' networks allow your own domain but not the storage provider's. Presigned and SAS links then use it in place of the provider's host. Server-to-storage traffic doesn't change, so keep `STORAGE_ACCOUNT_URL` pointed at the real storage account. Set it on floware and the worker. Setting it on the client is optional: the client adds it to its Content-Security-Policy, which only matters if pages load storage files as images or media from a domain other than the app's own.
+Set `APPLICATION_STORAGE_URL` when users' networks allow your own domain but not the storage provider's. Presigned and SAS links then use it in place of the provider's host. Server-to-storage traffic doesn't change, so keep `STORAGE_ACCOUNT_URL` pointed at the real storage account. Set it on floware and the worker. Setting it on the client is optional: the client adds it to its Content-Security-Policy, which only matters if pages load storage files as images or media from a domain other than the app's own.
 
 The value is an `http(s)://` URL, optionally with a path prefix, such as `https://app.example.com/storage`. A prefix on the app's own domain needs no extra whitelist entry or CORS rule. The route behind it must:
 

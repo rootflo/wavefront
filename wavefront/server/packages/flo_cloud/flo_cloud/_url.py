@@ -2,11 +2,11 @@ from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 
-def normalize_public_url(public_url: Optional[str]) -> Optional[str]:
-    """Validate a configured public base URL; None or blank means unset."""
-    if public_url is None or not public_url.strip():
+def normalize_asset_url(asset_url: Optional[str]) -> Optional[str]:
+    """Validate a configured asset base URL; None or blank means unset."""
+    if asset_url is None or not asset_url.strip():
         return None
-    value = public_url.strip().rstrip('/')
+    value = asset_url.strip().rstrip('/')
     parts = urlsplit(value)
     if (
         parts.scheme not in ('http', 'https')
@@ -15,17 +15,17 @@ def normalize_public_url(public_url: Optional[str]) -> Optional[str]:
         or parts.fragment
     ):
         raise ValueError(
-            'public_url must be an http(s) URL with a host and no query or '
-            f'fragment, got {public_url!r}'
+            'asset_url must be an http(s) URL with a host and no query or '
+            f'fragment, got {asset_url!r}'
         )
     return value
 
 
-def rebase_url(url: str, public_url: Optional[str]) -> str:
-    """Swap ``url``'s scheme and host for ``public_url``'s (its path is prefixed); query kept."""
-    if not public_url:
+def rebase_url(url: str, asset_url: Optional[str]) -> str:
+    """Swap ``url``'s scheme and host for ``asset_url``'s (its path is prefixed); query kept."""
+    if not asset_url:
         return url
-    base = urlsplit(public_url)
+    base = urlsplit(asset_url)
     parts = urlsplit(url)
     return urlunsplit(
         (

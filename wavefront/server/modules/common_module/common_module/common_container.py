@@ -41,7 +41,7 @@ class CommonContainer(containers.DeclarativeContainer):
         provider=config.cloud.platform,
         region_name=config.cloud.region,
         account_url=config.storage.account_url,
-        public_url=config.storage.public_url,
+        asset_url=config.storage.asset_url,
     )
 
     kms_signing_settings = providers.Factory(
