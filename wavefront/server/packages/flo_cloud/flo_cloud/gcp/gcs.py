@@ -5,6 +5,7 @@ from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from typing import Optional, List, Tuple, IO, ContextManager
 from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_public_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
@@ -21,6 +22,7 @@ class GCSStorage(CloudStorageHandler):
         credentials_path: Optional[str] = None,
         credentials_info: Optional[dict] = None,
         project_id: Optional[str] = None,
+        public_url: Optional[str] = None,
     ):
         """
         Initialize GCP client
@@ -29,9 +31,12 @@ class GCSStorage(CloudStorageHandler):
             credentials_path: Path to GCP credentials JSON file (optional)
             credentials_info: Parsed service account JSON (optional)
             project_id: GCP project to bill/scope requests to (optional)
+            public_url: Base URL for signed URLs (optional); the proxy must strip
+                any path prefix and send Host storage.googleapis.com.
         """
         self.signing_credentials = None
         self.credential_path = credentials_path
+        self._public_url = normalize_public_url(public_url)
 
         if credentials_path:
             self.client = storage.Client.from_service_account_json(
@@ -189,7 +194,7 @@ class GCSStorage(CloudStorageHandler):
                 else None,
                 access_token=token if token else None,
             )
-            return presigned_url
+            return rebase_url(presigned_url, self._public_url)
         except Exception as e:
             raise Exception(f'Error generating presigned URL for GCS: {str(e)}')
 

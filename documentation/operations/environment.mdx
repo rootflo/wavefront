@@ -20,6 +20,7 @@ The worker builds and runs the same workflows as the API, so it needs most of th
 | `CLOUD_PROVIDER`, `CLOUD_REGION`, `CLOUD_PROJECT_ID` | Where object storage lives |
 | `APPLICATION_BUCKET` | The bucket (or container) for definitions and execution files |
 | `STORAGE_ACCOUNT_URL` | For Azure Blob Storage: the storage account URL |
+| `STORAGE_PUBLIC_URL` | Optional. Your own domain for presigned/SAS links in place of the provider's; see [Custom storage domain](#custom-storage-domain) |
 | `HERMES_URL` | The function sandbox |
 | `ASYNC_AGENTIC_EXEC_RESULTS_STREAM` | The stream the worker publishes results on; floware consumes the same name |
 
@@ -49,6 +50,20 @@ Missing **`APPLICATION_BUCKET`**, **`STORAGE_ACCOUNT_URL`** (Azure) or **`ROOTFL
 | `LOG_LEVEL` | INFO | |
 | `PASSTHROUGH_SECRET` | | A shared secret for internal service-to-service calls, mainly for local development; keep it unset or strong in production |
 | `KMS_*` | | Keys used to encrypt stored secrets and sign tokens |
+
+## Custom storage domain
+
+Set `STORAGE_PUBLIC_URL` when users' networks allow your own domain but not the storage provider's. Presigned and SAS links then use it in place of the provider's host. Server-to-storage traffic doesn't change, so keep `STORAGE_ACCOUNT_URL` pointed at the real storage account. Set it on floware and the worker. Setting it on the client is optional: the client adds it to its Content-Security-Policy, which only matters if pages load storage files as images or media from a domain other than the app's own.
+
+The value is an `http(s)://` URL, optionally with a path prefix, such as `https://app.example.com/storage`. A prefix on the app's own domain needs no extra whitelist entry or CORS rule. The route behind it must:
+
+- strip the path prefix, then forward the rest of the path and the query string unchanged (no decoding or normalising)
+- set `Host` to the storage endpoint: `<account>.blob.core.windows.net`, `storage.googleapis.com`, or for S3 `s3.<region>.amazonaws.com` (`s3.amazonaws.com` in us-east-1), with `CLOUD_REGION` set to the bucket's region
+- not cache responses
+- allow GET, HEAD, PUT and OPTIONS
+- not add its own authentication to requests sent to storage (on AWS, turn off CloudFront OAC/OAI for this route; on Azure and GCP, leave origin authentication off). The link is already signed, and storage rejects a request that carries two credentials
+
+Presigned URLs that are already cached, such as the voice agent welcome audio (up to about 2 hours), keep the old host until they expire.
 
 ## Workflow engine
 
