@@ -84,3 +84,30 @@ async def test_login_is_only_valid_while_the_user_is_unchanged(user, role, expec
     assert (
         await service.is_login_still_valid('uid', 'r1', password_hash='h1') is expected
     )
+
+
+@pytest.mark.asyncio
+async def test_confirm_new_session_keeps_the_row_while_the_login_is_valid():
+    cache_manager = add_async_cache_methods(MagicMock())
+    service, session_repository = _service([], cache_manager)
+    service.is_login_still_valid = AsyncMock(return_value=True)
+
+    assert await service.confirm_new_session('s1', 'uid', 'r1', password_hash='h1')
+
+    service.is_login_still_valid.assert_awaited_once_with('uid', 'r1', 'h1')
+    session_repository.delete_all.assert_not_awaited()
+    cache_manager.remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_confirm_new_session_drops_the_row_when_the_login_went_stale():
+    # A reset that committed after the first check but before the insert has
+    # already revoked sessions, so the new row is removed here instead.
+    cache_manager = add_async_cache_methods(MagicMock())
+    service, session_repository = _service([], cache_manager)
+    service.is_login_still_valid = AsyncMock(return_value=False)
+
+    assert not await service.confirm_new_session('s1', 'uid', 'r1', password_hash='h1')
+
+    session_repository.delete_all.assert_awaited_once_with(id='s1')
+    cache_manager.remove.assert_any_call(get_session_cache_key('s1'))

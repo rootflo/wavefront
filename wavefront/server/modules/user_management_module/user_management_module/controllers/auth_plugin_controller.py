@@ -233,6 +233,16 @@ async def unified_authenticate(
         await session_repository.create(
             user_id=user.id, device_info=device_info, id=session_id
         )
+        # A reset or disable may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
 
         response_data = {'access_token': token, 'token_type': 'bearer'}
         return JSONResponse(
@@ -721,6 +731,15 @@ async def _handle_oauth_callback(
         session = await session_repository.create(
             user_id=user.id, device_info=device_info, id=session_id
         )
+        # A disable or role change may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id
+        ):
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': 'User account is disabled'},
+            )
 
         # Success: redirect to success URL with access token
         if success_url:
@@ -874,6 +893,16 @@ async def _handle_email_password_auth(
         session = await session_repository.create(
             user_id=user.id, device_info=device_info, id=session_id
         )
+        # A reset or disable may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id, password_hash=user.password
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
 
         response_data = {
             'access_token': token,

@@ -326,6 +326,28 @@ class UserService:
         )
         return current_role == role_id
 
+    async def confirm_new_session(
+        self,
+        session_id: str,
+        user_id: str,
+        role_id: str,
+        password_hash: Optional[str] = None,
+    ) -> bool:
+        """Re-check a login after its session row exists; drop the row if stale.
+
+        The check before creation leaves a gap: a password reset or disable can
+        commit between that check and the insert, and its session revocation
+        then runs before the new row exists. Checking again after the insert
+        closes it. Either this read sees the change and the row is removed here,
+        or the change commits after this read, so its revocation runs after the
+        insert and removes the row.
+        """
+        if await self.is_login_still_valid(user_id, role_id, password_hash):
+            return True
+        async with self.cache_manager.invalidating(get_session_cache_key(session_id)):
+            await self.session_repository.delete_all(id=session_id)
+        return False
+
     async def invalidate_user_sessions(self, user_id: str) -> None:
         """Drop every live session for a user, cache and DB alike.
 
