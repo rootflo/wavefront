@@ -105,6 +105,38 @@ def _pubsub_keepalive_options() -> dict[int, int]:
     return options
 
 
+class _BoundedHandshakeMixin:
+    """Bound the connection handshake on a socket that otherwise has no timeout.
+
+    The pubsub socket waits for messages indefinitely (socket_timeout=None), and
+    redis-py reads the AUTH/SELECT replies in on_connect with that same socket
+    timeout. A server that accepts the TCP connection but never answers would
+    hang the listener there. The handshake gets its own timeout instead, and the
+    socket goes back to waiting indefinitely once it is done.
+    """
+
+    def __init__(self, *args, handshake_timeout: Optional[float] = None, **kwargs):
+        self._handshake_timeout = handshake_timeout
+        super().__init__(*args, **kwargs)
+
+    def on_connect(self):
+        self._sock.settimeout(self._handshake_timeout)
+        try:
+            super().on_connect()
+        finally:
+            # A failed handshake disconnects, which clears the socket.
+            if self._sock is not None:
+                self._sock.settimeout(self.socket_timeout)
+
+
+class _PubSubConnection(_BoundedHandshakeMixin, Connection):
+    pass
+
+
+class _PubSubSSLConnection(_BoundedHandshakeMixin, SSLConnection):
+    pass
+
+
 class CacheManager(CommonCache):
     def __init__(
         self,
@@ -251,6 +283,13 @@ class CacheManager(CommonCache):
                     self._connection_timeout, socket_timeout=None, socket_keepalive=True
                 )
                 pool_kwargs['socket_keepalive_options'] = _pubsub_keepalive_options()
+                # No read timeout while idle, but a bounded AUTH/SELECT handshake.
+                pool_kwargs['connection_class'] = (
+                    _PubSubSSLConnection
+                    if issubclass(pool_kwargs['connection_class'], SSLConnection)
+                    else _PubSubConnection
+                )
+                pool_kwargs['handshake_timeout'] = self._socket_timeout
                 # On here: redis-py retries a timed-out pubsub read once,
                 # reconnecting and resubscribing. It covers TimeoutError only.
                 # A Redis restart raises ConnectionError, which still ends the

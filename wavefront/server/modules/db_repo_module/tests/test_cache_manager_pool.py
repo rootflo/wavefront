@@ -310,6 +310,65 @@ def test_subscribe_uses_a_separate_pool_without_read_timeout():
     assert manager.pool.connection_kwargs['socket_timeout'] == 5.0
 
 
+@pytest.mark.parametrize(
+    'settings, connection_class',
+    [
+        (RedisSettings(socket_timeout=5), module._PubSubConnection),
+        (
+            RedisSettings(socket_timeout=5, protocol='rediss'),
+            module._PubSubSSLConnection,
+        ),
+    ],
+    ids=['plain', 'ssl'],
+)
+def test_pubsub_pool_bounds_the_handshake(settings, connection_class):
+    manager = CacheManager(namespace='test', settings=settings)
+
+    pool = manager.subscribe().connection_pool
+
+    assert pool.connection_class is connection_class
+    assert pool.connection_kwargs['handshake_timeout'] == 5.0
+
+
+class _RecordingSocket:
+    def __init__(self):
+        self.timeouts = []
+
+    def settimeout(self, value):
+        self.timeouts.append(value)
+
+
+def test_pubsub_handshake_runs_under_its_own_timeout_then_waits_indefinitely():
+    conn = module._PubSubConnection(handshake_timeout=2.0, socket_timeout=None)
+    sock = conn._sock = _RecordingSocket()
+    seen = []
+
+    with patch.object(
+        Connection, 'on_connect', lambda self: seen.append(list(sock.timeouts))
+    ):
+        conn.on_connect()
+
+    # AUTH/SELECT were read under the handshake timeout ...
+    assert seen == [[2.0]]
+    # ... and the socket is back to no read timeout for idle pubsub waits.
+    assert sock.timeouts == [2.0, None]
+
+
+def test_pubsub_handshake_timeout_surfaces_and_leaves_no_socket():
+    conn = module._PubSubConnection(handshake_timeout=2.0, socket_timeout=None)
+    conn._sock = _RecordingSocket()
+
+    def unanswered_handshake(self):
+        self._sock = None  # redis-py disconnects on a failed read
+        raise RedisTimeoutError('Timeout reading from socket')
+
+    with patch.object(Connection, 'on_connect', unanswered_handshake):
+        with pytest.raises(RedisTimeoutError):
+            conn.on_connect()
+
+    assert conn._sock is None
+
+
 def test_pubsub_pool_is_created_once():
     manager = CacheManager(namespace='test')
 
