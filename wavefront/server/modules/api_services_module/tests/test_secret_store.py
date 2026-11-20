@@ -25,6 +25,7 @@ from api_services_module.secrets.secret_store_service import (
     SecretNotFound,
     SecretStoreService,
 )
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
 from db_repo_module.models.secret import Secret
@@ -461,7 +462,14 @@ async def test_update_that_cannot_resolve_is_not_saved():
     proxy.api_change_publisher.publish_message.assert_not_called()
 
 
-async def test_update_restores_previous_definition_when_reload_fails():
+@pytest.mark.parametrize(
+    'failure, raised',
+    [
+        (RuntimeError('reload failed'), HTTPException),  # answered 500
+        (BlockingPoolBusyError('storage', 5), BlockingPoolBusyError),  # 503
+    ],
+)
+async def test_update_restores_previous_definition_when_reload_fails(failure, raised):
     original = _service_yaml()
     proxy, manager = await _proxy(
         enabled=True, yaml_by_id={'acme': original}, secrets=('ACME_TOKEN', 'OTHER')
@@ -473,12 +481,12 @@ async def test_update_restores_previous_definition_when_reload_fails():
     async def reload_failing_once(service_id):
         calls.append(service_id)
         if len(calls) == 1:
-            raise RuntimeError('reload failed')
+            raise failure
         await real_reload(service_id)
 
     registry.reload_service = reload_failing_once
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(raised):
         await proxy.update_api_services(
             'acme',
             _service_yaml(

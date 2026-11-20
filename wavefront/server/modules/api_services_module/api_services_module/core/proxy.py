@@ -530,14 +530,15 @@ class ApiProxy:
         )
         try:
             await self.reload_service(service_id)
-        except HTTPException:
-            # Put the previous definition back, in storage and in memory
+        except (HTTPException, BlockingPoolBusyError):
+            # Put the previous definition back, in storage and in memory, then
+            # re-raise the original error (an overload stays a 503).
             await self.api_services_manager.update_api_service(
                 id=service_id, service_def_yaml=stored_yaml
             )
             try:
                 await self.reload_service(service_id)
-            except HTTPException:
+            except (HTTPException, BlockingPoolBusyError):
                 logger.error(f'Failed to restore service {service_id}')
             raise
         self.api_change_publisher.publish_message(
