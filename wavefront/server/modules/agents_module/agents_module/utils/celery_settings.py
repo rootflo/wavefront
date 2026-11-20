@@ -10,6 +10,7 @@ DEFAULT_QUEUE_DEPTH_CACHE_TTL_SECONDS = 1.0
 DEFAULT_QUEUE_DEPTH_WARN_RATIO = 0.8
 DEFAULT_BACKPRESSURE_RETRY_AFTER_SECONDS = 30
 DEFAULT_BROKER_SOCKET_TIMEOUT_SECONDS = 2.0
+DEFAULT_MAX_EXECUTION_ATTEMPTS = 3
 
 
 def _coerce(name: str, raw: Any, cast: Callable[[Any], Any], default: Any) -> Any:
@@ -36,6 +37,8 @@ class CeleryProducerSettings:
     backpressure_retry_after_seconds: int = DEFAULT_BACKPRESSURE_RETRY_AFTER_SECONDS
     # Producer only; the worker's consuming app needs long blocking reads.
     broker_socket_timeout_seconds: float = DEFAULT_BROKER_SOCKET_TIMEOUT_SECONDS
+    # Runs per execution chain, the original included. <= 1 disables retries.
+    max_execution_attempts: int = DEFAULT_MAX_EXECUTION_ATTEMPTS
 
     def __post_init__(self) -> None:
         casts: dict[str, Callable[[Any], Any]] = {
@@ -44,6 +47,7 @@ class CeleryProducerSettings:
             'queue_depth_warn_ratio': float,
             'backpressure_retry_after_seconds': int,
             'broker_socket_timeout_seconds': float,
+            'max_execution_attempts': int,
         }
         for field in fields(self):
             value = _coerce(
