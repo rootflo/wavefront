@@ -107,7 +107,7 @@ include_routers(app)
 async def blocking_pool_busy_handler(request: Request, exc: BlockingPoolBusyError):
     """A blocking-I/O pool (KMS signing, bcrypt) is full: overload, not a bug."""
     logger.warning(
-        f'{exc.pool} pool busy on {request.method} {request.url.path}: {exc}'
+        f'{exc.pool} pool busy on {request.method} {request.url.path!r}: {exc}'
     )
     return JSONResponse(
         status_code=503,
@@ -123,7 +123,9 @@ async def public_key_unavailable_handler(
     request: Request, exc: PublicKeyUnavailableError
 ):
     """KMS is down while verifying a token: the token may be valid, so 503."""
-    logger.error(f'Token key unavailable on {request.method} {request.url.path}: {exc}')
+    logger.error(
+        f'Token key unavailable on {request.method} {request.url.path!r}: {exc}'
+    )
     return JSONResponse(
         status_code=503,
         headers={'Retry-After': str(retry_after_seconds())},

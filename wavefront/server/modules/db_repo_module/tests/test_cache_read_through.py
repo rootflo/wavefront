@@ -37,7 +37,7 @@ class FakeRedis:
                 self.store[keys[1]] = token
             return [token, self.store.get(keys[0])]
         if script == CacheManager._RT_FILL:
-            if self.store.get(keys[1]) != argv[0]:
+            if argv[0].startswith('pending:') or self.store.get(keys[1]) != argv[0]:
                 return 0
             self.store[keys[0]] = f'{argv[0]}\n{argv[1]}'
             return 1
@@ -45,6 +45,7 @@ class FakeRedis:
 
     def pipeline(self, transaction=True):
         fake = self
+        fake.pipelines = getattr(fake, 'pipelines', 0) + 1
         ops = []
 
         class Pipe:
@@ -227,6 +228,56 @@ async def test_keys_share_a_hash_slot_and_a_separate_prefix(cache):
     assert gen_key == 'ns/rt/{agent:1}:gen'
 
 
+async def test_reads_bypass_the_cache_while_a_change_is_pending(cache):
+    loader = Loader('v1')
+    await cache.read_through('k', loader, ttl=60)  # cached
+
+    async with cache.invalidating('k'):
+        loader.value = 'in-flight'
+        assert await cache.read_through('k', loader, ttl=60) == 'in-flight'
+        assert await cache.read_through('k', loader, ttl=60) == 'in-flight'
+        value_key, _ = cache._rt_keys('k')
+        assert value_key not in cache._async_redis.store  # nothing was filled
+
+    assert loader.calls == 3
+
+
+async def test_failed_final_rotation_leaves_the_key_uncacheable_not_stale(cache):
+    """A read inside the change window must never become valid, even if the
+    rotation after the change fails."""
+    loader = Loader('old')
+    real_rotate = cache._rotate
+
+    async def failing_after(keys, *, pending):
+        if not pending:
+            raise CacheUnavailableError('down after the change')
+        await real_rotate(keys, pending=pending)
+
+    cache._rotate = failing_after
+    async with cache.invalidating('k'):
+        await cache.read_through('k', loader, ttl=60)  # reads 'old' mid-change
+        loader.value = 'new'  # the commit
+    cache._rotate = real_rotate
+
+    assert await cache.read_through('k', loader, ttl=60) == 'new'
+    # The marker expires (simulated): a fresh token, and caching resumes.
+    _, gen_key = cache._rt_keys('k')
+    del cache._async_redis.store[gen_key]
+    assert await cache.read_through('k', loader, ttl=60) == 'new'
+    assert await cache.read_through('k', loader, ttl=60) == 'new'
+    assert loader.calls == 3
+
+
+async def test_many_keys_are_rotated_in_one_round_trip(cache):
+    keys = [f'v{i}' for i in range(50)]
+    cache._async_redis.pipelines = 0
+
+    async with cache.invalidating(*keys):
+        pass
+
+    assert cache._async_redis.pipelines == 2  # one before, one after
+
+
 @pytest.mark.skipif(not os.environ.get('REDIS_URL'), reason='needs REDIS_URL')
 async def test_lua_scripts_against_real_redis():
     from redis import asyncio as aioredis
@@ -262,6 +313,14 @@ async def test_lua_scripts_against_real_redis():
         assert (
             await client.eval(
                 CacheManager._RT_FILL, 2, value_key, gen_key, 'tok-1', 'stale', 60
+            )
+            == 0
+        )
+
+        await client.set(gen_key, 'pending:abc')  # a change is in flight
+        assert (
+            await client.eval(
+                CacheManager._RT_FILL, 2, value_key, gen_key, 'pending:abc', 'x', 60
             )
             == 0
         )

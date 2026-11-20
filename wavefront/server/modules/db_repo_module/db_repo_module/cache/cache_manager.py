@@ -467,16 +467,23 @@ class CacheManager(CommonCache):
     #   - a reader captures the token BEFORE loading the source, and fills only
     #     if the token is unchanged (atomic compare-and-set in Lua); a hit is
     #     valid only if the value carries the current token;
-    #   - a writer replaces the token strictly before its change (Redis down:
-    #     CacheUnavailableError, a 503, nothing changed) and again best-effort
-    #     after it (defeats a reader that captured the token in between). It
-    #     never writes the new value; the next read fills it.
+    #   - a writer first sets a *pending* marker as the token, strictly (Redis
+    #     down: CacheUnavailableError, a 503, nothing changed). While a key is
+    #     pending, reads bypass the cache and never fill it. After the change
+    #     the writer sets a fresh token (best-effort). If that fails, the
+    #     marker simply expires (_RT_PENDING_TTL) and a fresh token is created
+    #     by the next read, so no fill from inside the change window can ever
+    #     become valid. Writers never write the new value; the next read fills.
     # A missing token never validates anything (the read creates a fresh one),
     # so correctness does not depend on any TTL or eviction policy. Keys live
     # under a separate ``rt/`` prefix, and K and G(K) share a {hash tag}.
     # ------------------------------------------------------------------
 
     _RT_GENERATION_TTL = 86400  # seconds; affects hit rate only, never correctness
+    # How long a key stays uncacheable if the post-change rotation fails. Must
+    # outlast the slowest write (a DB update plus a storage upload).
+    _RT_PENDING_TTL = 300
+    _RT_PENDING = 'pending:'
 
     _RT_READ = """
 local token = redis.call('GET', KEYS[2])
@@ -488,7 +495,7 @@ return {token, redis.call('GET', KEYS[1])}
 """
 
     _RT_FILL = """
-if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+if string.sub(ARGV[1], 1, 8) == 'pending:' or redis.call('GET', KEYS[2]) ~= ARGV[1] then
   return 0
 end
 redis.call('SET', KEYS[1], ARGV[1] .. '\\n' .. ARGV[2], 'EX', ARGV[3])
@@ -551,6 +558,10 @@ return 1
                 'READ', read, read_sync, attempts=1, timeout=None
             )
             token, cached = self._as_str(raw_token), self._as_str(raw_value)
+            if token is not None and token.startswith(self._RT_PENDING):
+                # A change is in flight (or its final rotation failed): read
+                # the source of truth and don't cache what we read.
+                return await loader()
             if cached is not None:
                 tag, _, payload = cached.partition('\n')
                 if tag == token:
@@ -579,54 +590,58 @@ return 1
             logger.warning(f'Cache fill skipped for {key}: {e}')
         return value
 
-    async def _rotate(self, keys: tuple[str, ...]) -> None:
-        """Give each key a new token and drop its value. Raises on failure.
+    async def _rotate(self, keys: tuple[str, ...], *, pending: bool) -> None:
+        """Set a new token for every key (a pending marker, or a fresh token)
+        and drop their values, in one round trip. Raises on failure.
 
         Also deletes the plain ``get_str``/``add`` key of the same name, so code
         (or old workers mid-deploy) still using the plain API never keeps
         serving a value this change made stale.
         """
-        for key in keys:
-            value_key, gen_key = self._rt_keys(key)
-            plain_key = f'{self.namespace}/{key}'
-            token = self._new_token()
+        if pending:
+            token, ttl = self._RT_PENDING + self._new_token(), self._RT_PENDING_TTL
+        else:
+            token, ttl = self._new_token(), self._RT_GENERATION_TTL
 
-            async def rotate(client: aioredis.Redis) -> Any:
-                pipe = client.pipeline(transaction=False)
-                pipe.set(gen_key, token, ex=self._RT_GENERATION_TTL)
+        def queue(pipe: Any) -> Any:
+            for key in keys:
+                value_key, gen_key = self._rt_keys(key)
+                pipe.set(gen_key, token, ex=ttl)
                 pipe.delete(value_key)
-                pipe.delete(plain_key)
-                return await pipe.execute()
+                pipe.delete(f'{self.namespace}/{key}')
+            return pipe
 
-            def rotate_sync() -> Any:
-                pipe = self.redis.pipeline(transaction=False)
-                pipe.set(gen_key, token, ex=self._RT_GENERATION_TTL)
-                pipe.delete(value_key)
-                pipe.delete(plain_key)
-                return pipe.execute()
+        async def rotate(client: aioredis.Redis) -> Any:
+            return await queue(client.pipeline(transaction=False)).execute()
 
-            await self._run_async('ROTATE', rotate, rotate_sync, None, None)
+        def rotate_sync() -> Any:
+            return queue(self.redis.pipeline(transaction=False)).execute()
+
+        await self._run_async('ROTATE', rotate, rotate_sync, None, None)
 
     @contextlib.asynccontextmanager
     async def invalidating(self, *keys: str) -> AsyncIterator[None]:
         """Wrap a change to the source of truth behind ``keys``.
 
-        Before the body: strict. If Redis is down this raises
-        CacheUnavailableError (a 503) and the body never runs, so nothing has
-        changed and a retry is safe. After the body (success or failure):
-        best-effort, closing the window for a reader that loaded the old value
-        while the change was in flight.
+        Before the body: marks the keys pending, strictly. If Redis is down this
+        raises CacheUnavailableError (a 503) and the body never runs, so nothing
+        has changed and a retry is safe. While pending, reads bypass the cache.
+        After the body (success or failure): a fresh token, best-effort. If that
+        fails the keys stay uncacheable until the marker expires, which is safe.
         """
-        await self._rotate(keys)
+        if not keys:
+            yield
+            return
+        await self._rotate(keys, pending=True)
         try:
             yield
         finally:
             try:
-                await self._rotate(keys)
+                await self._rotate(keys, pending=False)
             except CacheUnavailableError as e:
                 logger.warning(
-                    f'Cache invalidation after a change failed for {keys}; a read '
-                    f'racing the change could serve the old value until its TTL: {e}'
+                    f'Cache rotation after a change failed for {keys}; these keys '
+                    f'bypass the cache for up to {self._RT_PENDING_TTL}s: {e}'
                 )
 
     def _create_redis_connection(self) -> Redis:

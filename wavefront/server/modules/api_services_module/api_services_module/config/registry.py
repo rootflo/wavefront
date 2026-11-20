@@ -1,5 +1,6 @@
 """Service registry for managing service definitions."""
 
+import itertools
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 from ..models.service import ServiceDefinition
 from .parser import ServiceDefinitionParser
@@ -50,12 +51,12 @@ class ServiceRegistry:
         self._definitions: Dict[str, ServiceDefinition] = {}
         # secret name -> ids of the services that reference it
         self._secret_refs: Dict[str, Set[str]] = {}
-        # Per service id: a counter ticked by every load start and removal, the
-        # counter value at the last removal, and the load that registered last.
-        # A load registers only if it started after the last removal and after
-        # the load whose result is already in place, so a slow, older fetch can't
-        # bring back a removed service or overwrite a newer definition.
-        self._load_seq: Dict[str, int] = {}
+        # One registry-wide counter, ticked by every load start and removal; per
+        # service id, the tick of the last removal and of the load that
+        # registered last. A load registers only if it started after both, so a
+        # slow, older fetch can't bring back a removed service or overwrite a
+        # newer definition. Loads of ids that don't exist leave nothing behind.
+        self._seq = itertools.count(1)
         self._removed_at: Dict[str, int] = {}
         self._registered_seq: Dict[str, int] = {}
         self.parser = ServiceDefinitionParser()
@@ -131,9 +132,7 @@ class ServiceRegistry:
         Returns:
             True if service was removed, False if not found
         """
-        self._removed_at[service_id] = self._load_seq[service_id] = (
-            self._load_seq.get(service_id, 0) + 1
-        )
+        self._removed_at[service_id] = next(self._seq)
         if service_id in self._services:
             self.deregister_service(service_id)
             return True
@@ -182,7 +181,7 @@ class ServiceRegistry:
 
     async def load_service_from_db(self, service_id: str):
         self._ensure_manager()
-        seq = self._load_seq[service_id] = self._load_seq.get(service_id, 0) + 1
+        seq = next(self._seq)
 
         service = await self.api_service_manager.get_api_service(id=service_id)
         if not service:

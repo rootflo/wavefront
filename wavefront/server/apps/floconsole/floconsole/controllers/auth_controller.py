@@ -78,6 +78,21 @@ async def authenticate(
         expiry=token_service.token_expiry,
     )
 
+    # bcrypt and signing ran off the event loop, so a password change or an
+    # account disable can land in between. Only admit the login if the
+    # credential it was checked against is still the current one.
+    current = await user_repository.find_one(id=user.id)
+    if current is None or current.deleted or current.password != user.password:
+        logger.warning(
+            f'Login for {auth_data.email} rejected: account changed during login'
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Incorrect username or password'
+            ),
+        )
+
     await session_repository.delete_all(user_id=user.id)
 
     # Create new session

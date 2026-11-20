@@ -130,7 +130,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
 
         except BlockingPoolBusyError as exc:
             # Middleware errors skip the app's exception handlers, so answer here.
-            logger.warning(f'Auth busy on {request.method} {request.url.path}: {exc}')
+            logger.warning(f'Auth busy on {request.method} {request.url.path!r}: {exc}')
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 headers={'Retry-After': str(retry_after_seconds())},
