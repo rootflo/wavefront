@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
@@ -639,7 +639,7 @@ class AsyncAgenticExecutionService:
             return self._build_status_response(record_dict, include_error=include_error)
         try:
             return await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self._build_status_response,
                 record_dict,
                 include_error=include_error,

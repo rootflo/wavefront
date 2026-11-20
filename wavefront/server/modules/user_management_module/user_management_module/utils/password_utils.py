@@ -1,6 +1,6 @@
 import bcrypt
 
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import Pool, run_in_pool
 
 
 def hash_password(password: str) -> str:
@@ -21,8 +21,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 async def hash_password_async(password: str) -> str:
-    return await run_in_pool('cpu', hash_password, password)
+    return await run_in_pool(Pool.CPU, hash_password, password)
 
 
 async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
-    return await run_in_pool('cpu', verify_password, plain_password, hashed_password)
+    return await run_in_pool(Pool.CPU, verify_password, plain_password, hashed_password)

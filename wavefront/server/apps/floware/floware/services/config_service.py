@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import Pool, run_in_pool
 
 from fastapi import UploadFile, File, HTTPException
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -89,7 +89,7 @@ class ConfigService:
         async with self._store_lock:
             if file_content:
                 await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.save_small_file,
                     file_content,
                     config_credentials['asset_storage_bucket'],
@@ -114,7 +114,7 @@ class ConfigService:
         config_path = config_record.get('app_icon')
         config_credentials = self._get_floware_credentials()
         url = await run_in_pool(
-            'storage',
+            Pool.STORAGE,
             self.cloud_storage_manager.generate_presigned_url,
             config_credentials['asset_storage_bucket'],
             config_path,

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 import json
 
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 from flo_cloud._types import MessageQueue
@@ -28,7 +28,7 @@ class ImageService:
     async def save_image(self, image_data: bytes, image_name: str):
         validated_image_data = await self._validate_image(image_data)
         await run_in_pool(
-            'storage',
+            Pool.STORAGE,
             self._upload,
             validated_image_data,
             f'historical_data/{image_name}',
@@ -46,7 +46,11 @@ class ImageService:
                 metadata['item_id'] = object_key
 
             await run_in_pool(
-                'storage', self._upload, validated_image_data, object_key, 'image/jpeg'
+                Pool.STORAGE,
+                self._upload,
+                validated_image_data,
+                object_key,
+                'image/jpeg',
             )
 
             message = {
@@ -57,7 +61,7 @@ class ImageService:
             }
 
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self._upload,
                 json.dumps(message).encode('utf-8'),
                 f'gold_image_metadata/{object_key}.json',
@@ -66,7 +70,7 @@ class ImageService:
 
             # Brokers wait on the network (SQS, Pub/Sub, Azure): keep it off the loop.
             message_id = await run_in_pool(
-                'storage', self.message_queue.add_message, message
+                Pool.STORAGE, self.message_queue.add_message, message
             )
             logger.info(f'Successfully sent message to gold queue: {message_id}')
 
@@ -91,7 +95,7 @@ class ImageService:
 
     async def _validate_image(self, image_data: bytes) -> bytes:
         # Decoding and re-encoding is CPU work: keep it off the event loop.
-        return await run_in_pool('cpu', self._validate_image_sync, image_data)
+        return await run_in_pool(Pool.CPU, self._validate_image_sync, image_data)
 
     def _validate_image_sync(self, image_data: bytes) -> bytes:
         try:

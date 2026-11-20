@@ -5,7 +5,7 @@ object storage, and CPU-heavy work such as bcrypt. Called straight from an
 ``async def`` they run on the event loop and every other request in the worker
 waits. ``run_in_pool`` moves such a call onto a thread from a named pool:
 
-    token = await run_in_pool('kms', signer.sign, message=digest)
+    token = await run_in_pool(Pool.KMS, signer.sign, message=digest)
 
 Named pools rather than ``asyncio.to_thread``: the default executor is shared
 with everything on the loop (DNS lookups included), so one slow dependency
@@ -33,6 +33,7 @@ import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, fields
+from enum import StrEnum
 from typing import Any, Callable, Dict, Literal, Mapping, Optional, TypeVar
 
 from opentelemetry import metrics
@@ -40,8 +41,19 @@ from opentelemetry import metrics
 from common_module.log.logger import logger
 
 T = TypeVar('T')
+
+
+class Pool(StrEnum):
+    """The named pools. Members are plain strings ('kms', ...), so metrics,
+    config keys and error messages are unchanged."""
+
+    KMS = 'kms'
+    STORAGE = 'storage'
+    CPU = 'cpu'
+
+
 PoolName = Literal['kms', 'storage', 'cpu']
-POOL_NAMES: tuple[PoolName, ...] = ('kms', 'storage', 'cpu')
+POOL_NAMES: tuple[str, ...] = tuple(pool.value for pool in Pool)
 
 
 @dataclass(frozen=True)
@@ -55,8 +67,8 @@ class BlockingIoLimits:
     # How long a call may wait for a free thread before it is refused.
     queue_wait_seconds: float = 10.0
 
-    def max_threads(self, pool: PoolName) -> int:
-        return getattr(self, f'{pool}_max_threads')
+    def max_threads(self, pool: Pool | PoolName) -> int:
+        return getattr(self, f'{Pool(pool).value}_max_threads')
 
 
 class BlockingPoolBusyError(RuntimeError):
@@ -119,7 +131,7 @@ def limits() -> BlockingIoLimits:
     return _limits
 
 
-def _pool_for(pool: PoolName) -> ThreadPoolExecutor:
+def _pool_for(pool: Pool | PoolName) -> ThreadPoolExecutor:
     if pool not in POOL_NAMES:
         raise ValueError(
             f'Unknown blocking-I/O pool {pool!r}; expected one of {POOL_NAMES}'
@@ -145,7 +157,7 @@ def shutdown_blocking_io() -> None:
 
 
 async def run_in_pool(
-    pool: PoolName, fn: Callable[..., T], /, *args: Any, **kwargs: Any
+    pool: Pool | PoolName, fn: Callable[..., T], /, *args: Any, **kwargs: Any
 ) -> T:
     """Run ``fn(*args, **kwargs)`` on the named pool and await the result.
 
@@ -155,6 +167,7 @@ async def run_in_pool(
     frees up within ``queue_wait_seconds``.
     """
     executor = _pool_for(pool)  # validates the name before anything is counted
+    pool = Pool(pool).value  # plain str for metrics and the busy error
     loop = asyncio.get_running_loop()
     started = asyncio.Event()
     context = contextvars.copy_context()

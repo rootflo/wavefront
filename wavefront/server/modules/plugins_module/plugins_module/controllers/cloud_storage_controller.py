@@ -7,7 +7,7 @@ from fastapi import Depends, Query, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -62,7 +62,7 @@ async def get_resource_presigned_url(
     try:
         bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
         presigned_url = await run_in_pool(
-            'storage',
+            Pool.STORAGE,
             cloud_storage_manager.generate_presigned_url,
             bucket_name=bucket_name,
             key=key,
@@ -103,14 +103,14 @@ async def read_storage_file(
     try:
         bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
         file_content = await run_in_pool(
-            'storage', cloud_storage_manager.read_file, bucket_name, key
+            Pool.STORAGE, cloud_storage_manager.read_file, bucket_name, key
         )
 
         if type == StorageFileType.json:
             # A large object is slow to parse, project and encode: all three run
             # on the cpu pool, not the event loop.
             return await run_in_pool(
-                'cpu', _json_response, file_content, projection, response_formatter
+                Pool.CPU, _json_response, file_content, projection, response_formatter
             )
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse(

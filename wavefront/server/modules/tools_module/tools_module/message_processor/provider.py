@@ -5,7 +5,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.message_processors import MessageProcessors
 from tools_module.models.tool_schemas import ToolExecutionDetails
 from flo_cloud.cloud_storage import CloudStorageManager
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 
 
@@ -99,7 +99,7 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
         """Load YAML content from cloud storage, off the event loop"""
         filepath = f'{self.prefix}/{processor.source}'
         yaml_bytes = await run_in_pool(
-            'storage',
+            Pool.STORAGE,
             self.cloud_storage_manager.read_file,
             self.message_processor_bucket_name,
             filepath,
