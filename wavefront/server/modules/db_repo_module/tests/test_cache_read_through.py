@@ -7,6 +7,7 @@ REDIS_URL is set (locally or in CI), so their syntax and semantics are checked.
 
 import asyncio
 import os
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -30,16 +31,36 @@ class FakeRedis:
     async def eval(self, script, numkeys, *args):
         self._check()
         keys, argv = args[:numkeys], [str(a) for a in args[numkeys:]]
+        return self._run_script(script, keys, argv)
+
+    def _run_script(self, script, keys, argv):
+        store = self.store
         if script == CacheManager._RT_READ:
-            token = self.store.get(keys[1])
+            token = store.get(keys[1])
             if token is None:
+                if store.get(keys[2]):
+                    return ['pending:lost', None]
                 token = argv[0]
-                self.store[keys[1]] = token
-            return [token, self.store.get(keys[0])]
+                store[keys[1]] = token
+            return [token, store.get(keys[0])]
         if script == CacheManager._RT_FILL:
-            if argv[0].startswith('pending:') or self.store.get(keys[1]) != argv[0]:
+            if argv[0].startswith('pending:') or store.get(keys[1]) != argv[0]:
                 return 0
-            self.store[keys[0]] = f'{argv[0]}\n{argv[1]}'
+            store[keys[0]] = f'{argv[0]}\n{argv[1]}'
+            return 1
+        if script == CacheManager._RT_BEGIN:
+            store.setdefault(keys[2], set()).add(argv[2])
+            store[keys[1]] = argv[0]
+            store.pop(keys[0], None)
+            return 1
+        if script == CacheManager._RT_END:
+            writers = store.get(keys[2], set())
+            writers.discard(argv[2])
+            store.pop(keys[0], None)
+            if writers:
+                return 0
+            store.pop(keys[2], None)
+            store[keys[1]] = argv[0]
             return 1
         raise AssertionError('unknown script')
 
@@ -49,20 +70,25 @@ class FakeRedis:
         ops = []
 
         class Pipe:
-            def set(self, key, value, ex=None):
-                ops.append(('set', key, value))
+            def eval(self, script, numkeys, *args):
+                keys, argv = args[:numkeys], [str(a) for a in args[numkeys:]]
+                ops.append(('eval', script, keys, argv))
 
             def delete(self, key):
                 ops.append(('del', key))
 
-            async def execute(self):
+            def _apply(self):
                 fake._check()
+                results = []
                 for op in ops:
-                    if op[0] == 'set':
-                        fake.store[op[1]] = op[2]
+                    if op[0] == 'eval':
+                        results.append(fake._run_script(*op[1:]))
                     else:
-                        fake.store.pop(op[1], None)
-                return [True] * len(ops)
+                        results.append(fake.store.pop(op[1], None) is not None)
+                return results
+
+            async def execute(self):
+                return self._apply()
 
         return Pipe()
 
@@ -166,7 +192,7 @@ async def test_a_reader_racing_the_change_is_defeated_by_the_second_rotation(cac
         await loaded(loader)
         loader.value = 'new'
     loader.gate.set()
-    await reader
+    assert await reader == 'old'  # it read the source before the commit
 
     loader.gate = None
     assert await cache.read_through('k', loader, ttl=60) == 'new'
@@ -213,9 +239,12 @@ async def test_body_error_still_rotates_and_propagates(cache):
     loader = Loader()
     await cache.read_through('k', loader, ttl=60)
 
-    with pytest.raises(RuntimeError):
+    async def failing_change():
         async with cache.invalidating('k'):
             raise RuntimeError('db write failed')
+
+    with pytest.raises(RuntimeError):
+        await failing_change()
 
     loader.value = 'v2'
     assert await cache.read_through('k', loader, ttl=60) == 'v2'
@@ -248,10 +277,10 @@ async def test_failed_final_rotation_leaves_the_key_uncacheable_not_stale(cache)
     loader = Loader('old')
     real_rotate = cache._rotate
 
-    async def failing_after(keys, *, pending):
+    async def failing_after(keys, *, pending, writer):
         if not pending:
             raise CacheUnavailableError('down after the change')
-        await real_rotate(keys, pending=pending)
+        await real_rotate(keys, pending=pending, writer=writer)
 
     cache._rotate = failing_after
     async with cache.invalidating('k'):
@@ -260,9 +289,12 @@ async def test_failed_final_rotation_leaves_the_key_uncacheable_not_stale(cache)
     cache._rotate = real_rotate
 
     assert await cache.read_through('k', loader, ttl=60) == 'new'
-    # The marker expires (simulated): a fresh token, and caching resumes.
-    _, gen_key = cache._rt_keys('k')
+    value_key, gen_key = cache._rt_keys('k')
+    assert cache._async_redis.store[gen_key].startswith('pending:')
+    assert value_key not in cache._async_redis.store
+    # The marker and the writer count expire (simulated): caching resumes.
     del cache._async_redis.store[gen_key]
+    del cache._async_redis.store[cache._rt_writers_key('k')]
     assert await cache.read_through('k', loader, ttl=60) == 'new'
     assert await cache.read_through('k', loader, ttl=60) == 'new'
     assert loader.calls == 3
@@ -278,52 +310,148 @@ async def test_many_keys_are_rotated_in_one_round_trip(cache):
     assert cache._async_redis.pipelines == 2  # one before, one after
 
 
+async def test_a_key_stays_pending_until_the_last_writer_finishes(cache):
+    loader = Loader('v1')
+    first = cache.invalidating('k')
+    second = cache.invalidating('k')
+    await first.__aenter__()
+    await second.__aenter__()
+
+    await first.__aexit__(None, None, None)  # the second writer is still active
+    loader.value = 'mid-change'
+    assert await cache.read_through('k', loader, ttl=60) == 'mid-change'
+    value_key, _ = cache._rt_keys('k')
+    assert value_key not in cache._async_redis.store  # still not cacheable
+
+    await second.__aexit__(None, None, None)
+    loader.value = 'v2'
+    assert await cache.read_through('k', loader, ttl=60) == 'v2'
+    assert await cache.read_through('k', loader, ttl=60) == 'v2'
+    assert loader.calls == 2  # the last read was a hit
+
+
+async def test_a_retried_end_cannot_end_another_writers_change(cache):
+    """A retry can re-run a writer's end after the first attempt landed. That
+    must neither remove the other writer nor restore an older token."""
+    await cache._rotate(('k',), pending=True, writer='a')
+    await cache._rotate(('k',), pending=True, writer='b')
+    await cache._rotate(('k',), pending=False, writer='a')
+    await cache._rotate(('k',), pending=False, writer='a')  # the retry
+
+    _, gen_key = cache._rt_keys('k')
+    assert cache._async_redis.store[gen_key].startswith('pending:')
+    loader = Loader('mid-change')
+    await cache.read_through('k', loader, ttl=60)
+    value_key, _ = cache._rt_keys('k')
+    assert value_key not in cache._async_redis.store
+
+
+async def test_an_evicted_marker_still_bypasses_while_a_writer_is_active(cache):
+    loader = Loader('old')
+    async with cache.invalidating('k'):
+        _, gen_key = cache._rt_keys('k')
+        del cache._async_redis.store[gen_key]  # evicted mid-change
+        await cache.read_through('k', loader, ttl=60)
+        value_key, _ = cache._rt_keys('k')
+        assert value_key not in cache._async_redis.store
+        assert gen_key not in cache._async_redis.store  # no fresh token created
+
+
+async def test_a_loader_error_is_raised_once_not_retried(cache):
+    calls = 0
+
+    async def failing_loader():
+        nonlocal calls
+        calls += 1
+        raise CacheUnavailableError("the loader's own dependency is down")
+
+    async with cache.invalidating('k'):  # pending: the read bypasses the cache
+        with pytest.raises(CacheUnavailableError):
+            await cache.read_through('k', failing_loader, ttl=60)
+
+    assert calls == 1
+
+
+async def test_sync_fallback_rotation_retries():
+    """Before the async client is bound (or from another loop) rotation runs on
+    the sync client; it gets the same retry budget as the async path."""
+    manager = CacheManager(
+        namespace='ns',
+        settings=RedisSettings(initial_backoff=0.01, max_backoff=0.01, max_retries=3),
+    )
+    attempts = 0
+
+    class FlakyPipe:
+        def eval(self, *args):
+            pass
+
+        def delete(self, key):
+            pass
+
+        def execute(self):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise module.ConnectionError('blip')
+            return []
+
+    class SyncRedis:
+        def pipeline(self, transaction=True):
+            return FlakyPipe()
+
+    manager.redis = SyncRedis()  # no async client bound: the sync path runs
+
+    await manager._rotate(('k',), pending=True, writer='w1')
+
+    assert attempts == 2
+
+
 @pytest.mark.skipif(not os.environ.get('REDIS_URL'), reason='needs REDIS_URL')
 async def test_lua_scripts_against_real_redis():
     from redis import asyncio as aioredis
 
     client = aioredis.from_url(os.environ['REDIS_URL'], decode_responses=True)
-    value_key, gen_key = 'test/rt/{lua-check}', 'test/rt/{lua-check}:gen'
-    try:
-        await client.delete(value_key, gen_key)
-        token, value = await client.eval(
-            CacheManager._RT_READ, 2, value_key, gen_key, 'tok-1', 60
-        )
-        assert (token, value) == ('tok-1', None)
+    base = f'test/rt/{{lua-check-{uuid.uuid4().hex}}}'  # unique per run
+    value_key, gen_key, writers_key = base, f'{base}:gen', f'{base}:w'
+    keys = (value_key, gen_key, writers_key)
 
-        assert (
-            await client.eval(
-                CacheManager._RT_FILL,
-                2,
-                value_key,
-                gen_key,
-                'tok-1',
-                'payload\nline',
-                60,
-            )
-            == 1
+    async def read(new_token):
+        return await client.eval(CacheManager._RT_READ, 3, *keys, new_token, 60)
+
+    async def fill(token, value):
+        return await client.eval(
+            CacheManager._RT_FILL, 2, value_key, gen_key, token, value, 60
         )
-        token, value = await client.eval(
-            CacheManager._RT_READ, 2, value_key, gen_key, 'unused', 60
-        )
-        assert token == 'tok-1'
-        assert value == 'tok-1\npayload\nline'
+
+    try:
+        assert await read('tok-1') == ['tok-1', None]
+        assert await fill('tok-1', 'payload\nline') == 1
+        assert await read('unused') == ['tok-1', 'tok-1\npayload\nline']
 
         await client.set(gen_key, 'tok-2')  # a writer rotated
-        assert (
-            await client.eval(
-                CacheManager._RT_FILL, 2, value_key, gen_key, 'tok-1', 'stale', 60
-            )
-            == 0
-        )
+        assert await fill('tok-1', 'stale') == 0
 
-        await client.set(gen_key, 'pending:abc')  # a change is in flight
-        assert (
-            await client.eval(
-                CacheManager._RT_FILL, 2, value_key, gen_key, 'pending:abc', 'x', 60
+        # Two overlapping writers: the key stays pending until the last leaves.
+        async def begin(writer):
+            return await client.eval(
+                CacheManager._RT_BEGIN, 3, *keys, f'pending:{writer}', 60, writer
             )
-            == 0
-        )
+
+        async def end(writer, token):
+            return await client.eval(CacheManager._RT_END, 3, *keys, token, 60, writer)
+
+        assert await begin('a') and await begin('b')
+        assert await client.get(value_key) is None
+        assert await fill('pending:b', 'x') == 0
+        assert await end('a', 'tok-3') == 0
+        assert await end('a', 'tok-3b') == 0  # a retried end changes nothing
+        assert (await read('unused'))[0] == 'pending:b'
+        await client.delete(gen_key)  # the marker is evicted mid-change
+        assert (await read('unused'))[0].startswith('pending:')
+        assert await client.get(gen_key) is None  # no fresh token was created
+        assert await end('b', 'tok-4') == 1
+        assert await read('unused') == ['tok-4', None]
+        assert await client.exists(writers_key) == 0
     finally:
-        await client.delete(value_key, gen_key)
+        await client.delete(*keys)
         await client.aclose()

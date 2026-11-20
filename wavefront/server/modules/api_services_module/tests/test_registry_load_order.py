@@ -32,7 +32,8 @@ async def test_loading_missing_ids_leaves_no_state_behind():
     assert registry._registered_seq == {}
 
 
-async def test_a_removal_beats_an_older_in_flight_load():
+@pytest.mark.parametrize('remove', ['remove_service', 'deregister_service'])
+async def test_a_removal_beats_an_older_in_flight_load(remove):
     gate = asyncio.Event()
 
     async def slow_fetch(_service):
@@ -47,9 +48,9 @@ async def test_a_removal_beats_an_older_in_flight_load():
 
     load = asyncio.ensure_future(registry.load_service_from_db('acme'))
     await asyncio.sleep(0)
-    registry.remove_service('acme')  # removed while the load is in flight
+    getattr(registry, remove)('acme')  # removed while the load is in flight
     gate.set()
-    await load
+    assert await load is None  # the stale load returns without registering
 
     registry.register_service.assert_not_called()
 

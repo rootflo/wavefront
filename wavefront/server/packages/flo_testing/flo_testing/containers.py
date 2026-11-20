@@ -100,10 +100,8 @@ def add_async_cache_methods(cache_manager: Mock) -> Mock:
             return cached
         value = await loader()
         if value is not None:
-            try:
+            with contextlib.suppress(CacheUnavailableError):  # fill is best-effort
                 cache_manager.add(key, value, ttl)
-            except CacheUnavailableError:
-                pass
         return value
 
     @contextlib.asynccontextmanager
@@ -114,10 +112,8 @@ def add_async_cache_methods(cache_manager: Mock) -> Mock:
             yield
         finally:
             for key in keys:
-                try:
+                with contextlib.suppress(CacheUnavailableError):  # best-effort
                     cache_manager.remove(key)
-                except CacheUnavailableError:
-                    pass
 
     cache_manager.read_through = AsyncMock(side_effect=read_through)
     cache_manager.invalidating = Mock(side_effect=invalidating)

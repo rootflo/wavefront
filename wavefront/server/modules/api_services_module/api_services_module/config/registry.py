@@ -80,11 +80,15 @@ class ServiceRegistry:
 
     def deregister_service(self, service_id: str):
         """
-        Register a service definition.
+        Remove a service from the runtime registry.
+
+        Also fences it: a load of this id that started before now is dropped,
+        so a slow, older fetch can't bring the service back.
 
         Args:
-            service_definition: Service definition to register
+            service_id: Service identifier
         """
+        self._removed_at[service_id] = next(self._seq)
         self._services.pop(service_id, None)
         self._definitions.pop(service_id, None)
         self._index_refs(service_id, set())
@@ -132,10 +136,10 @@ class ServiceRegistry:
         Returns:
             True if service was removed, False if not found
         """
-        self._removed_at[service_id] = next(self._seq)
         if service_id in self._services:
             self.deregister_service(service_id)
             return True
+        self._removed_at[service_id] = next(self._seq)
         return False
 
     def _ensure_manager(self):

@@ -279,6 +279,8 @@ class ApiProxy:
             # Invalidate cached pipelines
             self.pipeline_cache.invalidate_service(service_id)
 
+        except BlockingPoolBusyError:
+            raise  # overload: let the app handler answer 503
         except Exception as e:
             logger.error(f'Failed with error: {str(e)}', exc_info=True)
             raise HTTPException(
