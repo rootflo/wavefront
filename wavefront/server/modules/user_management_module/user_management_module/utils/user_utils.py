@@ -89,7 +89,7 @@ async def check_is_manager(
 
 # TEMPORARY HACK - REMOVE WHEN RBAC IS IMPLEMENTED.
 # Row update/delete through the datasource API used to be admin-only. Case reassignment
-# in the bridge console deletes and inserts rows in quotation_user_assignments, so
+# in the console deletes and inserts rows in quotation_user_assignments, so
 # managers and editors (who reassign cases but are not admins) were refused. Until real
 # RBAC exists, these role NAMES are hardcoded as allowed to update and delete rows in
 # ANY table of ANY datasource - there is no per-table or per-datasource scoping here.
