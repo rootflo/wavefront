@@ -10,6 +10,7 @@ from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from flo_cloud._types import FloCipher
+from flo_testing import add_async_cache_methods
 from flo_utils.envelope import ENVELOPE_PREFIX, EnvelopeCipher
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -64,6 +65,7 @@ def config_service(request):
     repository.find_one = AsyncMock(return_value=row)
     cache = MagicMock()
     cache.get_str = MagicMock(return_value=None)
+    add_async_cache_methods(cache)
     return LlmInferenceConfigService(repository, cache, MagicMock(), cipher), row.id
 
 

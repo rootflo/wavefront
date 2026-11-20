@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 import yaml
 
 from agents_module.services.agent_inference_service import AgentInferenceService
@@ -51,3 +52,17 @@ async def test_message_processor_tool_runs_with_api_bound():
     url = client.post.await_args[0][0]
     assert url == 'http://floware/floware/v1/message-processors/mp-1/execute'
     assert client.post.await_args[1]['json'] == {'input_data': {'text': 'hello'}}
+
+
+async def test_busy_storage_pool_is_raised_not_a_missing_tool(monkeypatch):
+    """Overload must reach the client as a 503, not as an agent without its tool."""
+    from agents_module.services import agent_inference_service as module
+    from common_module.blocking_io import BlockingPoolBusyError
+
+    async def busy(*_args, **_kwargs):
+        raise BlockingPoolBusyError('storage', 10.0)
+
+    monkeypatch.setattr(module, 'run_in_pool', busy)
+
+    with pytest.raises(BlockingPoolBusyError):
+        await make_service()._try_load_message_processor_tool('summarise')

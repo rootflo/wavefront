@@ -11,6 +11,7 @@ from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
 from dependency_injector import providers
+from flo_testing import add_async_cache_methods
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -220,7 +221,7 @@ async def test_logout_invalid_cache(
 ):
     # Get the cache manager mock and set it to return None
     _, _, user_container = setup_containers
-    cache_manager_mock = Mock()
+    cache_manager_mock = add_async_cache_methods(Mock())
     cache_manager_mock.get_str = Mock(return_value=None)
     user_container.cache_manager.override(
         providers.Singleton(lambda: cache_manager_mock)

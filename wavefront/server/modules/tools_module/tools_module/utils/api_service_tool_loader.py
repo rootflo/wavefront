@@ -5,6 +5,7 @@ from typing import Callable, Optional, Dict, Any, List
 from flo_ai.tool.base_tool import Tool
 from api_services_module.core.manager import ApiServicesManager
 from api_services_module.config.parser import ServiceDefinitionParser
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 
 
@@ -163,7 +164,7 @@ async def load_api_service_tool(
             return None
 
         # Load YAML content
-        yaml_content = api_services_manager.fetch_service_def(service)
+        yaml_content = await api_services_manager.fetch_service_def(service)
 
         # Parse YAML to ServiceDefinition
         service_def = ServiceDefinitionParser.parse_yaml_string(yaml_content)
@@ -188,6 +189,8 @@ async def load_api_service_tool(
         logger.info(f'Dynamically loaded API service tool: {tool_name}')
         return tool
 
+    except BlockingPoolBusyError:
+        raise  # overload: answer 503, don't swallow it
     except Exception as e:
         logger.debug(f'API service {tool_name} not found: {str(e)}')
         return None

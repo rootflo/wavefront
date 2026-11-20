@@ -21,6 +21,7 @@ import pytest
 import yaml
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 
+from common_module.blocking_io import BlockingPoolBusyError
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
 from agents_module.utils.workflow_reference_utils import (
@@ -212,6 +213,28 @@ class TestBuildReferencedAgents:
             ValueError, match='Failed to build referenced agent ns/first'
         ):
             await workflow_service._build_referenced_agents(['ns/first'])
+
+    async def test_busy_storage_pool_is_not_wrapped_when_building_references(
+        self, workflow_service
+    ):
+        workflow_service.agent_inference_service.create_agent_from_yaml.side_effect = (
+            BlockingPoolBusyError('storage', 10.0)
+        )
+
+        with pytest.raises(BlockingPoolBusyError):
+            await workflow_service._build_referenced_agents(['ns/first'])
+
+    async def test_busy_storage_pool_is_not_wrapped_when_building_inline(
+        self, workflow_service
+    ):
+        workflow_service.agent_inference_service.create_agent_from_yaml.side_effect = (
+            BlockingPoolBusyError('storage', 10.0)
+        )
+
+        with pytest.raises(BlockingPoolBusyError):
+            await workflow_service._build_inline_agents(
+                [('editor', {'name': 'editor', 'job': 'x'})]
+            )
 
     async def test_build_inline_agents_passes_namespace(self, workflow_service):
         agents = await workflow_service._build_inline_agents(

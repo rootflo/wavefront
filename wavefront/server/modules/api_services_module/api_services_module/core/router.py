@@ -14,6 +14,7 @@ from ..config.parser import ServiceDefinitionParser
 from fastapi.responses import JSONResponse
 from fastapi import status
 
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
 
@@ -374,7 +375,9 @@ class ProxyRouter:
 
                 return proxy_response
 
-            except HTTPException:
+            except (HTTPException, BlockingPoolBusyError):
+                # Overload (a lazy definition load hit a full pool) must reach
+                # the app's 503 handler, not become a 500.
                 raise
             except Exception as e:
                 logger.error(f'Failed to process request: {str(e)}', exc_info=True)

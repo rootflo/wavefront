@@ -22,6 +22,7 @@ from db_repo_module.models.authenticator import Authenticator
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from common_module.blocking_io import BlockingPoolBusyError
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services.authenticator_services import (
     get_authenticator_instance,
@@ -31,8 +32,7 @@ from plugins_module.services.authenticator_services import (
 from plugins_module.utils.email_helper import is_allowed_client_redirect
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
-from user_management_module.utils.password_utils import verify_password
-from user_management_module.constants.cache import get_session_cache_key
+from user_management_module.utils.password_utils import verify_password_async
 from user_management_module.utils.user_utils import normalize_email
 
 from authenticator import AuthenticatorType
@@ -194,26 +194,6 @@ async def unified_authenticate(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        cache_manager.add(
-            session_cache_key,
-            json.dumps(session_data),
-            token_service.token_expiry,
-        )
-
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
@@ -226,14 +206,43 @@ async def unified_authenticate(
                 ),
             )
 
-        # Include session_id in token payload
-        token = token_service.create_token(
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id)},
+            payload={'session_id': str(session_id)},
             expiry=token_service.token_expiry,
         )
+
+        # The account, password or console role may have changed while we waited.
+        if not await user_service.is_login_still_valid(str(user.id), role_id):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
+        )
+        # A reset or disable may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
 
         response_data = {'access_token': token, 'token_type': 'bearer'}
         return JSONResponse(
@@ -241,6 +250,9 @@ async def unified_authenticate(
             content=response_formatter.buildSuccessResponse({'user': response_data}),
         )
 
+    except BlockingPoolBusyError:
+        # Retryable overload: the app's 503 handler adds Retry-After.
+        raise
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -677,26 +689,6 @@ async def _handle_oauth_callback(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        cache_manager.add(
-            session_cache_key,
-            json.dumps(session_data),
-            token_service.token_expiry,
-        )
-
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
@@ -713,14 +705,41 @@ async def _handle_oauth_callback(
                 {'provider': provider, 'error': 'User has no access to the console'},
             )
 
-        # Include session_id in token payload
-        token = token_service.create_token(
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id)},
+            payload={'session_id': str(session_id)},
             expiry=token_service.token_expiry,
         )
+
+        # The account or console role may have changed while we waited on signing.
+        if not await user_service.is_login_still_valid(str(user.id), role_id):
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': 'User account is disabled'},
+            )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        session = await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
+        )
+        # A disable or role change may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id
+        ):
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': 'User account is disabled'},
+            )
 
         # Success: redirect to success URL with access token
         if success_url:
@@ -822,7 +841,7 @@ async def _handle_email_password_auth(
             )
 
         # Verify password (user is guaranteed to exist here)
-        if not verify_password(password, user.password):
+        if not await verify_password_async(password, user.password):
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content=response_formatter.buildErrorResponse(
@@ -832,26 +851,6 @@ async def _handle_email_password_auth(
 
         # Get device info
         device_info = request.headers.get('User-Agent')
-
-        await user_service.invalidate_user_sessions(str(user.id))
-
-        # Create new session
-        session = await session_repository.create(
-            user_id=user.id, device_info=device_info, id=uuid4()
-        )
-
-        # Cache session data
-        session_cache_key = get_session_cache_key(session.id)
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        cache_manager.add(
-            session_cache_key,
-            json.dumps(session_data),
-            token_service.token_expiry,
-        )
 
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
@@ -865,14 +864,45 @@ async def _handle_email_password_auth(
                 ),
             )
 
-        # Create JWT token with session information
-        token = token_service.create_token(
+        # Sign the token BEFORE touching existing sessions: if signing fails
+        # (KMS down, kms pool busy) the user keeps their current session instead
+        # of ending up logged out with no replacement.
+        session_id = uuid4()
+        token = await token_service.create_token_async(
             sub=user.email,
             user_id=str(user.id),
             role_id=role_id,
-            payload={'session_id': str(session.id), 'auth_provider': 'email_password'},
+            payload={'session_id': str(session_id), 'auth_provider': 'email_password'},
             expiry=token_service.token_expiry,
         )
+
+        # The account, password or console role may have changed while we waited.
+        if not await user_service.is_login_still_valid(
+            str(user.id), role_id, password_hash=user.password
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
+
+        await user_service.invalidate_user_sessions(str(user.id))
+
+        # Create new session
+        session = await session_repository.create(
+            user_id=user.id, device_info=device_info, id=session_id
+        )
+        # A reset or disable may have landed between the check and the insert.
+        if not await user_service.confirm_new_session(
+            str(session_id), str(user.id), role_id, password_hash=user.password
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'User account is disabled'
+                ),
+            )
 
         response_data = {
             'access_token': token,
@@ -886,6 +916,9 @@ async def _handle_email_password_auth(
             content=response_formatter.buildSuccessResponse({'user': response_data}),
         )
 
+    except BlockingPoolBusyError:
+        # Retryable overload: the app's 503 handler adds Retry-After.
+        raise
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

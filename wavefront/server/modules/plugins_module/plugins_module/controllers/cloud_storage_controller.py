@@ -7,6 +7,7 @@ from fastapi import Depends, Query, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -14,6 +15,30 @@ from plugins_module.plugins_container import PluginsContainer
 
 
 cloud_storage_router = APIRouter()
+
+
+def _parse_json(file_content, projection):
+    data = json.loads(file_content)
+    if projection:
+        fields = {f.strip() for f in projection.split(',') if f.strip()}
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k in fields}
+        elif isinstance(data, list):
+            data = [
+                {k: v for k, v in item.items() if k in fields}
+                if isinstance(item, dict)
+                else item
+                for item in data
+            ]
+    return data
+
+
+def _json_response(file_content, projection, response_formatter) -> JSONResponse:
+    data = _parse_json(file_content, projection)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'data': data}),
+    )
 
 
 class StorageFileType(str, Enum):
@@ -36,7 +61,9 @@ async def get_resource_presigned_url(
 ):
     try:
         bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
-        presigned_url = cloud_storage_manager.generate_presigned_url(
+        presigned_url = await run_in_pool(
+            'storage',
+            cloud_storage_manager.generate_presigned_url,
             bucket_name=bucket_name,
             key=key,
             operation='GET',
@@ -48,6 +75,8 @@ async def get_resource_presigned_url(
                 {'resource_url': presigned_url}
             ),
         )
+    except BlockingPoolBusyError:
+        raise  # overload: answer 503, don't swallow it
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -73,26 +102,16 @@ async def read_storage_file(
 ):
     try:
         bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
-        file_content = cloud_storage_manager.read_file(bucket_name, key)
+        file_content = await run_in_pool(
+            'storage', cloud_storage_manager.read_file, bucket_name, key
+        )
 
         if type == StorageFileType.json:
-            data = json.loads(file_content)
-            if projection:
-                fields = {f.strip() for f in projection.split(',') if f.strip()}
-                if isinstance(data, dict):
-                    data = {k: v for k, v in data.items() if k in fields}
-                elif isinstance(data, list):
-                    data = [
-                        {k: v for k, v in item.items() if k in fields}
-                        if isinstance(item, dict)
-                        else item
-                        for item in data
-                    ]
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse({'data': data}),
-        )
+            # A large object is slow to parse, project and encode: all three run
+            # on the cpu pool, not the event loop.
+            return await run_in_pool(
+                'cpu', _json_response, file_content, projection, response_formatter
+            )
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

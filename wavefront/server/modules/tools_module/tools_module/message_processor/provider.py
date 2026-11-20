@@ -5,6 +5,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.message_processors import MessageProcessors
 from tools_module.models.tool_schemas import ToolExecutionDetails
 from flo_cloud.cloud_storage import CloudStorageManager
+from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
 from common_module.log.logger import logger
 
 
@@ -45,7 +46,7 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
         for processor in all_processors:
             try:
                 # Load YAML content from cloud storage
-                yaml_content = self._load_yaml_content(processor)
+                yaml_content = await self._load_yaml_content(processor)
 
                 # Parse YAML to extract schema
                 yaml_dict = yaml.safe_load(yaml_content)
@@ -83,6 +84,8 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
                         category='message_processor',
                     )
                 )
+            except BlockingPoolBusyError:
+                raise  # overload: a 503, not a silently shorter tool list
             except Exception as e:
                 # Log error but continue processing other processors
                 logger.warning(
@@ -92,11 +95,14 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
 
         return tool_details
 
-    def _load_yaml_content(self, processor: MessageProcessors) -> str:
-        """Load YAML content from cloud storage"""
+    async def _load_yaml_content(self, processor: MessageProcessors) -> str:
+        """Load YAML content from cloud storage, off the event loop"""
         filepath = f'{self.prefix}/{processor.source}'
-        yaml_bytes = self.cloud_storage_manager.read_file(
-            self.message_processor_bucket_name, filepath
+        yaml_bytes = await run_in_pool(
+            'storage',
+            self.cloud_storage_manager.read_file,
+            self.message_processor_bucket_name,
+            filepath,
         )
         return yaml_bytes.decode('utf-8')
 
