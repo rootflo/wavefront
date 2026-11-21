@@ -67,7 +67,7 @@ from plugins_module.utils.helper import (
     UpdateRowsJsonPayload,
     UpdateRowsJsonMultiPayload,
 )
-from flo_cloud.postgres import NoRowsMatchedError
+from flo_cloud.postgres import NoRowsMatchedError, UnstorableValueError
 from plugins_module.services.datasource_audit_service import (
     AuditEntry,
     DatasourceAuditService,
@@ -742,7 +742,7 @@ async def insert_rows_json_multi(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             content=response_formatter.buildErrorResponse(str(e)),
         )
-    except InvalidResourceError as e:
+    except (InvalidResourceError, UnstorableValueError) as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),
@@ -804,7 +804,7 @@ async def insert_rows_json(
         await run_blocking(
             datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
         )
-    except InvalidResourceError as e:
+    except (InvalidResourceError, UnstorableValueError) as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),

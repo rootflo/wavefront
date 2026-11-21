@@ -6,10 +6,55 @@ from typing import List, Dict, Any, Optional, Sequence, Tuple
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
+
+
+class UnstorableValueError(ValueError):
+    """A written value holds a NUL character, which text and jsonb cannot store."""
+
+
+def _nul_path(value: Any, path: str) -> Optional[str]:
+    """Where in ``value`` a NUL character sits, or None."""
+    if isinstance(value, str):
+        return path if '\x00' in value else None
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found = _nul_path(key, path) or _nul_path(item, f'{path}.{key}')
+            if found:
+                return found
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            found = _nul_path(item, f'{path}[{index}]')
+            if found:
+                return found
+    return None
+
+
+@contextmanager
+def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
+    """Re-raise a write refused over a NUL as an error saying where it is.
+
+    Detected from the failure, not checked up front: json and text columns
+    store an escaped NUL fine, so only the write knows. psycopg2 raises
+    ValueError on a NUL in a plain string; jsonb fails with
+    UntranslatableCharacter ("unsupported Unicode escape sequence").
+    """
+    try:
+        yield
+    except (ValueError, psycopg2.errors.UntranslatableCharacter) as e:
+        for index, row in enumerate(rows):
+            for column, value in row.items():
+                found = _nul_path(value, column)
+                if found:
+                    raise UnstorableValueError(
+                        f"Row {index} of table '{table_name}': {found} contains a "
+                        'NUL character (\\u0000), which Postgres cannot store'
+                    ) from e
+        raise
 
 
 class NoRowsMatchedError(Exception):
@@ -634,7 +679,7 @@ class PostgresClient:
         if not data:
             return
         query, serialized = self._build_insert(table_name, data)
-        with self._write_cursor('Insert') as cursor:
+        with self._write_cursor('Insert') as cursor, _locating_nul(table_name, data):
             cursor.executemany(query, serialized)
 
     @staticmethod
@@ -770,7 +815,8 @@ class PostgresClient:
                 returning_columns=returning_columns,
             )
 
-            cursor.execute(query, merged_params)
+            with _locating_nul(table_name, [data]):
+                cursor.execute(query, merged_params)
             rows_affected = cursor.rowcount
             if not capture:
                 return RowMutationResult(rows_affected=rows_affected)
@@ -912,7 +958,8 @@ class PostgresClient:
                         returning_columns=returning_columns,
                     )
 
-                    cursor.execute(query, merged_params)
+                    with _locating_nul(table_name, [data]):
+                        cursor.execute(query, merged_params)
                     rows_affected = cursor.rowcount
                     if not capture:
                         results.append(
@@ -950,7 +997,7 @@ class PostgresClient:
 
                 conn.commit()
                 return results
-            except psycopg2.Error as e:
+            except (psycopg2.Error, UnstorableValueError) as e:
                 conn.rollback()
                 logger.error(f'Multi-update error: {e}')
                 raise
@@ -965,7 +1012,7 @@ class PostgresClient:
         back every table (all-or-nothing). Entries with empty ``data`` are skipped.
         """
         prepared = [
-            self._build_insert(spec['table_name'], spec['data'])
+            (spec, *self._build_insert(spec['table_name'], spec['data']))
             for spec in inserts
             if spec.get('data')
         ]
@@ -974,5 +1021,6 @@ class PostgresClient:
         # One cursor for every table, so the commit at the end of the block is
         # what makes this all-or-nothing.
         with self._write_cursor('Multi-insert') as cursor:
-            for query, serialized in prepared:
-                cursor.executemany(query, serialized)
+            for spec, query, serialized in prepared:
+                with _locating_nul(spec['table_name'], spec['data']):
+                    cursor.executemany(query, serialized)

@@ -227,14 +227,15 @@ async def floware_list_users(
                         'users': [
                             _slim(u) for uid, u in users_by_id.items() if uid in keep
                         ]
-                    }
+                    },
+                    ensure_ascii=False,
                 )
 
             users, error = await _list_users(client, api, base, search, roles)
             if error:
                 return error
             users = [_slim(u) for u in users]
-            return json.dumps({'users': users})
+            return json.dumps({'users': users}, ensure_ascii=False)
         except httpx.RequestError as e:
             return f'Failed to reach floware user API: {e}'
         except _BadResponse as e:
