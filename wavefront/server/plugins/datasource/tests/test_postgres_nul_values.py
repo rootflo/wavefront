@@ -67,6 +67,49 @@ def test_text_refusal_names_the_text_column_not_an_accepted_json_nul(client):
     )
 
 
+def test_keys_only_a_later_row_carries_are_ignored(client):
+    """Placeholders come from the first row, so 'unused' is never sent."""
+    _cursor(client).executemany.side_effect = TEXT_NUL
+    rows = [{'body': 'ok'}, {'unused': '\x00', 'body': '\x00'}]
+
+    with pytest.raises(UnstorableValueError) as raised:
+        client.insert_rows_json('notes', rows)
+
+    assert str(raised.value) == (
+        "Row 1 of table 'notes': body contains a NUL character (\\u0000), "
+        'which Postgres cannot store'
+    )
+
+
+def test_unbound_json_keys_are_not_candidates(client):
+    _cursor(client).executemany.side_effect = JSONB_NUL
+    rows = [{'meta': {'k': 'ok'}}, {'extra': {'k': '\x00'}, 'meta': {'k': '\x00'}}]
+
+    with pytest.raises(UnstorableValueError, match=r'containing one: row 1 meta\.k$'):
+        client.insert_rows_json('orders', rows)
+
+
+def test_deep_or_cyclic_later_rows_keep_earlier_candidates(client):
+    """Rows after the failing one were never serialised, so may be anything."""
+    _cursor(client).executemany.side_effect = JSONB_NUL
+    deep: list = []
+    for _ in range(5000):
+        deep = [deep]
+    cyclic: dict = {}
+    cyclic['self'] = cyclic
+    rows = [{'meta': {'k': '\x00'}}, {'meta': deep}, {'meta': cyclic}]
+
+    with pytest.raises(UnstorableValueError, match=r'containing one: row 0 meta\.k$'):
+        client.insert_rows_json('orders', rows)
+
+
+def test_nul_in_a_json_key_is_reported_at_its_parent(client):
+    _cursor(client).executemany.side_effect = JSONB_NUL
+
+    with pytest.raises(UnstorableValueError, match=r'containing one: row 0 meta\.a$'):
+        client.insert_rows_json('orders', [{'meta': {'a': {'b\x00': 1}}}])
+
+
 def test_a_nul_the_column_accepts_is_written(client):
     """json and text columns store an escaped NUL, so nothing is refused up front."""
     client.insert_rows_json('events', [{'payload': {'note': 'a\x00b'}}])

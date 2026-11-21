@@ -21,17 +21,32 @@ _MAX_NUL_CANDIDATES = 5
 
 
 def _nul_paths(value: Any, path: str):
-    """Every path in ``value`` holding a NUL character."""
-    if isinstance(value, str):
-        if '\x00' in value:
-            yield path
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            yield from _nul_paths(key, path)
-            yield from _nul_paths(item, f'{path}.{key}')
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            yield from _nul_paths(item, f'{path}[{index}]')
+    """Every path in ``value`` holding a NUL character.
+
+    Iterative, visiting each container once: rows after the failing one were
+    never serialised, so they may be too deep to recurse or self-referencing.
+    """
+    stack = [(value, path)]
+    seen = set()
+    while stack:
+        value, path = stack.pop()
+        if isinstance(value, str):
+            if '\x00' in value:
+                yield path
+            continue
+        if not isinstance(value, (dict, list, tuple)) or id(value) in seen:
+            continue
+        seen.add(id(value))
+        if isinstance(value, dict):
+            # A NUL in a key is reported at the dict's own path.
+            children = [
+                child
+                for key, item in value.items()
+                for child in ((key, path), (item, f'{path}.{key}'))
+            ]
+        else:
+            children = [(item, f'{path}[{i}]') for i, item in enumerate(value)]
+        stack.extend(reversed(children))
 
 
 @contextmanager
@@ -41,6 +56,9 @@ def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
     Detected from the failure, not checked up front: json and text columns
     store an escaped NUL fine, so only the write knows.
     """
+    # Only the first row's keys are bound (see _build_insert), in this order;
+    # anything else a later row carries is never sent.
+    bound = list(rows[0]) if rows else []
     try:
         yield
     except psycopg2.errors.UntranslatableCharacter as e:
@@ -49,9 +67,9 @@ def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
         candidates = [
             f'row {index} {path}'
             for index, row in enumerate(rows)
-            for column, value in row.items()
-            if isinstance(value, (dict, list))
-            for path in _nul_paths(value, column)
+            for column in bound
+            if isinstance(row.get(column), (dict, list))
+            for path in _nul_paths(row[column], column)
         ]
         if not candidates:
             raise
@@ -66,7 +84,8 @@ def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
         # psycopg2 refuses a NUL in a plain string before sending anything, so
         # the first such value is the rejected one.
         for index, row in enumerate(rows):
-            for column, value in row.items():
+            for column in bound:
+                value = row.get(column)
                 if isinstance(value, str) and '\x00' in value:
                     raise UnstorableValueError(
                         f"Row {index} of table '{table_name}': {column} contains a "
