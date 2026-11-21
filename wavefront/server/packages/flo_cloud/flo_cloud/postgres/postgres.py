@@ -17,21 +17,21 @@ class UnstorableValueError(ValueError):
     """A written value holds a NUL character, which text and jsonb cannot store."""
 
 
-def _nul_path(value: Any, path: str) -> Optional[str]:
-    """Where in ``value`` a NUL character sits, or None."""
+_MAX_NUL_CANDIDATES = 5
+
+
+def _nul_paths(value: Any, path: str):
+    """Every path in ``value`` holding a NUL character."""
     if isinstance(value, str):
-        return path if '\x00' in value else None
-    if isinstance(value, dict):
+        if '\x00' in value:
+            yield path
+    elif isinstance(value, dict):
         for key, item in value.items():
-            found = _nul_path(key, path) or _nul_path(item, f'{path}.{key}')
-            if found:
-                return found
+            yield from _nul_paths(key, path)
+            yield from _nul_paths(item, f'{path}.{key}')
     elif isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
-            found = _nul_path(item, f'{path}[{index}]')
-            if found:
-                return found
-    return None
+            yield from _nul_paths(item, f'{path}[{index}]')
 
 
 @contextmanager
@@ -39,19 +39,37 @@ def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
     """Re-raise a write refused over a NUL as an error saying where it is.
 
     Detected from the failure, not checked up front: json and text columns
-    store an escaped NUL fine, so only the write knows. psycopg2 raises
-    ValueError on a NUL in a plain string; jsonb fails with
-    UntranslatableCharacter ("unsupported Unicode escape sequence").
+    store an escaped NUL fine, so only the write knows.
     """
     try:
         yield
-    except (ValueError, psycopg2.errors.UntranslatableCharacter) as e:
+    except psycopg2.errors.UntranslatableCharacter as e:
+        # jsonb refused an escaped NUL but does not say which value, and json
+        # columns accept one, so these are candidates, not the culprit.
+        candidates = [
+            f'row {index} {path}'
+            for index, row in enumerate(rows)
+            for column, value in row.items()
+            if isinstance(value, (dict, list))
+            for path in _nul_paths(value, column)
+        ]
+        if not candidates:
+            raise
+        listed = ', '.join(candidates[:_MAX_NUL_CANDIDATES])
+        if len(candidates) > _MAX_NUL_CANDIDATES:
+            listed += f' and {len(candidates) - _MAX_NUL_CANDIDATES} more'
+        raise UnstorableValueError(
+            f"Table '{table_name}' refused a NUL character (\\u0000) in a JSON "
+            f'value; JSON values containing one: {listed}'
+        ) from e
+    except ValueError as e:
+        # psycopg2 refuses a NUL in a plain string before sending anything, so
+        # the first such value is the rejected one.
         for index, row in enumerate(rows):
             for column, value in row.items():
-                found = _nul_path(value, column)
-                if found:
+                if isinstance(value, str) and '\x00' in value:
                     raise UnstorableValueError(
-                        f"Row {index} of table '{table_name}': {found} contains a "
+                        f"Row {index} of table '{table_name}': {column} contains a "
                         'NUL character (\\u0000), which Postgres cannot store'
                     ) from e
         raise
