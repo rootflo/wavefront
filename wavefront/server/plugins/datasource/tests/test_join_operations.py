@@ -249,6 +249,16 @@ class TestJoinBuilder:
         assert where_clause == 'orders.id = @orders_id_'
         assert filter_params == {'orders_id_': 'test'}
 
+    def test_build_joins_rejects_filter_with_trailing_tokens(self):
+        """A rejected join filter raises instead of being dropped"""
+        builder = JoinBuilder()
+        with pytest.raises(ValueError, match='Unexpected token'):
+            builder.build_joins(
+                [{'name': 'orders', 'filters': ['id eq "test" junk']}],
+                ['customer_id'],
+                'customers',
+            )
+
     def test_build_joins_with_multiple_filters(self):
         """Test building joins with multiple filters"""
         builder = JoinBuilder()
