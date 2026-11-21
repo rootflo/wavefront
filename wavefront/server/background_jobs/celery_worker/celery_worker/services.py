@@ -21,6 +21,7 @@ from common_module.common_container import CommonContainer
 from common_module.config_loader import is_truthy
 from common_module.security.secret_cipher import UnavailableSecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.redis_settings import RedisSettings
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -215,3 +216,27 @@ def get_services() -> WorkerServices:
         )
 
     return _services
+
+
+def get_result_cache() -> CacheManager:
+    """Return a cache to publish result events on, even if get_services() failed.
+
+    A task that fails while building its services (for example on a missing
+    setting) still has to report the run as failed, or it stays pending.
+    """
+    if _services is not None:
+        return _services.cache
+
+    redis = CONFIG['redis']
+    return CacheManager(
+        namespace=CONFIG['env_config']['app_name'],
+        settings=RedisSettings(
+            host=redis['host'],
+            port=redis['port'],
+            protocol=redis['protocol'],
+            password=redis['password'],
+            db=redis['db'],
+            pool_size=redis['pool_size'],
+            pool_timeout=redis['pool_timeout'],
+        ),
+    )

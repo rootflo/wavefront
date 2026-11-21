@@ -218,6 +218,48 @@ async def test_workflow_run_publishes_failed_and_reraises():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('task_module', [agent_task, workflow_task])
+async def test_run_publishes_failed_when_services_setup_fails(task_module):
+    cache = MagicMock()
+    cache.namespace = 'floware'
+    cache.xadd.return_value = '1-0'
+    payload = {'execution_id': str(uuid4())}
+
+    with (
+        patch.object(
+            task_module,
+            'get_services',
+            side_effect=ValueError('APPLICATION_BUCKET must be set'),
+        ),
+        patch.object(task_module, 'get_result_cache', return_value=cache),
+    ):
+        with pytest.raises(ValueError, match='APPLICATION_BUCKET'):
+            await task_module._run(MagicMock(), payload)
+
+    (call,) = cache.xadd.call_args_list
+    assert call.args[1]['execution_id'] == payload['execution_id']
+    assert call.args[1]['status'] == 'failed'
+    assert call.args[1]['error'] == 'APPLICATION_BUCKET must be set'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('task_module', [agent_task, workflow_task])
+async def test_run_publishes_failed_when_in_progress_publish_fails(task_module):
+    services = _services_mock()
+    services.cache.xadd.side_effect = [ConnectionError('redis down'), '1-0']
+    payload = {'execution_id': str(uuid4())}
+
+    with patch.object(task_module, 'get_services', return_value=services):
+        with pytest.raises(ConnectionError, match='redis down'):
+            await task_module._run(MagicMock(), payload)
+
+    statuses = [c.args[1]['status'] for c in services.cache.xadd.call_args_list]
+    assert statuses == ['in_progress', 'failed']
+    services.workflow_inference.perform_inference_v2.assert_not_called()
+    services.agent_inference.perform_inference_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_agent_run_list_result_uses_last_message_content():
     services = _services_mock()
     turn = MagicMock()
