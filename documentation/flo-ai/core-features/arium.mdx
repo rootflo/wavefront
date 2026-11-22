@@ -340,39 +340,6 @@ routers:
       name: "gpt-4o-mini"
 ```
 
-### ReflectionRouter
-
-For A→B→A→C feedback patterns:
-
-```yaml
-routers:
-  - name: "reflection_router"
-    type: "reflection"
-    flow_pattern: [writer, critic, writer] # A → B → A pattern
-    model:
-      provider: "openai"
-      name: "gpt-4o-mini"
-```
-
-### PlanExecuteRouter
-
-For Cursor-style plan-and-execute workflows:
-
-```yaml
-routers:
-  - name: "plan_router"
-    type: "plan_execute"
-  agents:
-    planner: "Creates detailed execution plans"
-    developer: "Implements features according to plan"
-    tester: "Tests implementations and validates functionality"
-    reviewer: "Reviews and approves completed work"
-  settings:
-    planner_agent: planner
-    executor_agent: developer
-    reviewer_agent: reviewer
-```
-
 ## Workflow Patterns
 
 ### Sequential Processing

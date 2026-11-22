@@ -245,14 +245,23 @@ class AgentInferenceService:
                     processor.description or 'Message processor function',
                 )
 
+                # Taken from the registry, where it is already bound to the API
+                # client it calls through. The bare function is missing that
+                # first argument and fails the moment the tool is used.
+                execute = self.tool_loader.function_registry.get(
+                    'trigger_message_processor'
+                )
+                if execute is None:
+                    logger.warning(
+                        'Message processor tools are unavailable: '
+                        'trigger_message_processor is not in the tool registry'
+                    )
+                    return None
+
                 tool = Tool(
                     name=tool_name,
                     description=description,
-                    # The registry's copy has the floware client bound to its
-                    # `api` argument; the bare function would be missing it.
-                    function=self.tool_loader.function_registry[
-                        'trigger_message_processor'
-                    ],
+                    function=execute,
                     parameters=parameters,
                 )
 

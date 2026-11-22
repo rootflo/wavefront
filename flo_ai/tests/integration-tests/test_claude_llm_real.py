@@ -24,7 +24,7 @@ class TestAnthropicReal:
             pytest.skip('ANTHROPIC_API_KEY environment variable not set')
 
         self.llm = Anthropic(
-            model='claude-sonnet-4-5',
+            model='claude-opus-5-5',
             api_key=os.getenv('ANTHROPIC_API_KEY'),
             temperature=0.1,  # Low temperature for consistent results
         )

@@ -1,226 +1,152 @@
 """
-Plan Execution Tools for Flo AI Framework
+Plan state and the ``update_plan`` tool behind ``ReasoningPattern.PLAN_EXECUTE``.
 
-This module provides reusable tools for plan-based execution patterns,
-enabling agents to create, store, and manage execution plans automatically.
+The plan belongs to one agent and lives for one ``run``. The model writes it
+by calling ``update_plan`` with the whole step list each time, so there is no
+plan text to parse and no step ids to keep in sync.
 """
 
-import uuid
-import re
+import json
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, List
+
 from flo_ai.tool.base_tool import Tool
-from flo_ai.arium.memory import PlanAwareMemory, ExecutionPlan, PlanStep, StepStatus
+
+PLAN_TOOL_NAME = 'update_plan'
 
 
-class PlanTool(Tool):
-    """Tool for creating and storing execution plans in PlanAwareMemory"""
+class PlanStepStatus(str, Enum):
+    PENDING = 'pending'
+    IN_PROGRESS = 'in_progress'
+    COMPLETED = 'completed'
+    SKIPPED = 'skipped'
 
-    def __init__(self, memory: PlanAwareMemory):
+
+_FINISHED = (PlanStepStatus.COMPLETED, PlanStepStatus.SKIPPED)
+
+_STATUS_ICONS = {
+    PlanStepStatus.PENDING: '[ ]',
+    PlanStepStatus.IN_PROGRESS: '[~]',
+    PlanStepStatus.COMPLETED: '[x]',
+    PlanStepStatus.SKIPPED: '[-]',
+}
+
+
+@dataclass
+class PlanStep:
+    description: str
+    status: PlanStepStatus = PlanStepStatus.PENDING
+
+
+class Plan:
+    """An ordered list of steps an agent is working through."""
+
+    def __init__(self) -> None:
+        self.steps: List[PlanStep] = []
+
+    def reset(self) -> None:
+        self.steps = []
+
+    def update(self, steps: Any) -> None:
+        """Replace the plan with ``steps``.
+
+        Raises:
+            ValueError: If ``steps`` is not a non-empty list of valid steps.
+                The plan is left unchanged.
         """
-        Initialize the plan tool.
+        # Some providers hand array arguments over as a JSON string.
+        if isinstance(steps, str):
+            try:
+                steps = json.loads(steps)
+            except json.JSONDecodeError as e:
+                raise ValueError(f'steps is not valid JSON: {e}') from e
 
-        Args:
-            memory: PlanAwareMemory instance to store plans in
-        """
-        self.memory = memory
-        super().__init__(
-            name='store_execution_plan',
-            description='Create and store an execution plan from plan text. Use this after generating a plan.',
-            function=self._execute_plan_storage,
-            parameters={
-                'plan_text': {
-                    'type': 'string',
-                    'description': 'The generated plan text in the required format',
-                }
-            },
+        if not isinstance(steps, list) or not steps:
+            raise ValueError('steps must be a non-empty list')
+
+        parsed: List[PlanStep] = []
+        for index, raw in enumerate(steps, 1):
+            if isinstance(raw, str):
+                raw = {'description': raw}
+            if not isinstance(raw, dict):
+                raise ValueError(f'step {index} must be an object')
+
+            description = str(raw.get('description') or '').strip()
+            if not description:
+                raise ValueError(f'step {index} has no description')
+
+            status = raw.get('status') or PlanStepStatus.PENDING.value
+            try:
+                parsed.append(PlanStep(description, PlanStepStatus(status)))
+            except ValueError:
+                allowed = ', '.join(s.value for s in PlanStepStatus)
+                raise ValueError(
+                    f"step {index} has unknown status '{status}' (use one of: {allowed})"
+                ) from None
+
+        self.steps = parsed
+
+    def unfinished(self) -> List[PlanStep]:
+        return [step for step in self.steps if step.status not in _FINISHED]
+
+    def is_complete(self) -> bool:
+        """True when a plan exists and every step is completed or skipped."""
+        return bool(self.steps) and not self.unfinished()
+
+    def render(self) -> str:
+        if not self.steps:
+            return 'No plan yet.'
+        return '\n'.join(
+            f'{index}. {_STATUS_ICONS[step.status]} {step.description}'
+            for index, step in enumerate(self.steps, 1)
         )
 
-    async def _execute_plan_storage(self, plan_text: str) -> str:
-        """Parse plan text and store ExecutionPlan object in memory"""
+
+def create_plan_tool(plan: Plan) -> Tool:
+    """Create the ``update_plan`` tool that writes to ``plan``."""
+
+    async def _update_plan(steps: Any) -> str:
+        # A malformed plan is the model's mistake to correct, so it gets the
+        # reason back as a tool result instead of failing the agent's run.
         try:
-            execution_plan = self._parse_plan_text(plan_text)
+            plan.update(steps)
+        except ValueError as e:
+            return f'Plan not updated: {e}'
 
-            if execution_plan:
-                self.memory.add_plan(execution_plan)
-
-                plan_summary = f'✅ Plan stored: {execution_plan.title}\n'
-                plan_summary += f'📊 Steps: {len(execution_plan.steps)}\n'
-
-                for i, step in enumerate(execution_plan.steps, 1):
-                    deps = (
-                        f" (depends: {', '.join(step.dependencies)})"
-                        if step.dependencies
-                        else ''
-                    )
-                    plan_summary += (
-                        f'  {i}. {step.id}: {step.description} → {step.agent}{deps}\n'
-                    )
-
-                return plan_summary
-            else:
-                return '❌ Failed to parse plan text into ExecutionPlan'
-
-        except Exception as e:
-            return f'❌ Error storing plan: {str(e)}'
-
-    def _parse_plan_text(self, plan_text: str) -> ExecutionPlan:
-        """Parse LLM-generated plan text into ExecutionPlan object"""
-
-        # Extract title
-        title_match = re.search(r'EXECUTION PLAN:\s*(.+)', plan_text)
-        title = title_match.group(1).strip() if title_match else 'Generated Plan'
-
-        # Extract description
-        desc_match = re.search(r'DESCRIPTION:\s*(.+)', plan_text)
-        description = desc_match.group(1).strip() if desc_match else 'Execution plan'
-
-        # Extract steps using regex
-        steps = []
-        step_pattern = (
-            r'(\d+)\.\s*(\w+):\s*(.+?)\s*→\s*(\w+)(?:\s*\(depends on:\s*([^)]+)\))?'
+        remaining = len(plan.unfinished())
+        summary = (
+            'All steps are finished. Give your final answer.'
+            if remaining == 0
+            else f'{remaining} step(s) left.'
         )
+        return f'Plan updated:\n{plan.render()}\n{summary}'
 
-        for match in re.finditer(step_pattern, plan_text, re.MULTILINE):
-            step_num, step_id, step_desc, agent, deps_str = match.groups()
-
-            dependencies = []
-            if deps_str:
-                dependencies = [dep.strip() for dep in deps_str.split(',')]
-
-            step = PlanStep(
-                id=step_id,
-                description=step_desc.strip(),
-                agent=agent,
-                dependencies=dependencies,
-                status=StepStatus.PENDING,
-            )
-            steps.append(step)
-
-        return ExecutionPlan(
-            id=str(uuid.uuid4()),
-            title=title,
-            description=description,
-            steps=steps,
-            created_by='planner',
-        )
-
-
-class StepTool(Tool):
-    """Tool for marking execution steps as completed"""
-
-    def __init__(self, memory: PlanAwareMemory, agent_name: str):
-        """
-        Initialize the step tool.
-
-        Args:
-            memory: PlanAwareMemory instance to update plans in
-            agent_name: Name of the agent this tool belongs to
-        """
-        self.memory = memory
-        self.agent_name = agent_name
-        super().__init__(
-            name='complete_step',
-            description='Mark a plan step as completed after executing it',
-            function=self._execute_step_completion,
-            parameters={
-                'step_id': {
-                    'type': 'string',
-                    'description': 'The ID of the step that was completed',
+    return Tool(
+        name=PLAN_TOOL_NAME,
+        description=(
+            'Create or update your plan. Always send the complete list of steps '
+            'with their current status; it replaces the previous plan.'
+        ),
+        function=_update_plan,
+        parameters={
+            'steps': {
+                'type': 'array',
+                'description': 'Every step of the plan, in order',
+                'items': {
+                    'type': 'object',
+                    'properties': {
+                        'description': {
+                            'type': 'string',
+                            'description': 'What this step does',
+                        },
+                        'status': {
+                            'type': 'string',
+                            'enum': [s.value for s in PlanStepStatus],
+                        },
+                    },
+                    'required': ['description', 'status'],
                 },
-                'result': {
-                    'type': 'string',
-                    'description': 'The result or output of completing the step',
-                },
-            },
-        )
-
-    async def _execute_step_completion(self, step_id: str, result: str) -> str:
-        """Mark a step as completed and store the result"""
-        try:
-            current_plan = self.memory.get_current_plan()
-            if not current_plan:
-                return '❌ No current plan found'
-
-            step = current_plan.get_step(step_id)
-            if not step:
-                return f'❌ Step {step_id} not found in current plan'
-
-            if step.agent != self.agent_name:
-                return f'❌ Step {step_id} is assigned to {step.agent}, not {self.agent_name}'
-
-            # Mark step as completed
-            step.status = StepStatus.COMPLETED
-            step.result = result
-            self.memory.update_plan(current_plan)
-
-            return f'✅ Step {step_id} marked as completed'
-
-        except Exception as e:
-            return f'❌ Error completing step: {str(e)}'
-
-
-class PlanStatusTool(Tool):
-    """Tool for checking the current plan status and next steps"""
-
-    def __init__(self, memory: PlanAwareMemory):
-        """
-        Initialize the plan status tool.
-
-        Args:
-            memory: PlanAwareMemory instance to check
-        """
-        self.memory = memory
-        super().__init__(
-            name='check_plan_status',
-            description='Check the current execution plan status and get next available steps',
-            function=self._execute_status_check,
-            parameters={},
-        )
-
-    async def _execute_status_check(self) -> str:
-        """Get current plan status and next steps"""
-        try:
-            current_plan = self.memory.get_current_plan()
-            if not current_plan:
-                return '❌ No current execution plan found'
-
-            # Get plan overview
-            status_info = f'📋 Current Plan: {current_plan.title}\n'
-            status_info += f'📝 Description: {current_plan.description}\n'
-            status_info += f'✅ Completed: {current_plan.is_completed()}\n'
-
-            # Get next steps
-            next_steps = current_plan.get_next_steps()
-            if next_steps:
-                status_info += f'\n🎯 Next Steps ({len(next_steps)} available):\n'
-                for step in next_steps:
-                    deps = (
-                        f" (depends: {', '.join(step.dependencies)})"
-                        if step.dependencies
-                        else ''
-                    )
-                    status_info += (
-                        f'  • {step.id}: {step.description} → {step.agent}{deps}\n'
-                    )
-            else:
-                if current_plan.is_completed():
-                    status_info += '\n🎉 All steps completed!'
-                else:
-                    status_info += '\n⏳ Waiting for dependencies to complete'
-
-            # Show all steps with status
-            status_info += '\n📊 All Steps:\n'
-            for step in current_plan.steps:
-                status_icon = {
-                    StepStatus.PENDING: '○',
-                    StepStatus.IN_PROGRESS: '⏳',
-                    StepStatus.COMPLETED: '✅',
-                    StepStatus.FAILED: '❌',
-                }.get(step.status, '○')
-                status_info += (
-                    f'  {status_icon} {step.id}: {step.description} → {step.agent}\n'
-                )
-
-            return status_info
-
-        except Exception as e:
-            return f'❌ Error checking plan status: {str(e)}'
+            }
+        },
+    )

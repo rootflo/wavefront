@@ -57,42 +57,6 @@ routers:
       temperature: 0.1
 ```
 
-### Reflection Routing
-
-Implement A→B→A→C feedback patterns:
-
-```yaml reflection-routing.yaml
-routers:
-  - name: "reflection_router"
-    type: "reflection"
-    flow_pattern: ["writer", "critic", "writer"]
-    model:
-      provider: "openai"
-      name: "gpt-4o-mini"
-    settings:
-      max_iterations: 3
-      convergence_threshold: 0.8
-```
-
-### Plan-Execute Routing
-
-Cursor-style development workflows:
-
-```yaml plan-execute-routing.yaml
-routers:
-  - name: "plan_execute_router"
-    type: "plan_execute"
-    settings:
-      planner_agent: "planner"
-      executor_agent: "developer"
-      reviewer_agent: "reviewer"
-      max_iterations: 5
-      quality_threshold: 0.9
-    model:
-      provider: "openai"
-      name: "gpt-4o-mini"
-```
-
 ## Advanced Routing Patterns
 
 ### Multi-Criteria Routing
@@ -225,27 +189,6 @@ routers:
         route: "billing_specialist"
       - condition: "default"
         route: "general_support"
-```
-
-### Reflection Router
-
-```yaml
-routers:
-  - name: "reflection_router"
-    type: "reflection"
-    description: "Implement iterative improvement pattern"
-    flow_pattern: ["writer", "critic", "writer"]
-    model:
-      provider: "openai"
-      name: "gpt-4o-mini"
-    settings:
-      max_iterations: 3
-      convergence_threshold: 0.85
-      improvement_required: true
-      quality_metrics:
-        - "clarity"
-        - "accuracy"
-        - "completeness"
 ```
 
 ## Custom Router Implementation

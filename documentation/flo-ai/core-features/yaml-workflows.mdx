@@ -313,22 +313,6 @@ routers:
       name: "gpt-4o-mini"
 ```
 
-### Reflection Router
-
-For A→B→A→C feedback patterns:
-
-```yaml
-routers:
-  - name: "reflection_router"
-    type: "reflection"
-    flow_pattern: ["writer", "critic", "writer", "editor"]  # A → B → A → C pattern
-    model:
-      provider: "openai"
-      name: "gpt-4o-mini"
-    settings:
-      allow_early_exit: true  # Allow early exit if criteria met
-```
-
 ## YAML Schema Reference
 
 ### Metadata Section
@@ -375,7 +359,7 @@ agents:
       max_tokens: 1000 # Optional: Maximum tokens
     settings: # Optional: Agent settings
       max_retries: 3 # Optional: Maximum retries
-      reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, or COT
+      reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, COT, or PLAN_EXECUTE
     # Alternative: Reference pre-built agent (only name)
     # - name: "pre_built_agent"
     # Alternative: Inline YAML config
@@ -406,17 +390,13 @@ function_nodes:
 ```yaml
 routers:
   - name: "router_name" # Required: Router name
-    type: "smart" # Required: smart, task_classifier, conversation_analysis, reflection, plan_execute
+    type: "smart" # Required: smart, task_classifier, conversation_analysis, field_match
     model: # Optional: LLM configuration for router
       provider: "openai"
       name: "gpt-4o-mini"
     settings: # Optional: Router settings
       temperature: 0.3
       fallback_strategy: "first" # first, random, or all
-      allow_early_exit: true # For reflection router
-      planner_agent: "planner" # For plan_execute router
-      executor_agent: "executor" # For plan_execute router
-      reviewer_agent: "reviewer" # For plan_execute router
     # Smart router
     routing_options: # Required for smart router
       agent1: "Description for agent1"
@@ -430,12 +410,6 @@ routers:
     # Conversation analysis router
     routing_logic: # Required for conversation_analysis router
       agent1: "Routing logic for agent1"
-    # Reflection router
-    flow_pattern: ["agent1", "agent2", "agent1"] # Required for reflection router
-    # Plan-execute router
-    agents: # Required for plan_execute router
-      planner: "Planner description"
-      executor: "Executor description"
 ```
 
 ### Edge Configuration
@@ -945,53 +919,6 @@ arium:
         to: ["technical_writer", "creative_writer"]
         router: "content_router"
     end: ["technical_writer", "creative_writer"]
-```
-
-### Reflection Workflow
-
-```yaml reflection-workflow.yaml
-metadata:
-  name: "reflection-workflow"
-  version: "1.0.0"
-  description: "Writer-critic feedback loop"
-
-arium:
-  agents:
-    - name: "writer"
-      job: "Write content based on feedback."
-      model:
-        provider: "openai"
-        name: "gpt-4o"
-
-    - name: "critic"
-      job: "Review and provide constructive feedback."
-      model:
-        provider: "anthropic"
-        name: "claude-3-5-sonnet-20240620"
-
-    - name: "editor"
-      job: "Finalize the content."
-      model:
-        provider: "openai"
-        name: "gpt-4o"
-
-  routers:
-    - name: "reflection_router"
-      type: "reflection"
-      flow_pattern: ["writer", "critic", "writer", "editor"]
-      model:
-        provider: "openai"
-        name: "gpt-4o-mini"
-      settings:
-        allow_early_exit: true
-
-  workflow:
-    start: "writer"
-    edges:
-      - from: "writer"
-        to: ["critic"]
-        router: "reflection_router"
-    end: ["editor"]
 ```
 
 This YAML-based approach makes workflow configuration declarative, versionable, and easily shareable across teams!

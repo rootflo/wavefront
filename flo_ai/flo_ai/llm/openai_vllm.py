@@ -5,6 +5,10 @@ from flo_ai.telemetry.instrumentation import trace_llm_stream
 
 
 class OpenAIVLLM(OpenAI):
+    # vLLM is called without tools here, so stored tool calls are not given
+    # ids; their results are sent with synthetic calls (_to_tool_messages).
+    requires_tool_call_ids = False
+
     provider_name = 'vllm'
 
     def __init__(

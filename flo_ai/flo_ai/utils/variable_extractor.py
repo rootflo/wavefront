@@ -81,7 +81,14 @@ def extract_agent_variables(agent) -> Set[str]:
     if not hasattr(agent, 'system_prompt'):
         return set()
 
-    return extract_variables_from_text(agent.system_prompt)
+    # The template, where the agent keeps one: once a run has filled the
+    # prompt in, system_prompt no longer shows which variables it needs.
+    prompt_template = getattr(agent, 'prompt_template', None)
+    prompt = prompt_template() if callable(prompt_template) else None
+    if not isinstance(prompt, str):
+        prompt = agent.system_prompt
+
+    return extract_variables_from_text(prompt)
 
 
 def validate_variables(

@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, AsyncIterator, Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 from .base_llm import (
     BaseLLM,
     file_name_text_block,
@@ -42,6 +42,9 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
             **request_kwargs,
         )
 
+        # Set once the model has refused a non-default temperature: see _create.
+        self._default_temperature_only = False
+
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=base_url,
@@ -76,6 +79,29 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
             declared['extra_body'] = extra
         return declared
 
+    async def _create(self, openai_kwargs: Dict[str, Any]) -> Any:
+        """Call chat.completions.create, without `temperature` if the model refuses it.
+
+        Some models (the GPT-5 line and the reasoning models) accept only
+        their default temperature and answer anything else with a 400. Which
+        ones is not something to keep a list of here, so the refusal itself is
+        the signal: the request is sent again without the parameter, and this
+        instance stops sending it.
+        """
+        if self._default_temperature_only:
+            openai_kwargs.pop('temperature', None)
+        try:
+            return await self.client.chat.completions.create(**openai_kwargs)
+        except BadRequestError as error:
+            if (
+                'temperature' not in openai_kwargs
+                or getattr(error, 'param', None) != 'temperature'
+            ):
+                raise
+            self._default_temperature_only = True
+            openai_kwargs.pop('temperature')
+            return await self.client.chat.completions.create(**openai_kwargs)
+
     @trace_llm_call(provider='openai')
     async def generate(
         self,
@@ -107,6 +133,9 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
                 )
         elif functions:
             kwargs.update(self._tool_request_kwargs(functions))
+            # The agent loop runs one tool per model turn, and every call the
+            # model makes has to be answered.
+            kwargs.setdefault('parallel_tool_calls', False)
 
         # Prepare OpenAI API parameters
         openai_kwargs = self._create_kwargs(
@@ -120,7 +149,7 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
         )
 
         # Make the API call
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self._create(openai_kwargs)
         message = response.choices[0].message
 
         # Record token usage if available
@@ -173,7 +202,7 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
         openai_kwargs.update(self._tool_request_kwargs(functions))
 
         # Stream the API call and yield content deltas
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self._create(openai_kwargs)
         async for chunk in response:
             choices = getattr(chunk, 'choices', []) or []
             for choice in choices:

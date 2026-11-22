@@ -151,6 +151,37 @@ class OpenAIToolCallingMixin:
             ],
         }
 
+    # A `tool` message must name the call it answers, so stored calls without
+    # an id are given one when a request is rebuilt from history.
+    requires_tool_call_ids = True
+
+    def format_stored_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """A recorded tool call, as the assistant message that requested it.
+
+        Without an id there is nothing to tie a result to; None leaves the
+        call out, and ``_to_tool_messages`` gives its result a synthetic call.
+        """
+        # One call per message is all the agent loop makes.
+        call = tool_calls[0]
+        if not call.id:
+            return None
+        arguments = call.arguments
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments)
+        return {
+            'role': 'assistant',
+            'content': content or None,
+            'tool_calls': [
+                {
+                    'id': call.id,
+                    'type': 'function',
+                    'function': {'name': call.name, 'arguments': arguments},
+                }
+            ],
+        }
+
     def format_function_result_message(
         self, function_name: str, content: str, tool_use_id: Optional[str] = None
     ) -> Dict[str, Any]:

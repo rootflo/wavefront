@@ -22,11 +22,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-10-22T15:20:00.000000Z"
+exclude-newer = "2026-11-15T07:20:43.026245Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-11-22T07:20:43.026267Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -112,13 +112,13 @@ name = "accelerate"
 version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "psutil" },
-    { name = "pyyaml" },
-    { name = "safetensors" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "huggingface-hub", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "numpy", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "packaging", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "psutil", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "pyyaml", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "safetensors", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f5/b5/1d3ed029ac71d3f2961346829a268da923698e9fd63f218f78841f216bfd/accelerate-1.15.0.tar.gz", hash = "sha256:5654f8c5eaa0d4fa68b33e287a97765da6849bf6d51dcac874e73fbbddfb6134", size = 422615, upload-time = "2026-09-09T13:04:49.078Z" }
@@ -154,7 +154,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.21" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1315,7 +1315,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.21" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -1389,7 +1389,7 @@ name = "coloredlogs"
 version = "15.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "humanfriendly" },
+    { name = "humanfriendly", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/c7/eed8f27100517e8c0e6b923d5f0845d0cb99763da6fdee00478f91db7325/coloredlogs-15.0.1.tar.gz", hash = "sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0", size = 278520, upload-time = "2021-06-11T10:22:45.202Z" }
 wheels = [
@@ -2088,7 +2088,7 @@ wheels = [
 [[package]]
 name = "flo-ai"
 version = "1.1.21"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../../flo_ai" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -2112,10 +2112,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "xlrd" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/78/187ed6bf2cece9bcc553d213af09428592e8f9439f3413c1507fd9bb7f85/flo_ai-1.1.21.tar.gz", hash = "sha256:8424a9eea64db03c71e60fe60b98ab6abfce0c8d08c0e90b074a221c8ef3f2b7", size = 185172, upload-time = "2026-11-04T12:45:27.203Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/5e/c418e6b2adf1f1710a5bd83644d83a616e3ff31a8b0e05dea2aa18dc9e8c/flo_ai-1.1.21-py3-none-any.whl", hash = "sha256:4bcd1fa29c407ff8d10890db97a3188551b6b57f8ec4e8922c93ef373c75dee7", size = 223365, upload-time = "2026-11-04T12:45:25.955Z" },
-]
 
 [package.optional-dependencies]
 guardrails = [
@@ -2125,6 +2121,54 @@ guardrails = [
 ]
 video = [
     { name = "av" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.3,<4" },
+    { name = "anthropic", specifier = ">=0.57.1,<0.58" },
+    { name = "av", marker = "extra == 'video'", specifier = ">=14.0.0,<20" },
+    { name = "azure-ai-contentsafety", marker = "extra == 'guardrails'", specifier = ">=1.0.0,<2" },
+    { name = "boto3", specifier = ">=1.36.1,<2" },
+    { name = "chardet", specifier = ">=3.dev0,<4.dev0" },
+    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "defusedxml", specifier = ">=0.7.1,<0.8" },
+    { name = "google-cloud-aiplatform", specifier = ">=1.131.0,<2" },
+    { name = "google-genai", specifier = ">=1.25.0,<3" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "matplotlib", marker = "extra == 'vizualize'", specifier = ">=3.7.0,<4" },
+    { name = "networkx", marker = "extra == 'vizualize'", specifier = "~=3.0" },
+    { name = "openai", specifier = ">=1.77.0,<2" },
+    { name = "openpyxl", specifier = ">=3.1.5,<4" },
+    { name = "opentelemetry-api", specifier = ">=1.28.2,<2" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.28.2,<2" },
+    { name = "opentelemetry-instrumentation", specifier = ">=0.54b0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.28.2,<2" },
+    { name = "presidio-analyzer", marker = "extra == 'guardrails'", specifier = ">=2.2.364,<3" },
+    { name = "presidio-anonymizer", marker = "extra == 'guardrails'", specifier = ">=2.2.364,<3" },
+    { name = "pydantic", specifier = ">=2.9.2,<3" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
+    { name = "pymupdf", specifier = ">=1.26.7,<2" },
+    { name = "python-docx", specifier = ">=1.1.2,<2" },
+    { name = "pyyaml", specifier = ">=6.0.3,<7" },
+    { name = "xlrd", specifier = ">=2.0.1,<3" },
+]
+provides-extras = ["vizualize", "guardrails", "video"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "av", specifier = ">=14.0.0,<20" },
+    { name = "db-sqlite3", specifier = ">=0.0.1,<0.0.2" },
+    { name = "ipykernel", specifier = ">=6.29.5,<7" },
+    { name = "peewee", specifier = ">=3.17.6,<4" },
+    { name = "pre-commit", specifier = ">=4.0.1,<5" },
+    { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1,<2" },
+    { name = "reportlab", specifier = ">=4.4.3,<5" },
+    { name = "streamlit", specifier = ">=1.42.2,<2" },
+    { name = "ty", specifier = ">=0.0.1a28" },
+    { name = "wikipedia", specifier = ">=1.4.0,<2" },
 ]
 
 [[package]]
@@ -2947,7 +2991,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.40.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.21" },
+    { name = "flo-ai", extras = ["guardrails"], editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -3424,7 +3468,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.21" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
@@ -4396,12 +4440,12 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "coloredlogs" },
-    { name = "flatbuffers" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "sympy" },
+    { name = "coloredlogs", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "flatbuffers", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "packaging", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "protobuf", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "sympy", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/a8/3c23a8f75f93122d2b3410bfb74d06d0f8da4ac663185f91866b03f7da1b/onnxruntime-1.23.2-cp311-cp311-macosx_13_0_x86_64.whl", hash = "sha256:87d8b6eaf0fbeb6835a60a4265fde7a3b60157cf1b2764773ac47237b4d48612", size = 19153857, upload-time = "2025-10-22T03:46:37.578Z" },
@@ -4429,11 +4473,11 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "flatbuffers" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "sympy" },
+    { name = "flatbuffers", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "numpy", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "packaging", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "protobuf", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "sympy", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/69/6c40720201012c6af9aa7d4ecdd620e521bd806dc6269d636fdd5c5aeebe/onnxruntime-1.24.4-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:0bdfce8e9a6497cec584aab407b71bf697dac5e1b7b7974adc50bf7533bdb3a2", size = 17332131, upload-time = "2026-03-17T22:05:49.005Z" },
@@ -5691,7 +5735,7 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/04/e7c1fe4dc78a6fdbfd6c337b1c3732ff543b8a397683ab38378447baa331/pyee-13.0.1.tar.gz", hash = "sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8", size = 31655, upload-time = "2026-02-14T21:12:28.044Z" }
 wheels = [
@@ -5718,7 +5762,7 @@ resolution-markers = [
     "(python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1d/f1/fdedc2c75c3e31a330659c85e5793bb18b3397981fbf0844c6dee5b18926/pyee-14.0.0.tar.gz", hash = "sha256:76dd0f4314ecd27f02dc73589dea7fd3853f9b6176d8ef9b122860657e3602de", size = 98760, upload-time = "2026-08-13T04:26:11.021Z" }
 wheels = [
@@ -7074,7 +7118,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", extras = ["video"], specifier = "==1.1.21" },
+    { name = "flo-ai", extras = ["video"], editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
@@ -7099,13 +7143,13 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "fsspec", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "jinja2", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "networkx", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "setuptools", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "sympy", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "typing-extensions", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:e76f9bcecc52b8ff711239a2f7547d5353df95878ab232f0773c1d95928b92f8", upload-time = "2026-07-08T12:26:13Z" },
@@ -7131,13 +7175,13 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform != 'darwin'" },
+    { name = "fsspec", marker = "sys_platform != 'darwin'" },
+    { name = "jinja2", marker = "sys_platform != 'darwin'" },
+    { name = "networkx", marker = "sys_platform != 'darwin'" },
+    { name = "setuptools", marker = "sys_platform != 'darwin'" },
+    { name = "sympy", marker = "sys_platform != 'darwin'" },
+    { name = "typing-extensions", marker = "sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp311-cp311-linux_s390x.whl", hash = "sha256:6e9817dbdf5ea76789babd46e457eac5bf14ff566cf85f8addbfdff2d56601ce", upload-time = "2026-07-08T19:27:52Z" },
@@ -7180,9 +7224,9 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" } },
+    { name = "numpy", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "pillow", marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.28.0-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:83fe6c020866a85acd7d97deccc45ff11d66daf42916d04396a4309c66c0ccb8", upload-time = "2026-07-08T12:26:40Z" },
@@ -7208,9 +7252,9 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" } },
+    { name = "numpy", marker = "sys_platform != 'darwin'" },
+    { name = "pillow", marker = "sys_platform != 'darwin'" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.28.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:22958193d72444ed7cbcc665ba4821a31e5279f9c4d1ad08520918b30896b78a", upload-time = "2026-07-08T12:26:39Z" },

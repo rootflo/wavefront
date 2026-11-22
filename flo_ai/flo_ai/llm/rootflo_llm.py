@@ -473,6 +473,16 @@ class RootFloLLM(BaseLLM):
 
     # Tool-call protocol, delegated so the provider's message shapes are used.
 
+    # The provider is created on the first request, but a request is built
+    # from the stored history before that. Until then these use BaseLLM's
+    # defaults, which every provider accepts.
+
+    @property
+    def requires_tool_call_ids(self) -> bool:  # type: ignore[override]
+        if self._llm is None:
+            return False
+        return self._llm.requires_tool_call_ids
+
     async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
         return await self._provider_llm.get_function_call(response)
 
@@ -484,12 +494,23 @@ class RootFloLLM(BaseLLM):
     ) -> Optional[Dict[str, Any]]:
         return self._provider_llm.format_tool_call_message(response, function_call)
 
+    def format_stored_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        if self._llm is None:
+            return super().format_stored_tool_call_message(content, tool_calls)
+        return self._llm.format_stored_tool_call_message(content, tool_calls)
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         return self._provider_llm.get_tool_use_id(function_call)
 
     def format_function_result_message(
         self, function_name: str, content: str, tool_use_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        return self._provider_llm.format_function_result_message(
+        if self._llm is None:
+            return super().format_function_result_message(
+                function_name, content, tool_use_id
+            )
+        return self._llm.format_function_result_message(
             function_name, content, tool_use_id
         )

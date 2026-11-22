@@ -59,6 +59,8 @@ async def create_chatbot(
             system_prompt=payload.system_prompt,
             welcome_message=payload.welcome_message,
             llm_config_id=payload.llm_config_id,
+            agent_id=payload.agent_id,
+            agent_version=payload.agent_version,
             config=payload.config,
             enabled=payload.enabled,
         )
@@ -180,6 +182,8 @@ async def update_chatbot(
             system_prompt=payload.system_prompt,
             welcome_message=payload.welcome_message,
             llm_config_id=payload.llm_config_id,
+            agent_id=payload.agent_id,
+            agent_version=payload.agent_version,
             config=payload.config,
             enabled=payload.enabled,
         )

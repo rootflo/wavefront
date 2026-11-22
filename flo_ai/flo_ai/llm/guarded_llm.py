@@ -192,8 +192,14 @@ class GuardedLLM(BaseLLM):
         # natively, and the cache key must be the provider's.
         return await self._inner_llm.format_video_in_message(video)
 
-    # Tool-call protocol: BaseLLM's defaults would otherwise shadow
-    # __getattr__ and send the provider the wrong message shapes.
+    # Tool-call protocol, delegated for the same reason: BaseLLM gives each of
+    # these a default, so __getattr__ never fires for them and the wrapped
+    # provider's own version (Claude's tool_use handling, say) would be
+    # replaced by the default.
+
+    @property
+    def requires_tool_call_ids(self) -> bool:  # type: ignore[override]
+        return self._inner_llm.requires_tool_call_ids
 
     async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
         return await self._inner_llm.get_function_call(response)
@@ -215,6 +221,11 @@ class GuardedLLM(BaseLLM):
         return self._inner_llm.format_function_result_message(
             function_name, content, tool_use_id
         )
+
+    def format_stored_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        return self._inner_llm.format_stored_tool_call_message(content, tool_calls)
 
     # -- inference -------------------------------------------------------
 

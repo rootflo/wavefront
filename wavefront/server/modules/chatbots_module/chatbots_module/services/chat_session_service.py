@@ -60,8 +60,13 @@ class ChatSessionService:
         chatbot: Chatbot,
         user_id: uuid.UUID,
         title: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ChatSession:
         """Open a thread, pinning the chatbot's current prompt to it.
+
+        For an agent-backed chatbot the pin is `metadata` instead: the agent
+        and the version the session runs on (see AgentChatService.pin). Such a
+        chatbot has no prompt of its own, so the snapshot is stored empty.
 
         The snapshot is what makes an old conversation explainable: editing
         `chatbots.system_prompt` afterwards must not retroactively change the
@@ -83,7 +88,8 @@ class ChatSessionService:
                     chatbot_id=chatbot.id,
                     user_id=user_id,
                     title=title,
-                    system_prompt_snapshot=chatbot.system_prompt,
+                    system_prompt_snapshot=chatbot.system_prompt or '',
+                    metadata_=metadata,
                 )
                 db_session.add(session)
                 # Assigns session.id, which the welcome message needs for its

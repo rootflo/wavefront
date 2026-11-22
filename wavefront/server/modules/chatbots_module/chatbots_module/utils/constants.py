@@ -29,3 +29,42 @@ TITLE_MAX_LENGTH = 60
 ROLE_USER = 'user'
 ROLE_ASSISTANT = 'assistant'
 ROLE_SYSTEM = 'system'
+# One step of an agent's turn: the result a tool returned.
+ROLE_TOOL = 'tool'
+
+# How many stored rows are replayed to an agent-backed chatbot on each turn.
+#
+# Higher than MAX_HISTORY_MESSAGES because an agent turn is several rows (each
+# tool call and each result is its own row), so the same number of exchanges
+# takes more of them. The window is then moved forward to the start of a turn:
+# see AgentChatService.to_agent_messages.
+MAX_AGENT_HISTORY_MESSAGES = 200
+
+# Shown to the caller when generation fails, on both the JSON and the SSE path.
+#
+# A single constant because the two paths must not drift, and because the
+# underlying exception must never reach the client: it comes from the provider
+# SDK, so it can carry the configured base_url (potentially an internal gateway
+# host), deployment names, org identifiers, or an API-key prefix on an auth
+# failure. Every chat route is open to any authenticated user, not just admins.
+# The real error goes to the logs via logger.exception.
+MODEL_FAILURE_MESSAGE = (
+    'The model failed to respond. Your message was saved; please retry.'
+)
+
+# An agent-backed turn that policy or the provider declined. Nothing the agent
+# did in that turn is kept; the user's message is.
+BLOCKED_BY_POLICY_MESSAGE = 'This message was blocked by the content policy.'
+MODEL_REFUSED_MESSAGE = 'The model declined to respond to this request.'
+
+# A step of the agent's turn could not be written. The turn is stopped rather
+# than continued with a hole in the stored conversation.
+TURN_NOT_SAVED_MESSAGE = (
+    'The reply could not be saved. Your message was saved; please retry.'
+)
+
+# The agent behind a chatbot was deleted, or the pinned version was.
+AGENT_UNAVAILABLE_MESSAGE = (
+    'The agent behind this chatbot is no longer available; '
+    'the conversation is read-only'
+)

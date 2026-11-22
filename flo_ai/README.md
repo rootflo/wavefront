@@ -63,7 +63,7 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
   - [Conditional Routing](#conditional-routing)
   - [YAML-Based Workflows](#yaml-based-workflows)
   - [LLM-Powered Routers](#llm-powered-routers)
-  - [ReflectionRouter & PlanExecuteRouter](#reflectionrouter--planexecuterouter)
+  - [Plan-and-Execute & Supervisor Agents](#plan-and-execute--supervisor-agents)
 - [📊 OpenTelemetry Integration](#-opentelemetry-integration)
 - [📚 Examples & Documentation](#-examples--documentation)
 - [🌟 Why Flo AI?](#-why-flo-ai)
@@ -433,36 +433,34 @@ Define intelligent routing logic directly in YAML:
         name: "gpt-4o-mini"
 ```
 
-### ReflectionRouter & PlanExecuteRouter
+### Plan-and-Execute & Supervisor Agents
 
-**ReflectionRouter** for A→B→A→C feedback patterns:
+`ReasoningPattern.PLAN_EXECUTE` makes an agent write a plan, work through it with its tools, and answer only when every step is done. Any agent can also be given to another as a tool with `as_tool()`, which is how a supervisor delegates to specialists:
 
-```yaml
-  routers:
-    - name: "reflection_router"
-    type: "reflection"
-      flow_pattern: [writer, critic, writer]  # A → B → A pattern
-      model:
-        provider: "openai"
-        name: "gpt-4o-mini"
+```python
+from flo_ai.agent import AgentBuilder, ReasoningPattern
+
+supervisor = (
+    AgentBuilder()
+    .with_name('supervisor')
+    .with_prompt('Delegate the work to your specialists and combine their results.')
+    .with_llm(llm)
+    .with_tools([
+        researcher.as_tool('Finds facts and figures'),
+        analyst.as_tool('Analyses figures you give it'),
+    ])
+    .with_reasoning(ReasoningPattern.PLAN_EXECUTE)
+    .with_max_tool_calls(20)
+    .build()
+)
+
+result = await supervisor.run('How did revenue change last quarter, and why?')
+print(supervisor.plan.render())
 ```
 
-**PlanExecuteRouter** for Cursor-style plan-and-execute workflows:
+Each worker sees only the task it is handed, and the supervisor sees only the worker's final answer. Add `parallel_agents_tool([researcher, analyst])` to let it run independent tasks at the same time.
 
-```yaml
-routers:
-  - name: "plan_router"
-    type: "plan_execute"
-  agents:
-      planner: "Creates detailed execution plans"
-      developer: "Implements features according to plan"
-        tester: "Tests implementations and validates functionality"
-        reviewer: "Reviews and approves completed work"
-      settings:
-        planner_agent: planner
-      executor_agent: developer
-        reviewer_agent: reviewer
-```
+In YAML, set `settings.reasoning_pattern: PLAN_EXECUTE` and list the other agents under the supervisor's `tools:`. See `examples/plan_execute_supervisor_example.py`.
 
 ## 📊 OpenTelemetry Integration
 

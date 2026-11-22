@@ -9,14 +9,22 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Form } from '@app/components/ui/form';
-import { useCreateChatbot, useGetLLMConfigs, useUpdateChatbot } from '@app/hooks';
+import { useCreateChatbot, useGetAgents, useGetLLMConfigs, useUpdateChatbot } from '@app/hooks';
 import { Chatbot, CreateChatbotRequest, UpdateChatbotRequest } from '@app/types/chatbot';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import ChatbotFormFields from './ChatbotFormFields';
-import { ChatbotFormValues, buildConfig, chatbotFormSchema, readTemperature } from './schemas';
+import {
+  CHAT_TYPE_AGENT,
+  CHAT_TYPE_LLM,
+  ChatbotFormValues,
+  buildConfig,
+  chatbotFormSchema,
+  parseAgentVersion,
+  readTemperature,
+} from './schemas';
 
 interface ChatbotFormDialogProps {
   isOpen: boolean;
@@ -30,12 +38,15 @@ interface ChatbotFormDialogProps {
 }
 
 const toFormValues = (chatbot: Chatbot | undefined, namespace: string): ChatbotFormValues => ({
+  chat_type: chatbot?.agent_id ? CHAT_TYPE_AGENT : CHAT_TYPE_LLM,
   name: chatbot?.name ?? '',
   namespace: chatbot?.namespace ?? namespace,
   description: chatbot?.description ?? '',
   system_prompt: chatbot?.system_prompt ?? '',
   welcome_message: chatbot?.welcome_message ?? '',
   llm_config_id: chatbot?.llm_config_id ?? '',
+  agent_id: chatbot?.agent_id ?? '',
+  agent_version: chatbot?.agent_version ? String(chatbot.agent_version) : '',
   temperature: chatbot ? readTemperature(chatbot.config) : '',
   enabled: chatbot?.enabled ?? false,
 });
@@ -56,6 +67,7 @@ const ChatbotFormDialog: React.FC<ChatbotFormDialogProps> = ({
   const createChatbot = useCreateChatbot(appId);
   const updateChatbot = useUpdateChatbot(appId);
   const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
+  const { data: agents = [] } = useGetAgents(appId);
   const isEdit = !!chatbot;
   const submitting = createChatbot.isPending || updateChatbot.isPending;
 
@@ -77,9 +89,18 @@ const ChatbotFormDialog: React.FC<ChatbotFormDialogProps> = ({
   const close = () => onOpenChange(false);
 
   const onSubmit = (data: ChatbotFormValues) => {
-    const config = buildConfig(data.temperature);
+    const isAgentBacked = data.chat_type === CHAT_TYPE_AGENT;
+    const agentVersion = parseAgentVersion(data.agent_version);
 
     if (chatbot) {
+      // A pinned chatbot stays pinned (the API cannot clear it), and changing the
+      // agent blanks the version. Sending no version then would keep the old
+      // number against the new agent, so one has to be chosen.
+      if (isAgentBacked && chatbot.agent_version && agentVersion === undefined) {
+        form.setError('agent_version', { message: 'Select a version' });
+        return;
+      }
+
       // Every editable field is sent with a concrete value on purpose. The API
       // reads null/absent as "not supplied", so clearing a field requires an
       // empty value ('' for text, {} for config) -- omitting it would silently
@@ -88,12 +109,21 @@ const ChatbotFormDialog: React.FC<ChatbotFormDialogProps> = ({
       const payload: UpdateChatbotRequest = {
         name: data.name.trim(),
         description: data.description.trim(),
-        system_prompt: data.system_prompt,
         welcome_message: data.welcome_message,
-        llm_config_id: data.llm_config_id,
-        config,
         enabled: data.enabled,
       };
+      // A chatbot keeps its type, and the API rejects the other type's fields.
+      if (isAgentBacked) {
+        payload.agent_id = data.agent_id;
+        // Blank is left out, which the API reads as "not supplied": a pinned
+        // version can be moved here but not cleared, so the form does not
+        // offer "follow current" for a chatbot that is pinned.
+        if (agentVersion !== undefined) payload.agent_version = agentVersion;
+      } else {
+        payload.system_prompt = data.system_prompt;
+        payload.llm_config_id = data.llm_config_id;
+        payload.config = buildConfig(data.temperature);
+      }
       updateChatbot.mutate({ chatbotId: chatbot.id, data: payload }, { onSuccess: close });
       return;
     }
@@ -101,15 +131,23 @@ const ChatbotFormDialog: React.FC<ChatbotFormDialogProps> = ({
     const payload: CreateChatbotRequest = {
       name: data.name.trim(),
       namespace: data.namespace,
-      system_prompt: data.system_prompt,
-      llm_config_id: data.llm_config_id,
       enabled: data.enabled,
     };
+    // The two types take different fields, and the API rejects a mix: an
+    // agent-backed chatbot gets its prompt and model from the agent.
+    if (isAgentBacked) {
+      payload.agent_id = data.agent_id;
+      if (agentVersion !== undefined) payload.agent_version = agentVersion;
+    } else {
+      payload.system_prompt = data.system_prompt;
+      payload.llm_config_id = data.llm_config_id;
+      const config = buildConfig(data.temperature);
+      if (Object.keys(config).length) payload.config = config;
+    }
     // Omit rather than send empty values on create, so the row stores NULL
     // and reads as "never set" instead of "deliberately blanked".
     if (data.description.trim()) payload.description = data.description.trim();
     if (data.welcome_message.trim()) payload.welcome_message = data.welcome_message;
-    if (Object.keys(config).length) payload.config = config;
     createChatbot.mutate(payload, { onSuccess: close });
   };
 
@@ -119,13 +157,24 @@ const ChatbotFormDialog: React.FC<ChatbotFormDialogProps> = ({
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Chatbot' : 'Create Chatbot'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? `Update ${chatbot.name}` : 'Configure a chatbot with a system prompt and a model'}
+            {isEdit
+              ? `Update ${chatbot.name}`
+              : 'Configure a chatbot with a system prompt and a model, or back it with an agent'}
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <ChatbotFormFields form={form} llmConfigs={llmConfigs} namespaces={namespaces} namespaceLocked={isEdit} />
+            <ChatbotFormFields
+              form={form}
+              appId={appId}
+              llmConfigs={llmConfigs}
+              agents={agents}
+              namespaces={namespaces}
+              namespaceLocked={isEdit}
+              chatTypeLocked={isEdit}
+              pinnedAgentVersion={chatbot?.agent_version}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={close} disabled={submitting}>

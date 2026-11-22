@@ -15,7 +15,6 @@ from flo_ai.models.arium import (
     AriumAgentConfigModel,
     FunctionNodeConfigModel,
     RouterConfigModel,
-    RouterSettingsModel,
     EdgeConfigModel,
     WorkflowConfigModel,
     AriumNodeConfigModel,
@@ -143,37 +142,6 @@ class TestRouterConfigModel:
         assert router.routing_options is not None
         assert len(router.routing_options) == 2
 
-    def test_valid_reflection_router(self):
-        """Test valid reflection router configuration."""
-        router = RouterConfigModel(
-            name='reflection_router',
-            type='reflection',
-            flow_pattern=['agent1', 'critic', 'agent1', 'final'],
-            settings=RouterSettingsModel(allow_early_exit=False),
-        )
-        assert router.type == 'reflection'
-        assert router.flow_pattern == ['agent1', 'critic', 'agent1', 'final']
-
-    def test_valid_plan_execute_router(self):
-        """Test valid plan-execute router configuration."""
-        router = RouterConfigModel(
-            name='plan_execute_router',
-            type='plan_execute',
-            agents={
-                'planner': 'Creates plans',
-                'developer': 'Implements code',
-                'tester': 'Tests code',
-            },
-            settings=RouterSettingsModel(
-                planner_agent='planner',
-                executor_agent='developer',
-                reviewer_agent='tester',
-            ),
-        )
-        assert router.type == 'plan_execute'
-        assert router.agents is not None
-        assert len(router.agents) == 3
-
     def test_smart_router_missing_routing_options(self):
         """Test that smart router must have routing_options."""
         with pytest.raises(ValueError, match="must specify 'routing_options'"):
@@ -208,22 +176,6 @@ class TestRouterConfigModel:
         with pytest.raises(ValueError, match="must specify 'field' and 'routes'"):
             RouterConfigModel(
                 name='invalid_router', type='field_match', routes={'a': 'node_a'}
-            )
-
-    def test_reflection_router_missing_flow_pattern(self):
-        """Test that reflection router must have flow_pattern."""
-        with pytest.raises(ValueError, match="must specify 'flow_pattern'"):
-            RouterConfigModel(
-                name='invalid_router',
-                type='reflection',
-            )
-
-    def test_plan_execute_router_missing_agents(self):
-        """Test that plan_execute router must have agents."""
-        with pytest.raises(ValueError, match="must specify 'agents'"):
-            RouterConfigModel(
-                name='invalid_router',
-                type='plan_execute',
             )
 
 
