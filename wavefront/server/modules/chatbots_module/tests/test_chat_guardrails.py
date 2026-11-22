@@ -102,7 +102,7 @@ class TestGuardedLlm:
 class TestResolveLlmWrapping:
     async def _resolve(self, engine, namespace='acme'):
         config_service = AsyncMock()
-        config_service.get_config.return_value = {
+        config_service.get_runtime_config.return_value = {
             'llm_model': 'gpt-4o',
             'display_name': 'x',
             'type': 'openai',

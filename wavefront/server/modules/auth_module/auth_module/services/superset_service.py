@@ -117,9 +117,10 @@ class SupersetService:
                 'resources': resources,
                 'rls': rls_policy,
                 'user': {
-                    'username': '',
-                    'first_name': '',
-                    'last_name': '',
+                    # Non-empty username required for Superset 6 is_guest_user().
+                    'username': 'embed_guest',
+                    'first_name': 'Embed',
+                    'last_name': 'Guest',
                 },
             }
             headers = {

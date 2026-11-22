@@ -15,12 +15,20 @@ from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from agents_module.models.async_agentic_execution_schemas import (
     AsyncInferenceResponse,
     AgenticExecutionStatusResponse,
 )
 from celery import Celery
+
+from agents_module.utils.celery_backpressure import (
+    ensure_queue_capacity,
+    queue_is_saturated,
+)
+from agents_module.utils.celery_broker import remove_queued_task
+from agents_module.utils.celery_settings import CeleryProducerSettings
 from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.utils.mime_type_utils import (
     SUPPORTED_DOCUMENT_MIME_TYPES,
@@ -65,6 +73,26 @@ GENERIC_EXECUTION_ERROR = (
 
 def _cache_key(execution_id: UUID) -> str:
     return f'async_agentic_exec:status:{execution_id}'
+
+
+def _output_prefix(entity_type: str, entity_id: UUID, execution_id: UUID) -> str:
+    return f'executions/{entity_type}s/{entity_id}/{execution_id}/'
+
+
+def _optional_uuid(value: Optional[str]) -> Optional[uuid.UUID]:
+    return uuid.UUID(value) if value else None
+
+
+class ExecutionNotCancellable(Exception):
+    """Not a ValueError: the controller maps ValueError to 404."""
+
+
+class ExecutionNotRetryable(Exception):
+    """The execution is not failed, was already retried, or hit the attempt cap."""
+
+
+class CancellationIncomplete(Exception):
+    """The task left the queue, but the row could not be marked cancelled."""
 
 
 # For the storage *key* only. Anything outside this set becomes '_', so the
@@ -188,12 +216,22 @@ class AsyncAgenticExecutionService:
         cache_manager: CacheManager,
         executions_bucket: str,
         celery_client: Celery,
+        celery_settings: CeleryProducerSettings | None = None,
     ):
         self.repo = async_agentic_execution_repository
         self.cloud_storage = cloud_storage_manager
         self.cache = cache_manager
         self.bucket = executions_bucket
         self.celery = celery_client
+        self.celery_settings = celery_settings or CeleryProducerSettings()
+
+    async def queue_is_saturated(self) -> bool:
+        saturated, _depth = await queue_is_saturated(self.celery, self.celery_settings)
+        return saturated
+
+    @property
+    def backpressure_retry_after_seconds(self) -> int:
+        return self.celery_settings.backpressure_retry_after_seconds
 
     def pre_save_binary_inputs(
         self,
@@ -318,66 +356,33 @@ class AsyncAgenticExecutionService:
         output_json_enabled: bool,
         access_token: Optional[str],
         app_key: Optional[str],
-        llm_config: Optional[Dict] = None,
+        llm_inference_config_id: Optional[UUID] = None,
         version: Optional[int] = None,
+        enforce_queue_limit: bool = True,
     ) -> AsyncInferenceResponse:
+        # Off for callers inside the worker, whose work is already admitted.
+        if enforce_queue_limit:
+            await ensure_queue_capacity(self.celery, self.celery_settings)
+
         execution_id = uuid.uuid4()
-        prefix = f'executions/agents/{agent_id}/{execution_id}/'
+        prefix = _output_prefix('agent', agent_id, execution_id)
 
         clean_inputs, stored_files = await asyncio.to_thread(
             self.pre_save_binary_inputs, inputs, prefix
         )
 
-        await self.repo.create(
-            id=execution_id,
-            entity_type='agent',
-            entity_id=agent_id,
-            status='pending',
-            input_bucket=self.bucket,
-            inputs=json.dumps(clean_inputs),
-            variables=variables,
-            input_files=json.dumps(stored_files) if stored_files else None,
-        )
-
-        payload = {
-            'execution_id': str(execution_id),
-            'entity_id': str(agent_id),
-            'entity_type': 'agent',
-            'variables': with_execution_variables(variables, execution_id),
-            'inputs': clean_inputs,
-            'llm_config': llm_config,
-            'output_json_enabled': output_json_enabled,
-            'access_token': access_token,
-            'app_key': app_key,
-            'execution_bucket': self.bucket,
-            'output_prefix': prefix,
-            'version': version,
-        }
-
-        try:
-            result = self.celery.send_task(
-                _AGENT_TASK_NAME,
-                kwargs={'payload': payload},
-            )
-        except Exception as exc:
-            await self.repo.find_one_and_update(
-                {'id': execution_id}, status='failed', error=str(exc)
-            )
-            logger.error(f'Failed to enqueue agent execution {execution_id}: {exc}')
-            raise
-
-        await self.repo.find_one_and_update(
-            {'id': execution_id}, celery_task_id=result.id
-        )
-
-        logger.info(f'Enqueued agent execution {execution_id}, celery task {result.id}')
-        return AsyncInferenceResponse(
+        return await self._insert_and_enqueue(
             execution_id=execution_id,
-            status='pending',
             entity_type='agent',
             entity_id=agent_id,
-            status_url=f'/v1/agentic-executions/{execution_id}',
+            clean_inputs=clean_inputs,
+            stored_files=stored_files,
             variables=variables,
+            output_json_enabled=output_json_enabled,
+            access_token=access_token,
+            app_key=app_key,
+            version=version,
+            llm_inference_config_id=llm_inference_config_id,
         )
 
     async def create_and_enqueue_workflow(
@@ -391,68 +396,215 @@ class AsyncAgenticExecutionService:
         access_token: Optional[str],
         app_key: Optional[str],
         version: Optional[int] = None,
+        enforce_queue_limit: bool = True,
     ) -> AsyncInferenceResponse:
+        if enforce_queue_limit:
+            await ensure_queue_capacity(self.celery, self.celery_settings)
+
         execution_id = uuid.uuid4()
-        prefix = f'executions/workflows/{workflow_id}/{execution_id}/'
+        prefix = _output_prefix('workflow', workflow_id, execution_id)
 
         clean_inputs, stored_files = await asyncio.to_thread(
             self.pre_save_binary_inputs, inputs, prefix
         )
 
-        await self.repo.create(
-            id=execution_id,
+        return await self._insert_and_enqueue(
+            execution_id=execution_id,
             entity_type='workflow',
             entity_id=workflow_id,
+            clean_inputs=clean_inputs,
+            stored_files=stored_files,
+            variables=variables,
+            output_json_enabled=output_json_enabled,
+            access_token=access_token,
+            app_key=app_key,
+            version=version,
+            workflow_name=workflow_name,
+            namespace=namespace,
+        )
+
+    async def get_retryable_execution(
+        self, execution_id: UUID
+    ) -> AsyncAgenticExecution:
+        """The execution, if it may be retried now; raises otherwise.
+
+        Only the newest run of a chain is retryable, and only once it failed.
+        The already-retried check here is for a clear message; the unique
+        `retry_of_execution_id` is what holds under concurrent retries.
+        """
+        record = await self.repo.find_one(id=execution_id)
+        if not record:
+            raise ValueError(f'Execution not found: {execution_id}')
+
+        # Not `cancelled`: a cancelled retry deliberately ends its chain.
+        if record.status != 'failed':
+            raise ExecutionNotRetryable(
+                f'Execution {execution_id} is {record.status}; only failed '
+                'executions can be retried'
+            )
+
+        retry = await self.repo.find_one(retry_of_execution_id=execution_id)
+        if retry:
+            raise ExecutionNotRetryable(
+                f'Execution {execution_id} was already retried as {retry.id}'
+            )
+
+        max_attempts = self.celery_settings.max_execution_attempts
+        if record.attempt >= max_attempts:
+            raise ExecutionNotRetryable(
+                f'Execution {execution_id} is attempt {record.attempt} of at most '
+                f'{max_attempts}'
+            )
+
+        if record.inputs is None:
+            raise ExecutionNotRetryable(
+                f'Execution {execution_id} has no stored inputs to retry with'
+            )
+
+        return record
+
+    async def retry_execution(
+        self,
+        parent: AsyncAgenticExecution,
+        access_token: Optional[str],
+        app_key: Optional[str],
+        version: Optional[int],
+        workflow_name: Optional[str] = None,
+        namespace: Optional[str] = None,
+    ) -> AsyncInferenceResponse:
+        """Enqueue a new run of a failed execution, linked back to it.
+
+        `parent` comes from get_retryable_execution(). Inputs and variables are
+        the parent's; the version is the caller's, resolved to the entity's
+        current one. Stored inputs keep pointing at the parent's blobs, so
+        nothing is uploaded again.
+        """
+        await ensure_queue_capacity(self.celery, self.celery_settings)
+
+        execution_id = uuid.uuid4()
+        stored_files = json.loads(parent.input_files) if parent.input_files else []
+
+        try:
+            return await self._insert_and_enqueue(
+                execution_id=execution_id,
+                entity_type=parent.entity_type,
+                entity_id=parent.entity_id,
+                clean_inputs=json.loads(parent.inputs),
+                stored_files=stored_files,
+                variables=parent.variables,
+                # Rows predating the column ran with the request default.
+                output_json_enabled=parent.output_json_enabled is not False,
+                access_token=access_token,
+                app_key=app_key,
+                version=version,
+                llm_inference_config_id=parent.llm_inference_config_id,
+                workflow_name=workflow_name,
+                namespace=namespace,
+                retry_of_execution_id=parent.id,
+                attempt=parent.attempt + 1,
+            )
+        except IntegrityError as exc:
+            # A concurrent retry inserted its row first.
+            raise ExecutionNotRetryable(
+                f'Execution {parent.id} was already retried'
+            ) from exc
+
+    async def _insert_and_enqueue(
+        self,
+        *,
+        execution_id: UUID,
+        entity_type: str,
+        entity_id: UUID,
+        clean_inputs: List[Dict],
+        stored_files: List[Dict],
+        variables: Optional[Dict[str, Any]],
+        output_json_enabled: bool,
+        access_token: Optional[str],
+        app_key: Optional[str],
+        version: Optional[int],
+        llm_inference_config_id: Optional[UUID] = None,
+        workflow_name: Optional[str] = None,
+        namespace: Optional[str] = None,
+        retry_of_execution_id: Optional[UUID] = None,
+        attempt: int = 1,
+    ) -> AsyncInferenceResponse:
+        # Saved with the row, so cancel can always find the task.
+        celery_task_id = str(uuid.uuid4())
+
+        await self.repo.create(
+            id=execution_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            celery_task_id=celery_task_id,
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
             variables=variables,
             input_files=json.dumps(stored_files) if stored_files else None,
+            version=version,
+            output_json_enabled=output_json_enabled,
+            llm_inference_config_id=llm_inference_config_id,
+            retry_of_execution_id=retry_of_execution_id,
+            attempt=attempt,
         )
 
         payload = {
             'execution_id': str(execution_id),
-            'entity_id': str(workflow_id),
-            'entity_type': 'workflow',
-            'workflow_name': workflow_name,
-            'namespace': namespace,
+            'entity_id': str(entity_id),
+            'entity_type': entity_type,
             'variables': with_execution_variables(variables, execution_id),
             'inputs': clean_inputs,
-            'llm_config': None,
             'output_json_enabled': output_json_enabled,
             'access_token': access_token,
             'app_key': app_key,
             'execution_bucket': self.bucket,
-            'output_prefix': prefix,
+            'output_prefix': _output_prefix(entity_type, entity_id, execution_id),
             'version': version,
         }
+        if entity_type == 'agent':
+            task_name = _AGENT_TASK_NAME
+            # The id only: the worker fetches the key from floware, so it is
+            # never stored in the broker.
+            payload['llm_inference_config_id'] = (
+                str(llm_inference_config_id) if llm_inference_config_id else None
+            )
+        else:
+            task_name = _WORKFLOW_TASK_NAME
+            payload['workflow_name'] = workflow_name
+            payload['namespace'] = namespace
 
         try:
-            result = self.celery.send_task(
-                _WORKFLOW_TASK_NAME,
+            # send_task is blocking redis-py.
+            await asyncio.to_thread(
+                self.celery.send_task,
+                task_name,
                 kwargs={'payload': payload},
+                task_id=celery_task_id,
             )
         except Exception as exc:
+            # A failed retry send uses up an attempt; deleting the row instead
+            # would leave the parent retryable.
             await self.repo.find_one_and_update(
                 {'id': execution_id}, status='failed', error=str(exc)
             )
-            logger.error(f'Failed to enqueue workflow execution {execution_id}: {exc}')
+            logger.error(
+                f'Failed to enqueue {entity_type} execution {execution_id}: {exc}'
+            )
             raise
 
-        await self.repo.find_one_and_update(
-            {'id': execution_id}, celery_task_id=result.id
-        )
-
         logger.info(
-            f'Enqueued workflow execution {execution_id}, celery task {result.id}'
+            f'Enqueued {entity_type} execution {execution_id}, '
+            f'celery task {celery_task_id}'
         )
         return AsyncInferenceResponse(
             execution_id=execution_id,
             status='pending',
-            entity_type='workflow',
-            entity_id=workflow_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
             status_url=f'/v1/agentic-executions/{execution_id}',
             variables=variables,
+            retry_of_execution_id=retry_of_execution_id,
+            attempt=attempt,
         )
 
     def _build_status_response(
@@ -541,6 +693,12 @@ class AsyncAgenticExecutionService:
             error=error,
             variables=record_dict.get('variables'),
             input_files=input_files,
+            # .get(): cached records written before these fields existed.
+            version=record_dict.get('version'),
+            retry_of_execution_id=_optional_uuid(
+                record_dict.get('retry_of_execution_id')
+            ),
+            attempt=record_dict.get('attempt') or 1,
             output_url=output_url,
             history_url=history_url,
             started_at=datetime.fromisoformat(record_dict['started_at'])
@@ -562,9 +720,11 @@ class AsyncAgenticExecutionService:
             logger.debug(f'Cache hit for execution status {execution_id}')
             # The cache holds the raw record, not the response, so it is shared
             # across both values of include_error without leaking either way.
-            return self._build_status_response(
+            response = self._build_status_response(
                 json.loads(cached), include_error=include_error
             )
+            await self._add_retry_state([response])
+            return response
 
         record = await self.repo.find_one(id=execution_id)
         if not record:
@@ -574,12 +734,102 @@ class AsyncAgenticExecutionService:
         status = record_dict['status']
         ttl = (
             _STATUS_CACHE_TTL_TERMINAL
-            if status in ('completed', 'failed')
+            if status in ('completed', 'failed', 'cancelled')
             else _STATUS_CACHE_TTL_ACTIVE
         )
-        await asyncio.to_thread(self.cache.add, cache_key, json.dumps(record_dict), ttl)
+        # nx: a value written since the read (e.g. by cancel) is newer than ours.
+        await asyncio.to_thread(
+            self.cache.add, cache_key, json.dumps(record_dict), ttl, nx=True
+        )
 
-        return self._build_status_response(record_dict, include_error=include_error)
+        response = self._build_status_response(record_dict, include_error=include_error)
+        await self._add_retry_state([response])
+        return response
+
+    async def cancel_execution(
+        self, execution_id: UUID
+    ) -> AgenticExecutionStatusResponse:
+        """Withdraw an execution no worker has picked up yet.
+
+        The queue decides, not the row: a row still reads `pending` briefly
+        after a worker takes the task. So the task is removed first, and the
+        row is marked `cancelled` only if that succeeded.
+        """
+        record = await self.repo.find_one(id=execution_id)
+        if not record:
+            raise ValueError(f'Execution not found: {execution_id}')
+
+        if record.status != 'pending':
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} is {record.status}; only pending '
+                'executions can be cancelled'
+            )
+
+        # Only older rows whose post-send save failed lack one.
+        task_id = record.celery_task_id
+        if not task_id:
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} has no recorded task id, so its task '
+                'cannot be located on the queue'
+            )
+
+        removed = await asyncio.to_thread(
+            remove_queued_task, self.celery, task_id, self.celery_settings
+        )
+        if not removed:
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} is not on the queue: a worker has '
+                'already picked it up, or it is still being enqueued'
+            )
+
+        # The task is gone for good now, so failures below must say so.
+        try:
+            cancelled = await self.repo.find_one_and_update(
+                {'id': execution_id, 'status': 'pending'},
+                refresh=True,
+                status='cancelled',
+                completed_at=datetime.now(),
+            )
+        except Exception as exc:
+            logger.error(
+                f'Task {task_id} of execution {execution_id} was removed from the '
+                f'queue but the row could not be marked cancelled: {exc}'
+            )
+            raise CancellationIncomplete(
+                f'Execution {execution_id} was removed from the queue and will not '
+                'run, but its status could not be updated'
+            ) from exc
+
+        if cancelled is None:
+            logger.error(
+                f'Task {task_id} of execution {execution_id} was removed from the '
+                'queue but the row was no longer pending'
+            )
+            raise CancellationIncomplete(
+                f'Execution {execution_id} was removed from the queue, but its '
+                'status changed before it could be marked cancelled'
+            )
+
+        record_dict = cancelled.to_dict()
+        # Written rather than removed, so a concurrent poll can't re-cache `pending`.
+        try:
+            await asyncio.to_thread(
+                self.cache.add,
+                _cache_key(execution_id),
+                json.dumps(record_dict),
+                _STATUS_CACHE_TTL_TERMINAL,
+            )
+        except Exception as exc:
+            logger.warning(
+                f'Cancellation persisted for execution {execution_id}, '
+                f'but the status cache could not be updated: {exc}'
+            )
+
+        logger.info(
+            f'Cancelled execution {execution_id}, '
+            f'task {task_id} removed from the queue'
+        )
+        return self._build_status_response(record_dict, generate_urls=False)
 
     async def list_executions(
         self,
@@ -623,4 +873,39 @@ class AsyncAgenticExecutionService:
             )
             for r in records
         ]
+        await self._add_retry_state(results)
         return results, total
+
+    def _may_be_retryable(self, response: AgenticExecutionStatusResponse) -> bool:
+        """Every retry rule except "not already retried", which needs a query."""
+        return (
+            response.status == 'failed'
+            and response.attempt < self.celery_settings.max_execution_attempts
+        )
+
+    async def _add_retry_state(
+        self, responses: List[AgenticExecutionStatusResponse]
+    ) -> None:
+        """Fill in is_retryable and retried_by_execution_id.
+
+        Read live, never cached: a cached parent would stay retryable after its
+        retry is created. Only failed rows under the cap can have a retry, so
+        the lookup is skipped for everything else.
+        """
+        candidates = [r.id for r in responses if self._may_be_retryable(r)]
+        if not candidates:
+            return
+
+        async with self.repo.session() as session:
+            rows = await session.execute(
+                select(
+                    AsyncAgenticExecution.retry_of_execution_id,
+                    AsyncAgenticExecution.id,
+                ).where(AsyncAgenticExecution.retry_of_execution_id.in_(candidates))
+            )
+        retried_by = dict(rows.all())
+
+        for response in responses:
+            if response.id in candidates:
+                response.retried_by_execution_id = retried_by.get(response.id)
+                response.is_retryable = response.retried_by_execution_id is None

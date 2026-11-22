@@ -315,6 +315,15 @@ def validate_inference_inputs(
     return inputs
 
 
+class InvalidDefinitionError(ValueError):
+    """An agent or workflow definition the caller sent is not acceptable.
+
+    A ``ValueError`` subclass so existing ``except ValueError`` handlers keep
+    working; the create and update controllers catch it to answer 400 with the
+    reason instead of letting it reach the 500 catch-all.
+    """
+
+
 def validate_agent_workflow_name(name: str, type: str = 'agent') -> None:
     """
     Validate agent or workflow name to ensure it:
@@ -330,7 +339,7 @@ def validate_agent_workflow_name(name: str, type: str = 'agent') -> None:
         ValueError: If the name contains invalid characters or format
     """
     if not name:
-        raise ValueError(f'{type.capitalize()} name cannot be empty')
+        raise InvalidDefinitionError(f'{type.capitalize()} name cannot be empty')
 
     # Must start with a letter or number, followed by letters, numbers, hyphens, or underscores.
     # Anchored with \Z, not $: Python's $ also matches just before a trailing
@@ -339,7 +348,7 @@ def validate_agent_workflow_name(name: str, type: str = 'agent') -> None:
     pattern = r'^[a-zA-Z0-9][a-zA-Z0-9_-]*\Z'
 
     if not re.match(pattern, name):
-        raise ValueError(
+        raise InvalidDefinitionError(
             f'{type.capitalize()} name must start with a letter or number and can only contain letters, numbers, '
             'hyphens, and underscores. Spaces and special characters are not allowed.'
         )

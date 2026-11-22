@@ -97,6 +97,9 @@ def _services(inference):
         'chatbot_service': chatbot_service,
         'chat_session_service': chat_session_service,
         'chat_inference_service': inference,
+        # These sessions are direct LLM ones; agent-backed turns are covered in
+        # test_agent_send_message.
+        'agent_chat_service': SimpleNamespace(is_agent_session=lambda session: False),
     }
 
 

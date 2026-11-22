@@ -31,11 +31,11 @@ const ForgotPasswordPage = () => {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col items-center justify-center gap-8">
+    <div className="relative flex min-h-full w-full flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-10 sm:gap-8">
       <div className="absolute top-5 right-5">
         <ThemeToggle />
       </div>
-      <div className="frost-card ring-frost-border flex w-full max-w-[320px] flex-col items-center justify-center gap-8 rounded-2xl border p-8 ring-1 sm:max-w-[480px]">
+      <div className="frost-card ring-frost-border flex w-full max-w-[480px] flex-col items-center justify-center gap-6 rounded-2xl border p-5 ring-1 sm:gap-8 sm:p-8">
         <div className="flex w-full flex-col items-center justify-center">
           <p className="frost-text text-2xl font-medium">Only one step left</p>
           <p className="frost-text-muted text-base font-normal">Enter your email</p>

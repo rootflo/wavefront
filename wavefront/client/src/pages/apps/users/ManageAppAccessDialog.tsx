@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -9,47 +8,29 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Checkbox } from '@app/components/ui/checkbox';
-import { extractErrorMessage, formatAppName } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
+import { formatAppName } from '@app/utils/string-formatting';
 import { IUser } from '@app/types/user';
 import { App } from '@app/types/app';
 import React, { useEffect, useState } from 'react';
-import { useGetAllApps } from '@app/hooks';
+import { useGetAllApps, useGetUserApps, useUpdateUserAppAccess } from '@app/hooks';
 
 interface ManageAppAccessDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   user: IUser | null;
-  onSuccess?: () => void;
 }
 
-const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, onOpenChange, user, onSuccess }) => {
-  const { notifySuccess, notifyError } = useNotifyStore();
+const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, onOpenChange, user }) => {
   const { data: allApps = [] } = useGetAllApps(true);
 
+  const { data: savedAppIds, isLoading: loading } = useGetUserApps(user?.id, isOpen);
   const [userAppIds, setUserAppIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const updateAccess = useUpdateUserAppAccess();
 
-  // Fetch user's apps when dialog opens
+  // The checkboxes start from the user's saved access each time the dialog opens
   useEffect(() => {
-    const fetchUserApps = async () => {
-      if (!user || !isOpen) return;
-
-      setLoading(true);
-      try {
-        const response = await floConsoleService.appUserService.listUserApps(user.id);
-        setUserAppIds(response.data.data?.app_ids || []);
-      } catch (error) {
-        const errorMessage = extractErrorMessage(error);
-        notifyError(errorMessage || 'Failed to load user apps');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserApps();
-  }, [user, isOpen, notifyError]);
+    if (isOpen && savedAppIds) setUserAppIds(savedAppIds);
+  }, [isOpen, savedAppIds]);
 
   const handleToggleApp = (appId: string, checked: boolean) => {
     if (checked) {
@@ -59,40 +40,9 @@ const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, o
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!user) return;
-
-    setSaving(true);
-    try {
-      // Get apps to grant and revoke
-      const currentAppIds = new Set(userAppIds);
-      const previousAppIds = new Set<string>();
-
-      // Fetch current state again to compare
-      const response = await floConsoleService.appUserService.listUserApps(user.id);
-      response.data.data?.app_ids?.forEach((id) => previousAppIds.add(id));
-
-      // Grant access to new apps
-      const appsToGrant = Array.from(currentAppIds).filter((id) => !previousAppIds.has(id));
-      for (const appId of appsToGrant) {
-        await floConsoleService.appUserService.grantAppAccess(appId, user.id);
-      }
-
-      // Revoke access from removed apps
-      const appsToRevoke = Array.from(previousAppIds).filter((id) => !currentAppIds.has(id));
-      for (const appId of appsToRevoke) {
-        await floConsoleService.appUserService.revokeAppAccess(appId, user.id);
-      }
-
-      notifySuccess('App access updated successfully');
-      onSuccess?.();
-      onOpenChange(false);
-    } catch (error) {
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to update app access');
-    } finally {
-      setSaving(false);
-    }
+    updateAccess.mutate({ userId: user.id, appIds: userAppIds }, { onSuccess: () => onOpenChange(false) });
   };
 
   return (
@@ -131,7 +81,7 @@ const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, o
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" onClick={handleSave} loading={saving}>
+          <Button type="button" onClick={handleSave} loading={updateAccess.isPending}>
             Save Changes
           </Button>
         </DialogFooter>

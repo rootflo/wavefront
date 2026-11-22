@@ -3,7 +3,7 @@
   <img src="./images/wavefront-icon.png" alt="Wavefront" width="300"/>
   </a>
 </p>
-<h2 align="center">Enterprise AI Middleware For Building Production Ready AI Applications</h1>
+<h2 align="center">Enterprise AI Middleware For Building Production Ready AI Applications</h2>
 <h3 align="center">Open source alternative to UnifyApps, LyzrAI, SuperAGI & AgentGPT</h3>
 <h4 align="center">Alternative to n8n, for building enterprise grade AI workflows</h4>
 
@@ -28,7 +28,7 @@
    •
     <a href="https://rootflo.ai" target="_blank">Website</a>
    •
-    <a href="https://flo-ai.rootflo.ai" target="_blank">Documentation</a>
+    <a href="https://wavefront.rootflo.ai" target="_blank">Documentation</a>
    •
     <a href="https://discord.gg/BPXsNwfuRU" target="_blank">Discord</a>
   </p>
@@ -84,13 +84,16 @@ Wavefront AI is an open-source middleware platform for building production AI ap
   - Text-to-speech: ElevenLabs, Deepgram, Cartesia, Azure, Google, AWS, Sarvam
 
 - **🌐 Data Connectivity**  
-  Connect to BigQuery, Redshift, PostgreSQL and SQL Server as datasources. Read and write through an OData-style API, or define parameterised dynamic queries in YAML and run or export them. Every datasource operation is audit logged. API services connect any REST backend, with API key, Basic and Bearer authentication. Cloud storage works with AWS, GCP and Azure.
+  Connect to BigQuery, Redshift, PostgreSQL and SQL Server as datasources, and to S3, Google Cloud Storage and Azure Blob Storage for files. Write through an OData-style API, and read with parameterised dynamic queries defined in YAML, with row-level data permissions. Writes and file transfers can be recorded in an [audit trail](https://wavefront.rootflo.ai/wavefront/audit-trail). API services connect any REST backend, with API key, Basic and Bearer authentication.
+
+- **⚙️ Functions & Configurations**  
+  Sandboxed JavaScript functions for the deterministic steps of a workflow (computing, comparing, deciding), and namespaced JSON configurations that workflows read at run time, so thresholds, rule tables and scoring models can change without a redeploy. See [Functions](https://wavefront.rootflo.ai/wavefront/functions) and [Configurations](https://wavefront.rootflo.ai/wavefront/configurations).
 
 - **🧠 Knowledge Bases & RAG**  
   Upload documents to knowledge bases, with background ingestion and embedding. Retrieval combines vector (pgvector) and keyword search with reranking, and supports image search.
 
 - **🛠️ Tools & Triggers**  
-  Agents can use datasources, knowledge bases, API services, email and custom message processors as tools. Triggers start an agent or workflow from external events, starting with Gmail.
+  Agents can use datasources, knowledge bases, API services, email and your own functions as tools. Triggers start an agent or workflow from external events, starting with Gmail.
 
 - **🤖 Open Source & Proprietary Model Support**  
   OpenAI, Azure OpenAI, Anthropic, Google Gemini, Groq, Ollama and vLLM, managed centrally as reusable model configurations. flo-ai also supports Vertex AI and AWS Bedrock.
@@ -132,7 +135,7 @@ Because each application has its own floware, each gets its own database, storag
 
 **Option 1**: [Schedule a demo](https://calendly.com/meetings-rootflo/30min) and we help you build immediately. 
 
-**Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront) and the [Docker setup guide](DOCKER_SETUP.md).
+**Option 2**: Self-host for maximum control and customization. Start with the [Docker setup guide](DOCKER_SETUP.md), then see [Architecture](https://wavefront.rootflo.ai/operations/architecture) and [Environment and configuration](https://wavefront.rootflo.ai/operations/environment) in the documentation.
 
 **Option 3**: Run Wavefront locally for development with the interactive scripts.
 
@@ -171,18 +174,37 @@ Optional services default to off in the checkbox. The inference app downloads it
 When the script finishes:
 1. Open the web client at http://localhost:5173 and log in with the seed user from `server/apps/floconsole/floconsole/.env` (`CONSOLE_EMAIL` / `CONSOLE_PASSWORD`).
 2. Add floware as an app: **Apps → Create new app**, with App Name `localhost`, Deployment Type **Manual**, and `http://localhost:8001` as both the Public and Private URL. With `VITE_APP_ENV=local` in `client/.env`, you can tick “Create local app for development” to fill these in.
-3. Start building.
+3. Start building: follow the [Quickstart](https://wavefront.rootflo.ai/wavefront/quickstart) to create a model, an agent and a workflow, and run them from the console and the API.
 
 To stop services, run `./dev-stop.sh` (or close their terminal windows). To start again, re-run `./dev-start.sh`.
 
+
+## Documentation
+
+The full documentation is at **[wavefront.rootflo.ai](https://wavefront.rootflo.ai)**. Where to start:
+
+| If you want to… | Read |
+|---|---|
+| Understand the building blocks | [How Wavefront fits together](https://wavefront.rootflo.ai/wavefront/overview), [Concepts](https://wavefront.rootflo.ai/wavefront/concepts), [Tour of the Wavefront Console](https://wavefront.rootflo.ai/wavefront/console-tour) |
+| Build something in 15 minutes | [Quickstart](https://wavefront.rootflo.ai/wavefront/quickstart) |
+| Create agents | [LLM Repository](https://wavefront.rootflo.ai/wavefront/llm-configs), [Agents](https://wavefront.rootflo.ai/wavefront/agents), [Structured output](https://wavefront.rootflo.ai/wavefront/structured-output), [Tools](https://wavefront.rootflo.ai/wavefront/tools), [Images, documents and video](https://wavefront.rootflo.ai/wavefront/media) |
+| Build workflows | [Workflows](https://wavefront.rootflo.ai/wavefront/workflows), [How a workflow runs](https://wavefront.rootflo.ai/wavefront/workflow-execution-model), [Passing data between nodes](https://wavefront.rootflo.ai/wavefront/workflow-data-flow), [Sub-workflows](https://wavefront.rootflo.ai/wavefront/sub-workflows), [Routing and iteration](https://wavefront.rootflo.ai/wavefront/routing-and-iteration), [Function nodes](https://wavefront.rootflo.ai/wavefront/function-nodes), [Versions](https://wavefront.rootflo.ai/wavefront/versions) |
+| Work with data | [Datasources](https://wavefront.rootflo.ai/wavefront/datasources), [Dynamic queries](https://wavefront.rootflo.ai/wavefront/dynamic-queries), [File storage](https://wavefront.rootflo.ai/wavefront/file-storage), [Configurations](https://wavefront.rootflo.ai/wavefront/configurations), [Audit trail](https://wavefront.rootflo.ai/wavefront/audit-trail) |
+| Connect your application | [Running workflows](https://wavefront.rootflo.ai/wavefront/running-workflows), [Integrating an application](https://wavefront.rootflo.ai/wavefront/integrating-an-app), [Users and access](https://wavefront.rootflo.ai/wavefront/users-and-access), [Chatbots](https://wavefront.rootflo.ai/wavefront/chatbots), [Deploying from git](https://wavefront.rootflo.ai/wavefront/deploy-as-code) |
+| Follow an end-to-end example | Guides: [document verification](https://wavefront.rootflo.ai/guides/document-verification), [configurable rules and scoring](https://wavefront.rootflo.ai/guides/rules-and-scoring), [a chat assistant beside a record](https://wavefront.rootflo.ai/guides/record-chat-assistant), [a review dashboard](https://wavefront.rootflo.ai/guides/review-dashboard) |
+| Fix a problem | [Troubleshooting](https://wavefront.rootflo.ai/wavefront/troubleshooting) (including known issues), [Patterns and best practices](https://wavefront.rootflo.ai/wavefront/patterns) |
+| Run Wavefront | [Architecture](https://wavefront.rootflo.ai/operations/architecture), [Environment and configuration](https://wavefront.rootflo.ai/operations/environment), [Running several apps](https://wavefront.rootflo.ai/operations/multi-app), [Upgrades](https://wavefront.rootflo.ai/operations/upgrades) |
+| Use the FloAI engine directly | [FloAI documentation](https://wavefront.rootflo.ai/flo-ai) |
+
+The documentation source lives in [`documentation/`](documentation); run `mint dev` there to preview it locally.
 
 ## Platform Components
 
 | Component | Description |
 |---------|-------------|
 | **flo-ai** | [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration. Detailed documentation is available [here](https://wavefront.rootflo.ai/flo-ai). |
-| **wavefront-server** | The backend services: floconsole, floware, call processing and background workers. Detailed documentation is available [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
-| **wavefront-client** | The web console for configuring agents, workflows, chatbots, voice agents, models, datasources and RBAC. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
+| **wavefront-server** | The backend services: floconsole, floware, call processing and background workers. See [Architecture](https://wavefront.rootflo.ai/operations/architecture). |
+| **wavefront-client** | The Wavefront Console, for configuring agents, workflows, chatbots, voice agents, models, datasources and RBAC. See the [console tour](https://wavefront.rootflo.ai/wavefront/console-tour). |
 | **wavefront-cli** | For configuring through the command line, for full developer control (**Coming Soon**) |
 
 ## Roadmap

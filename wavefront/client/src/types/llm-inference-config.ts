@@ -1,6 +1,14 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'anthropic' | 'azure_openai' | 'groq';
+export type InferenceEngineType =
+  | 'gemini'
+  | 'openai'
+  | 'ollama'
+  | 'vllm'
+  | 'anthropic'
+  | 'azure_openai'
+  | 'groq'
+  | 'bedrock';
 
 export interface LLMInferenceConfig {
   id: string;
@@ -10,6 +18,8 @@ export interface LLMInferenceConfig {
   model_type?: string;
   base_url?: string;
   parameters?: Record<string, unknown> | null;
+  /** Whether a key is stored. The key itself is never returned. */
+  has_api_key: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;

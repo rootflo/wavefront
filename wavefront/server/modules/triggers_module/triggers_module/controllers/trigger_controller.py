@@ -2,6 +2,7 @@ from json import JSONDecodeError
 from typing import Optional
 from uuid import UUID
 
+from agents_module.utils.celery_backpressure import QueueBackpressure
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -298,6 +299,15 @@ async def invoke_trigger(
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(exc)),
+        )
+    except QueueBackpressure as exc:
+        logger.warning(f'Trigger invoke refused for {trigger_id}: {exc}')
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=response_formatter.buildErrorResponse(
+                'Execution queue is saturated. Please retry shortly.'
+            ),
+            headers={'Retry-After': str(exc.retry_after)},
         )
     except Exception as exc:
         logger.exception(f'Trigger invoke failed for {trigger_id}: {exc}')

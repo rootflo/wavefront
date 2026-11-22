@@ -1,0 +1,78 @@
+---
+title: "Tools"
+description: "Let an agent call queries, functions, APIs and more while it works"
+icon: "wrench"
+---
+
+A **tool** is something an agent may decide to call while it answers: run a query, download a file, run one of your functions, call an external API, send an email. The model chooses when to call a tool and with which arguments; Wavefront runs it and gives the result back to the model.
+
+## Available tools
+
+| Tool | Does |
+|---|---|
+| `datasource_execute_query` | Runs a [dynamic query](/wavefront/dynamic-queries) |
+| `datasource_insert_rows` | Inserts rows into a table |
+| `datasource_insert_multi` | Inserts into several tables in one transaction |
+| `datasource_download_file` | Loads a file; images and video reach the model as media |
+| `send_email` | Sends an email from a connected mailbox |
+| *your functions* | Every [function](/wavefront/functions) is available as a tool, by its name |
+| *your API services* | Every endpoint defined under **API Services** is available as a tool |
+
+The same functions also exist as [function nodes](/wavefront/function-nodes) for workflows, with the same parameters.
+
+## Giving an agent tools
+
+<Tabs>
+  <Tab title="Console">
+    Open the agent, choose **Edit**, and use **Add Tools** to pick tools. Tools that need fixed values (such as which datasource and query) ask for them, and the console writes the tools into the agent's YAML.
+  </Tab>
+  <Tab title="YAML">
+    ```yaml
+    agent:
+      name: order-assistant
+      job: |
+        Answer questions about orders. Look the order up with the order lookup
+        tool, passing the order id as params.order_id. Never guess.
+      model: { provider: rootflo, model_id: <llm-config-id> }
+      settings:
+        temperature: 0
+      tools:
+        - name: datasource_execute_query
+          prefilled_params:                 # fixed: the model cannot change these
+            datasource_id: <datasource-id>
+            query_id: order_detail
+          name_override: order_lookup       # optional: the name the model sees
+          description_override: Look up one order and its lines by order id
+    ```
+  </Tab>
+</Tabs>
+
+- `tools` is a list of **objects** with a `name`; a list of plain strings makes the agent fail to run.
+- `prefilled_params` fix arguments the model must not choose: which datasource, which query, which mailbox. The model supplies the rest.
+- `name_override` and `description_override` change what the model sees, which helps it pick the right tool.
+- Say in the agent's instructions **when** to use each tool and how to fill its arguments.
+
+You can also add tools for a single run with `"tool_names": [...]` in the [inference request](/wavefront/agents#request-fields).
+
+## Tools or function nodes?
+
+Both run the same code. The difference is who decides:
+
+| | Tool | Function node |
+|---|---|---|
+| Who decides to run it | The model, during its answer | The workflow, always, in order |
+| Model calls | One per tool round trip; earlier messages, including files, are sent again on each | The agent answers in one call with everything already loaded |
+| Predictability | Varies with the model | Same every run |
+| Best for | Conversations and open questions ("which order are you asking about?") | Processes: review this record, check these documents |
+
+For processes, prefer **function nodes**: load the data and files first, then give the agent a [parser](/wavefront/structured-output) and one call. It is faster, cheaper, and easier to audit, and it avoids the known issue below.
+
+## Known issues
+
+<Warning>
+**An agent cannot have both tools and a parser** ([#447](https://github.com/rootflo/wavefront/issues/447)). The model calls the parser as if it were a tool and the run fails. Use one or the other, or load data with function nodes as described above.
+</Warning>
+
+<Note>
+Datasource tools report failures to the model as text ("Insert failed (400): …") rather than raising an error ([#448](https://github.com/rootflo/wavefront/issues/448)). The model may carry on as if the call had worked; instruct it to report tool failures in its answer.
+</Note>

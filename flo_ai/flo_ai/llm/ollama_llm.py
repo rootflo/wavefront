@@ -2,7 +2,7 @@ from typing import Dict, Any, List, Optional, AsyncIterator
 import aiohttp
 import json
 
-from flo_ai.models.chat_message import ImageMessageContent
+from flo_ai.models.chat_message import ImageMessageContent, VideoMessageContent
 from .base_llm import BaseLLM
 from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.tool.base_tool import Tool
@@ -208,3 +208,7 @@ class OllamaLLM(BaseLLM):
     def format_image_in_message(self, image: ImageMessageContent) -> str:
         """Format a image in the message"""
         raise NotImplementedError('Not implemented image for LLM Ollama')
+
+    async def format_video_in_message(self, video: VideoMessageContent) -> str:
+        """Ollama is called with a text-only prompt here, so frames can't be sent."""
+        raise NotImplementedError('Not implemented video for LLM Ollama')

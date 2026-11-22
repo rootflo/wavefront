@@ -1,9 +1,14 @@
 from .types import (
     BooleanResult,
+    DATASOURCE_SECRET_FIELDS,
     DataSourceABC,
     DataSourceType,
+    FILE_STORAGE_TYPES,
+    FileStorageABC,
     TableListResult,
     QueryResult,
+    get_datasource_secret_fields,
+    is_file_storage_type,
 )
 from dataclasses import replace
 from typing import Any, Optional, List, Dict
@@ -18,8 +23,44 @@ from .dialect import RedshiftSqlDialect
 from .redshift import RedshiftPlugin, RedshiftConfig
 from .postgres import PostgresPlugin, PostgresConfig
 from .mssql import MSSQLPlugin, MSSQLConfig
+from .file_storage import (
+    AzureBlobStorageConfig,
+    FileStorageConfig,
+    FileStoragePlugin,
+    build_datasource_uri,
+    split_datasource_uri,
+    GCSFileStorageConfig,
+    S3FileStorageConfig,
+    build_file_storage_config,
+)
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
+from .validation import InvalidQueryError, InvalidResourceError
+
+
+__all__ = [
+    'AzureBlobStorageConfig',
+    'BigQueryConfig',
+    'DATASOURCE_SECRET_FIELDS',
+    'DataSourceType',
+    'DatasourcePlugin',
+    'FILE_STORAGE_TYPES',
+    'FileStorageABC',
+    'FileStorageConfig',
+    'FileStoragePlugin',
+    'build_datasource_uri',
+    'split_datasource_uri',
+    'GCSFileStorageConfig',
+    'InvalidQueryError',
+    'InvalidResourceError',
+    'MSSQLConfig',
+    'PostgresConfig',
+    'RedshiftConfig',
+    'S3FileStorageConfig',
+    'build_file_storage_config',
+    'get_datasource_secret_fields',
+    'is_file_storage_type',
+]
 
 
 class DatasourcePlugin:
@@ -33,6 +74,11 @@ class DatasourcePlugin:
         self.datasource = self.__get_datasource()
 
     def __get_datasource(self) -> DataSourceABC:
+        if is_file_storage_type(self.datasource_type):
+            raise ValueError(
+                f'{self.datasource_type} is a file storage datasource; '
+                'use FileStoragePlugin instead of DatasourcePlugin'
+            )
         if self.datasource_type == DataSourceType.AWS_REDSHIFT:
             self.odata_parser = ODataQueryParser(
                 type='sql',
@@ -98,10 +144,15 @@ class DatasourcePlugin:
         order_by: Optional[str] = None,
         group_by: Optional[str] = None,
     ) -> QueryResult:
+        self.datasource.validate_table_name(table_name)
+        self.datasource.validate_query_clauses(projection, order_by, group_by)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
             self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
+        # Joined tables are interpolated into the query just like the base table.
+        for alias in table_aliases:
+            self.datasource.validate_table_name(alias)
 
         # '1=1' is a no-op predicate valid across all supported SQL dialects
         # (Postgres/Redshift/BigQuery and MSSQL, which has no `true` literal).
@@ -124,9 +175,14 @@ class DatasourcePlugin:
         return QueryResult(result=result, meta=construct_meta(status='success', code=1))
 
     def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]):
+        self.datasource.validate_table_name(table_name)
         return self.datasource.insert_rows_json(table_name, data)
 
     def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]):
+        # Every name is checked before any write, so one bad entry cannot leave
+        # the earlier tables half-written on datasources without transactions.
+        for insert in inserts:
+            self.datasource.validate_table_name(insert['table_name'])
         return self.datasource.insert_rows_json_multi(inserts)
 
     def update_rows_json(
@@ -144,6 +200,7 @@ class DatasourcePlugin:
         UPDATE with no WHERE rewrites the whole table, so it must never be
         reachable by omission.
         """
+        self.datasource.validate_table_name(table_name)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to update rows')
@@ -170,6 +227,7 @@ class DatasourcePlugin:
         """
         prepared = []
         for update in updates:
+            self.datasource.validate_table_name(update['table_name'])
             where_clause, params = self.odata_parser.prepare_odata_filter(
                 update.get('filter')
             )
@@ -225,6 +283,7 @@ class DatasourcePlugin:
 
         Both raise ValueError, which the controller reports as a 400.
         """
+        self.datasource.validate_table_name(table_name)
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to delete rows')

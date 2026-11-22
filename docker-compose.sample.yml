@@ -47,13 +47,22 @@ services:
     networks:
       - floware-network
 
-  # Redis for Floware
+  # Redis for Floware — also the Celery broker. noeviction so queued tasks are
+  # never evicted; at the cap, writes fail and reads keep working.
   redis-floware:
     image: redis:7.4
     container_name: redis-floware
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - '6379:6379'
     healthcheck:
@@ -64,13 +73,21 @@ services:
     networks:
       - floware-network
 
-  # Redis for Call Processing
+  # Redis for Call Processing — a cache only, so a smaller cap.
   redis-call-processing:
     image: redis:7.4
     container_name: redis-call-processing
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_CALL_PROCESSING_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - '6380:6379'
     healthcheck:
@@ -181,7 +198,12 @@ services:
       # Required if EMAIL_PROVIDER=gmail with service account
       # - ./credentials/gmail-service-account.json:/app/credentials/gmail-service-account.json:ro
 
-    environment:
+      # Guardrails spaCy model cache (~/.cache/wavefront/spacy): Floware downloads
+      # the model on first start and reuses it after. Mounted on the floware
+      # user's home, which the image owns, so it stays writable by that user.
+      - floware-spacy-models:/home/floware
+
+    environment: &floware-env
       # ============================================
       # Database Configuration
       # ============================================
@@ -345,6 +367,12 @@ services:
       - SLACK_FLAG=<YOUR_SLACK_FLAG>
       - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
       - VECTOR_DB_FLAG=<YOUR_VECTOR_DB_FLAG>
+      - GUARDRAILS_ENABLED=<YOUR_GUARDRAILS_ENABLED>
+      # Required for Presidio PII detection/redaction on lean Docker images.
+      # Point to a spaCy model archive (e.g. https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz)
+      - GUARDRAILS_SPACY_MODEL_URL=<YOUR_GUARDRAILS_SPACY_MODEL_URL>
+      # Leave unset to cache in ~/.cache/wavefront/spacy (the floware-spacy-models volume)
+      - GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR:-}
 
     depends_on:
       postgres-floware:
@@ -508,6 +536,8 @@ volumes:
   postgres-floware-data:
     driver: local
   postgres-console-data:
+    driver: local
+  floware-spacy-models:
     driver: local
 
 networks:

@@ -1,0 +1,96 @@
+---
+title: "Running workflows"
+description: "Run agents and workflows synchronously or in the background, and track executions"
+icon: "play"
+---
+
+There are two ways to run an agent or a workflow from the API:
+
+| | Synchronous (v2) | Background (v3) |
+|---|---|---|
+| Call | `POST /floware/v2/workflows/<id>/inference` | `POST /floware/v3/workflows/<id>/inference` |
+| Returns | The result, when the run finishes | An **execution** id, immediately (HTTP 202) |
+| Runs on | The API server, inside your request | A background worker |
+| Use for | Short runs: seconds to about a minute | Anything longer, runs with many files, batches, and anything a user should not wait on |
+
+The same pair exists for agents: `/floware/v2/agents/<id>/inference` and `/floware/v3/agents/<id>/inference`. The request body is the same in both: `inputs`, `variables`, `output_json_enabled` (see [Workflows](/wavefront/workflows#running-a-workflow)), and both accept `?version=<n>`.
+
+## Synchronous runs
+
+```bash
+curl -X POST "$APP/floware/v2/workflows/<workflow-id>/inference" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"inputs": [{"role": "user", "content": "{}"}], "variables": {"order_id": "O-1001"}, "output_json_enabled": true}'
+```
+
+The response holds the `result`, the `execution_time` and the `variables` used. Your HTTP client, and any proxy or load balancer in between, must allow the request to stay open for the whole run.
+
+## Background runs
+
+### 1. Start the run
+
+```bash
+curl -X POST "$APP/floware/v3/workflows/<workflow-id>/inference" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"inputs": [{"role": "user", "content": "{}"}], "variables": {"order_id": "O-1001"}}'
+```
+
+```json
+{ "meta": { "status": "success" },
+  "data": { "message": "Workflow inference queued successfully", "data": { "execution_id": "6f1c…", … } } }
+```
+
+Files in `inputs` (images, documents) are saved with the execution before it is queued; an unsupported file is refused with a 400 before anything is queued.
+
+### 2. Poll the execution
+
+```bash
+curl "$APP/floware/v1/agentic-executions/<execution-id>" -H "Authorization: Bearer $TOKEN"
+```
+
+| Field | |
+|---|---|
+| `status` | `pending` → `in_progress` → `completed` or `failed` |
+| `error` | Why it failed. Non-admins see a generic message; admins see the real error by adding `?show_error=true` |
+| `variables` | The variables the run was started with |
+| `output_url` | When completed: a link to the output file, valid for **15 minutes** |
+| `history_url` | When completed: a link to the run's history (each node's output), valid for 15 minutes |
+| `started_at`, `completed_at`, `created_at` | Timestamps |
+
+Poll every few seconds. Each poll returns fresh links, so fetch the output right after you see `completed`.
+
+### 3. Read the result
+
+```bash
+curl "<output_url>"
+```
+
+```json
+{ "result": "…the last node's output…", "execution_time_seconds": 41.2 }
+```
+
+The links point straight at storage and need no token; treat them as secrets while they are valid.
+
+<Tip>
+For results your application needs later, have the workflow **save** them (a final [insert node](/wavefront/function-nodes#datasource_insert_rows)), keyed by the run's `_wf_execution_id` variable, which is the execution id of a background run. Your application then reads results from its own table, and the output file is only a fallback.
+</Tip>
+
+### Listing executions
+
+```bash
+curl "$APP/floware/v1/agentic-executions?entity_id=<workflow-id>&status=failed&limit=20" -H "Authorization: Bearer $TOKEN"
+```
+
+Filters: `entity_id` (an agent or workflow id), `entity_type` (`agent` or `workflow`), `status`, `offset`, `limit` (up to 200), and the run's variables as `?variable.<name>=<value>` (several are combined with AND). For example, `?variable.order_id=O-1001` finds every run for that order.
+
+## Known issue
+
+<Warning>
+If the background worker fails while **setting up** a run (for example, because a required environment variable is missing), the execution can stay `pending` or `in_progress` forever instead of turning `failed` ([#451](https://github.com/rootflo/wavefront/issues/451)). Give polling a deadline, and check the worker's logs when runs never finish. See [Operations](/operations/environment).
+</Warning>
+
+## Choosing between them
+
+- A user clicked a button and waits for an answer of a few seconds → **synchronous**.
+- A run reads several images or videos, calls several agents, or takes more than a minute → **background**, with your application polling (or showing "in progress" and refreshing).
+- A batch of records → **background**, one execution per record, started by your application or a [scheduled job](/wavefront/concepts#running-things).

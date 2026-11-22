@@ -17,6 +17,7 @@ CONFIG = _configuration()
 
 CELERY_BROKER_URL = CONFIG['celery']['broker_url']
 CELERY_RESULT_BACKEND = CONFIG['celery']['result_backend']
+CELERY_QUEUE_NAME = CONFIG['celery']['queue_name']
 MAX_RETRIES = int(CONFIG['celery']['task_max_retries'])
 RETRY_DELAY = int(CONFIG['celery']['task_retry_delay_seconds'])
 STREAM_NAME = CONFIG['streams']['async_agentic_exec_results']

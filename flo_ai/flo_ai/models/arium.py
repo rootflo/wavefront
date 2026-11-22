@@ -115,6 +115,9 @@ class RouterSettingsModel(BaseModel):
     fallback_strategy: Optional[Literal['first', 'random', 'all']] = Field(
         None, description='Fallback strategy for routing'
     )
+    context_description: Optional[str] = Field(
+        None, description='Workflow context for the routing prompt (for smart router)'
+    )
 
 
 class TaskCategoryModel(BaseModel):

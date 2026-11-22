@@ -11,12 +11,17 @@ from common_module.common_container import CommonContainer
 from agents_module.agents_container import AgentsContainer
 from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
+    CancellationIncomplete,
+    ExecutionNotCancellable,
+    ExecutionNotRetryable,
 )
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
+from agents_module.utils.celery_backpressure import QueueBackpressure
+from agents_module.utils.celery_broker import BrokerUnavailable
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
 from agents_module.utils.validation_utils import validate_variable_filters
 from user_management_module.utils.user_utils import check_is_admin
@@ -54,6 +59,33 @@ def _extract_variable_filters(request: Request) -> Dict[str, str]:
     }
 
 
+def _queue_saturated_json(
+    response_formatter: ResponseFormatter,
+    retry_after: int,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=response_formatter.buildErrorResponse(
+            'Execution queue is saturated. Please retry shortly.'
+        ),
+        headers={'Retry-After': str(retry_after)},
+    )
+
+
+async def _queue_saturated_response(
+    async_agentic_execution_service: AsyncAgenticExecutionService,
+    response_formatter: ResponseFormatter,
+) -> Optional[JSONResponse]:
+    """A 429 when the broker queue is over its limit, otherwise None."""
+    if not await async_agentic_execution_service.queue_is_saturated():
+        return None
+
+    return _queue_saturated_json(
+        response_formatter,
+        async_agentic_execution_service.backpressure_retry_after_seconds,
+    )
+
+
 async def _may_see_error(request: Request, show_error: bool) -> bool:
     """Both halves must hold: the caller asks, and the caller is an admin.
 
@@ -65,6 +97,11 @@ async def _may_see_error(request: Request, show_error: bool) -> bool:
     if not show_error:
         return False
 
+    return await _is_admin(request)
+
+
+async def _is_admin(request: Request) -> bool:
+    """No session means not an admin."""
     session = getattr(request.state, 'session', None)
     if session is None:
         return False
@@ -107,6 +144,13 @@ async def async_agent_inference(
     # plus a stored blob and a failed execution.
     validate_inference_inputs_media(payload.inputs)
 
+    # Before any I/O, so a refusal leaves no blob or row behind.
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
     # Resolve the concrete version now (rejecting a missing/deleted explicit
     # version) so the enqueued job runs the version observed by this request,
     # not whatever is current when the worker later picks it up.
@@ -119,19 +163,19 @@ async def async_agent_inference(
         )
     resolved_version = agent_data['version']
 
-    llm_config: Optional[dict] = None
+    # Only the id is enqueued; the worker fetches the config, key included,
+    # from floware when it runs. Checked here so a bad id is a 404, not a
+    # failed execution.
     if payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
+        if not await llm_inference_config_service.get_public_config(
             payload.llm_inference_config_id
-        )
-        if not llm_config_dict:
+        ):
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content=response_formatter.buildErrorResponse(
                     f'LLM inference configuration not found: {payload.llm_inference_config_id}'
                 ),
             )
-        llm_config = llm_config_dict
 
     try:
         result = await async_agentic_execution_service.create_and_enqueue_agent(
@@ -141,9 +185,13 @@ async def async_agent_inference(
             output_json_enabled=payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,
-            llm_config=llm_config,
+            llm_inference_config_id=payload.llm_inference_config_id,
             version=resolved_version,
         )
+    except QueueBackpressure as e:
+        # The queue filled up after the pre-check above.
+        logger.warning(f'Refusing inference at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -192,6 +240,12 @@ async def async_workflow_inference(
 
     validate_inference_inputs_media(payload.inputs)
 
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
     try:
         workflow_data = await workflow_crud_service.get_workflow(
             workflow_id, version=version
@@ -214,6 +268,9 @@ async def async_workflow_inference(
             app_key=app_key,
             version=workflow_data.get('version'),
         )
+    except QueueBackpressure as e:
+        logger.warning(f'Refusing inference at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -262,6 +319,181 @@ async def get_execution_status(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': 'Execution status retrieved successfully',
+                'data': result.model_dump(mode='json'),
+            }
+        ),
+    )
+
+
+@async_router.post('/v1/agentic-executions/{execution_id}/cancel')
+@inject
+async def cancel_execution(
+    request: Request,
+    execution_id: UUID,
+    async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
+        Provide[AgentsContainer.async_agentic_execution_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Admin only. Cancel a pending execution that no worker has picked up."""
+    if not await _is_admin(request):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse('Admin access required'),
+        )
+
+    logger.info(f'Cancelling pending execution: {execution_id}')
+
+    try:
+        result = await async_agentic_execution_service.cancel_execution(execution_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ExecutionNotCancellable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except BrokerUnavailable as e:
+        # Nothing changed; safe to retry.
+        logger.error(f'Failed to cancel execution {execution_id}: {e}')
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=response_formatter.buildErrorResponse(
+                'Execution queue is unavailable. Please retry shortly.'
+            ),
+        )
+    except CancellationIncomplete as e:
+        # The task will not run, but the row wasn't updated. Not retryable.
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Execution cancelled successfully',
+                'data': {
+                    'execution_id': str(result.id),
+                    'status': result.status,
+                    'cancelled_at': result.completed_at.isoformat()
+                    if result.completed_at
+                    else None,
+                },
+            }
+        ),
+    )
+
+
+@async_router.post(
+    '/v1/agentic-executions/{execution_id}/retry',
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@inject
+async def retry_execution(
+    request: Request,
+    execution_id: UUID,
+    async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
+        Provide[AgentsContainer.async_agentic_execution_service]
+    ),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    llm_inference_config_service: LlmInferenceConfigService = Depends(
+        Provide[LlmInferenceConfigContainer.llm_inference_config_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Re-run a failed execution with its stored inputs and variables.
+
+    Runs the entity's current version. Only the newest run of a chain can be
+    retried, up to the configured number of attempts.
+    """
+    logger.info(f'Retry requested for execution: {execution_id}')
+
+    access_token, app_key = extract_auth_credentials(request)
+
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
+    try:
+        parent = await async_agentic_execution_service.get_retryable_execution(
+            execution_id
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ExecutionNotRetryable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    workflow_name = namespace = None
+    try:
+        if parent.entity_type == 'agent':
+            entity_data = await agent_crud_service.get_agent(parent.entity_id)
+        else:
+            entity_data = await workflow_crud_service.get_workflow(parent.entity_id)
+            workflow_name = entity_data['name']
+            namespace = entity_data['namespace']
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    if parent.llm_inference_config_id:
+        if not await llm_inference_config_service.get_public_config(
+            parent.llm_inference_config_id
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content=response_formatter.buildErrorResponse(
+                    f'LLM inference configuration not found: {parent.llm_inference_config_id}'
+                ),
+            )
+
+    try:
+        result = await async_agentic_execution_service.retry_execution(
+            parent,
+            access_token=access_token,
+            app_key=app_key,
+            version=entity_data.get('version'),
+            workflow_name=workflow_name,
+            namespace=namespace,
+        )
+    except QueueBackpressure as e:
+        logger.warning(f'Refusing retry at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
+    except ExecutionNotRetryable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    logger.info(f'Execution {execution_id} retried as {result.execution_id}')
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Execution retry queued successfully',
                 'data': result.model_dump(mode='json'),
             }
         ),

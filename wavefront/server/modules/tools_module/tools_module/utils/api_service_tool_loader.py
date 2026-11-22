@@ -1,12 +1,11 @@
 """Utility for dynamically loading API service tools."""
 
 import re
-from typing import Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List
 from flo_ai.tool.base_tool import Tool
 from api_services_module.core.manager import ApiServicesManager
 from api_services_module.config.parser import ServiceDefinitionParser
 from common_module.log.logger import logger
-from tools_module.utils.api_service_fn import execute_api_service_fn
 
 
 def extract_path_params(path: str) -> List[str]:
@@ -127,7 +126,9 @@ def build_tool_description(service_def, api_config) -> str:
 
 
 async def load_api_service_tool(
-    tool_name: str, api_services_manager: Optional[ApiServicesManager]
+    tool_name: str,
+    api_services_manager: Optional[ApiServicesManager],
+    function: Callable,
 ) -> Optional[Tool]:
     """
     Attempt to load an API service as a Tool object.
@@ -135,6 +136,9 @@ async def load_api_service_tool(
     Args:
         tool_name: Name of the tool in format "service_id_api_id"
         api_services_manager: API services manager instance
+        function: The tool's execution function. To run the tool, pass the
+            registry's 'trigger_api_service', which has the floware client
+            bound to its `api` argument.
 
     Returns:
         Tool object if API service found, None otherwise
@@ -177,7 +181,7 @@ async def load_api_service_tool(
         tool = Tool(
             name=tool_name,
             description=description,
-            function=execute_api_service_fn,
+            function=function,
             parameters=parameters,
         )
 

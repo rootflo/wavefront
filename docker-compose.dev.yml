@@ -19,11 +19,20 @@ services:
     networks:
       - floware-network
 
+  # Celery broker and floware cache. noeviction so queued tasks are never evicted.
   redis:
     image: redis:7.4
     container_name: redis
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - "6379:6379"
     networks:

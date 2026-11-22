@@ -6,6 +6,7 @@ from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
+from db_repo_module.models.secret import Secret
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
@@ -96,6 +97,12 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     email_connection_repository = providers.Singleton(
         SQLAlchemyRepository[EmailConnection],
         model=EmailConnection,
+        db_client=db_client,
+    )
+
+    secret_repository = providers.Singleton(
+        SQLAlchemyRepository[Secret],
+        model=Secret,
         db_client=db_client,
     )
 

@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .cloud_storage import CloudStorageHandler
+from .cloud_storage import CloudStorageHandler, FolderListing, StorageObject
 from .kms import FloCipher, FloSigner
 from .message_queue import MessageQueue, MessageQueueDict
 from .settings import KmsKeySettings, QueueSettings
@@ -19,6 +19,8 @@ __all__ = [
     'KmsKeySettings',
     'QueueSettings',
     'CloudStorageHandler',
+    'FolderListing',
+    'StorageObject',
     'MessageQueue',
     'MessageQueueDict',
 ]

@@ -12,6 +12,7 @@ from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.session import Session
 from db_repo_module.models.auth_secrets import AuthSecrets
@@ -118,70 +119,10 @@ def is_request_hmac(headers: Headers) -> bool:
     )
 
 
-async def validate_service_auth(
-    request: Request,
-    auth_secrets_repository: SQLAlchemyRepository[AuthSecrets],
-    token_service: TokenService,
-) -> bool:
-    """Validate service-to-service authentication using Client-Key + JWT"""
-    try:
-        # Get Client-Key header
-        client_key = request.headers.get(RootfloHeaders.CLIENT_KEY)
-        if not client_key:
-            logger.warning('Missing Client-Key header for service auth')
-            return False
-
-        # Get Authorization header
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            logger.warning('Missing or invalid Authorization header for service auth')
-            return False
-
-        token = auth_header.split(' ')[1]
-
-        # Look up client secret using client key
-        auth_secret = await auth_secrets_repository.find_one(client_key=client_key)
-        if not auth_secret:
-            logger.warning(f'Invalid client_key for service auth: {client_key}')
-            return False
-
-        token_prefix = token_service.token_prefix
-        if token_prefix and token.startswith(token_prefix):
-            token = token[len(token_prefix) :]
-
-        # Validate JWT using client secret (HS256 algorithm for service tokens)
-        try:
-            decoded = jwt.decode(
-                token,
-                auth_secret.client_secret,
-                algorithms=['HS256'],
-                issuer=token_service.validation_issuers or '',
-                audience=token_service.audience,
-            )
-
-            # For service tokens, we skip session validation
-            # Create a minimal session object for compatibility
-            request.state.session = UserSession(
-                role_id=decoded.get('role_id', 'service'),
-                user_id=decoded.get('user_id', 'service'),
-                session_id=decoded.get('session_id', 'service-token'),
-            )
-
-            logger.info('Valid service authentication')
-            return True
-
-        except jwt.InvalidTokenError as e:
-            logger.warning(f'Invalid service token: {str(e)}')
-            return False
-
-    except Exception as e:
-        logger.error(f'Error validating service authentication: {str(e)}')
-        return False
-
-
 async def validate_hmac_signature(
     request: Request,
     auth_secrets_repository: SQLAlchemyRepository[AuthSecrets],
+    secret_cipher: SecretCipher,
 ) -> bool:
     """Validate HMAC signature from request headers."""
     try:
@@ -262,8 +203,9 @@ async def validate_hmac_signature(
         message_to_sign = f'{nonce}:{timestamp}'
 
         # Generate expected signature
+        client_secret = await secret_cipher.areveal(auth_secret.client_secret)
         expected_signature = hmac.new(
-            auth_secret.client_secret.encode('utf-8'),
+            client_secret.encode('utf-8'),
             message_to_sign.encode('utf-8'),
             hashlib.sha256,
         ).hexdigest()
@@ -295,16 +237,20 @@ async def validate_mtls_auth(
         if not xfcc:
             return False
 
-        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID
+        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID.
+        # The sidecar appends the peer it authenticated as the last entry; earlier
+        # entries arrived as request headers and can be forged.
         principal = None
-        match = re.search(r'URI=(spiffe://[^;,]+)', xfcc)
-        if match:
-            principal = match.group(1)
+        uris = re.findall(r'URI=(spiffe://[^;,"]+)', xfcc)
+        if uris:
+            principal = uris[-1]
         elif xfcc.startswith('spiffe://'):
             principal = xfcc
 
         if principal:
-            if not principal.startswith(allowed_principal_prefixes):
+            if not principal.startswith(
+                tuple(f'{prefix}/' for prefix in allowed_principal_prefixes)
+            ):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
@@ -428,7 +374,11 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
         auth_secrets_repository: SQLAlchemyRepository[AuthSecrets] = Provide[
             UserContainer.auth_secrets_repository
         ],
+        secret_cipher: SecretCipher = Provide[CommonContainer.secret_cipher],
     ):
+        # Whether the caller may receive plaintext secrets (?include_secrets=true).
+        # Only internal service callers (mTLS, or passthrough outside production).
+        request.state.secret_access = False
         try:
             if request.method == 'OPTIONS':
                 return await call_next(request)
@@ -451,6 +401,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
                 if error_response:
                     return error_response
+                request.state.secret_access = True
                 return await call_next(request)
 
             # Check for mTLS authentication if the caller is presenting neither a
@@ -461,6 +412,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 if await validate_mtls_auth(
                     request, self.mtls_allowed_principal_prefixes
                 ):
+                    request.state.secret_access = True
                     return await call_next(request)
                 else:
                     logger.error(f'Invalid mTLS authentication for {request.url.path}')
@@ -475,7 +427,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             if not authorization and matches_any_route(
                 request.url.path, self.required_hmac_apis
             ):
-                if not await validate_hmac_signature(request, auth_secrets_repository):
+                if not await validate_hmac_signature(
+                    request, auth_secrets_repository, secret_cipher
+                ):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
                     )

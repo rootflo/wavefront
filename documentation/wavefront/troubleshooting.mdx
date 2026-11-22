@@ -1,0 +1,91 @@
+---
+title: "Troubleshooting"
+description: "Symptoms, causes and fixes for the problems people run into most, including known issues"
+icon: "bug"
+---
+
+## First: find the real error
+
+Many failures reach the API caller as a generic message, *"An unexpected error has occurred while performing this action, please try again"*. The precise reason is in the **server log**.
+
+1. Every response has an **`X-Flo-Request-ID`** header. Note it from your browser's network tab or `curl -i`.
+2. Search the API server's log for that id. The lines with `ERROR`, `ValueError` or `ValidationError` next to it give the reason.
+3. For **background runs**, also look at the worker's log, and, as an admin, read the execution with `?show_error=true`.
+
+On Kubernetes, for example:
+
+```bash
+kubectl logs <api-pod> --since=10m | grep -A20 '<request-id>'
+```
+
+## Creating and saving
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Creating an agent or workflow fails with the generic error | YAML failed validation; the reason is only in the log ([#450](https://github.com/rootflo/wavefront/issues/450)) | Read the log line. Common causes are below |
+| `Field '…' of type 'literal' requires each value to be an object with 'value' and 'description'` | A `literal` parser field with plain values | Use `enum` for plain values, or give each value a description. See [Structured output](/wavefront/structured-output#choosing-from-a-fixed-set-enum-or-literal) |
+| `… must specify 'items'` / `'fields'` / `'values'` | An `array` without `items`, `object` without `fields`, or `enum`/`literal` without `values` | Add the missing key |
+| `Orphan nodes found: [...]` | A declared node is not connected by any edge, or a ForEach's `execute_node` is a plain function or agent | Connect it, remove it, or make the repeated step a sub-workflow. See [ForEach](/wavefront/routing-and-iteration#foreach) |
+| `Exactly one to node must be provided if router is not provided` | An edge lists several targets without a router | Add a `router`, or split the edge. Workflows run one node at a time |
+| `Failed to build referenced agent ns/name: Agent not found` | A referenced agent does not exist in that namespace | Create it first, or fix the reference |
+| `Cyclic subworkflow reference detected` | Two saved workflows reference each other | Break the cycle |
+| Saving a function fails with `YAML must contain required fields` | `type`, `description`, `function` or `input_schema` missing | Add them; `input_schema` needs `required:` (it may be an empty list) |
+| A dynamic query is refused | Each query entry needs `id`, `description` and `query`; ids must be unique | Fix the YAML. See [Dynamic queries](/wavefront/dynamic-queries) |
+| Datasource, query or user changes answer *"Unauthorized"* / *"Access denied"* | These are admin-only | Use an admin user |
+
+## Running workflows
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Run fails right away; log says `Variable 'x' referenced in text but not provided` | An agent's instructions contain `<x>`, which is a variable placeholder | Pass `x` in `variables`, or remove the angle brackets from the instructions |
+| `Function node input must be a JSON object` / `Invalid JSON from node 'input'` | The workflow starts with a function node and the input was plain text | Send JSON as the input; `"{}"` is enough |
+| A function receives nothing from an earlier node | `input_filter` names the wrong node | For a [referenced agent](/wavefront/workflows#referencing-saved-agents), use the name in the agent's own YAML, not `namespace/name`. Inside a [sub-workflow](/wavefront/sub-workflows), use `input` for the parent's data |
+| A field in a function's input has the wrong value | Two upstream nodes produced the same field name; the flat merge kept the later one | Read from `input.node_outputs.<node>[0]` |
+| A run stops after a fixed number of steps | The cap of 35 node executions per run, which guards against loops | Look for a loop. The cap is set by `FLO_AI_MAX_ITERATIONS` (5–60) |
+| A change seems to have no effect | It was saved as a new version but not promoted | Promote it (**Versions → Promote**). See [Versions](/wavefront/versions) |
+| The run's result is "Inserted 1 row(s) …" instead of your result | The last node was the insert | End with a [`passthrough`](/wavefront/function-nodes#passthrough) node |
+| A `field_match` router always takes the default | The field is missing from the previous node's output, or YAML turned a `yes`/`no`/`on`/`off` key into a boolean | Check the previous node's output; quote such keys in `routes` |
+| `The script exceeded the 3 second timeout limit` | A function took longer than 3 seconds | Functions are for quick, deterministic work; move heavy work elsewhere |
+| A function's `fetch` fails with *Requires net access* | Functions have no network access | Load data in earlier nodes and pass it in |
+| The workflow returned a string instead of an object | `output_json_enabled` defaults to `false` for workflows | Send `"output_json_enabled": true`, or parse `result` |
+| A background run stays `pending` or `in_progress` forever | The worker failed while setting up the run ([#451](https://github.com/rootflo/wavefront/issues/451)), often because of missing environment variables | Check the worker log; see [Operations](/operations/environment). Give polling a deadline |
+| An execution's `error` just says something went wrong | Errors are generic for non-admins | As an admin, add `?show_error=true` |
+
+## Agents
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| An agent without a parser returns `{}` | `output_json_enabled` defaults to `true` for agents, and the text reply is not JSON ([#449](https://github.com/rootflo/wavefront/issues/449)) | Send `"output_json_enabled": false` |
+| An agent with a parser and tools fails with *Unknown function* | Known issue ([#447](https://github.com/rootflo/wavefront/issues/447)): the model calls the parser as a tool | Give the agent tools **or** a parser. In workflows, load data with function nodes instead of tools |
+| An agent with tools fails to run | `tools` is a list of plain strings | Use objects: `- name: datasource_execute_query` |
+| An image or document is rejected | Unsupported format | Images: PNG, JPEG, GIF, WebP. Documents: PDF, Word, Excel, CSV. See [Media](/wavefront/media) |
+| You cannot send a video in a request | Video is only supported from file storage | Store it, and load it with a `datasource_download_file` node |
+| The provider answers *429* / rate limited | Many images or long inputs exceed the model's tokens-per-minute limit | Cut what each agent sees with sub-workflows and `input_filter`; use a model deployment with more capacity |
+| The agent invents values | Nothing told it what to do when a value is missing | Say so in the field description or instructions ("use null; never guess") |
+
+## Data and files
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Reading a table returns *Invalid resource name* | The generic table-read route only allows built-in tables | Use a [dynamic query](/wavefront/dynamic-queries) |
+| A query in a workflow returns only 10 rows | The `datasource_execute_query` node defaults to `limit: 10` | Prefill `limit` |
+| A query returns rows from before a recent write | Results are cached for 2 minutes | Add `force_fetch=1` (the workflow node bypasses the cache by default) |
+| `Missing parameter: x for query y` | A declared parameter was not supplied | Pass every declared parameter in `params` |
+| **An update or delete touched more rows than expected** | A lowercase `and`/`or` in the filter: everything after it is silently ignored ([#446](https://github.com/rootflo/wavefront/issues/446)) | Use `$and`/`$or` (or `AND`/`OR`). Check `updated_rows` / `deleted_rows` |
+| `Expected operator, got TokenType.FIELD` | An unsupported operator such as `ne`, `ge` or `le`, or a typo | Use `eq`, `gt`, `lt`, `gte`, `lte`, `contains`, `in [...]` |
+| An insert failed but the workflow succeeded | Datasource nodes report failures as text ([#448](https://github.com/rootflo/wavefront/issues/448)) | Validate rows in a function before inserting; check the [audit trail](/wavefront/audit-trail) or read the row back |
+| *Path belongs to datasource …* | A `datasource://` reference names a different file store | Download from the datasource the reference names |
+| An uploaded HTML or SVG file downloads instead of displaying | Active content types are stored as `application/octet-stream` on purpose | Expected; serve such files another way if you must render them |
+| Configuration keys come back in a different order | Documents are stored as JSON; key order is not kept | Compare by value |
+
+## Sign-in, access and the browser
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Users or scripts get signed out unexpectedly | Signing in ends that user's other sessions; or the token expired (one hour by default) | Give each script and service its own user; on `401`, sign in again |
+| Sign-in refused after several attempts | The account is temporarily locked after repeated failures | Wait, or have an admin help |
+| The browser shows a CORS error | Your origin is not in `ALLOWED_ORIGINS` | Add it, or call through your backend or a dev proxy |
+| Images from file storage do not show in your page | No public URLs; or `blob:` blocked by your Content-Security-Policy | Download with the token and use a `blob:` URL; allow `blob:` for images and media |
+| A chatbot answers *not found* | The chatbot is disabled (or deleted) | Enable it |
+| A chatbot "forgets" the context sent at the start | Each turn sends only the last 50 messages | Start a fresh session, or re-send a context summary |
+| Non-admins get *Data access not set for non-admin user* | They have no data permissions | Assign data permissions, or enable all-user data access for the deployment. See [Users and access](/wavefront/users-and-access) |

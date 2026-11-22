@@ -1,0 +1,181 @@
+---
+title: "Deploying from git"
+description: "Keep agents, workflows, functions, queries, configurations and chatbots in git and deploy them with a script"
+icon: "code-branch"
+---
+
+The console is great for building and trying things. For anything that runs in production, keep the definitions in **git** and deploy them with a script. You get review, history, the same setup in every environment, and an easy rollback.
+
+## What to keep in git
+
+```text
+my-app/
+├── workflows/order_review.yaml
+├── agents/support-triage.yaml          # agents used by reference (optional)
+├── functions/order_params.yaml         # one file per function; file name = function name
+├── functions/decide_order.yaml
+├── queries/order_detail.yaml           # one file per dynamic query; id inside
+├── configs/approval-rules.json         # {"description": …, "value": {…}}
+├── chatbots/order-assistant.yaml       # the chatbot's fields as YAML
+└── deploy.py
+```
+
+Leave environment-specific ids out of the files. Write placeholders such as `{{function:decide_order}}` in workflows and let the deploy script fill in the ids for the app it deploys to.
+
+## What the script should do
+
+Every step is **idempotent**: matched by name, created if missing, updated if present. Running it twice does no harm.
+
+| Step | Matched by | Create | Update |
+|---|---|---|---|
+| Configurations | namespace + key | `POST /v1/configurations` | **Don't overwrite** existing documents (people may have edited them); add only new settings |
+| Dynamic queries | `id` in the file | `PUT /v1/<datasource-id>/dynamic-queries` | same `PUT` |
+| Functions | name | `POST /v1/message-processors` | `PUT /v1/message-processors/<id>` (in place: functions are not versioned) |
+| Agents | namespace + name | `POST /v1/agent-management/agents/<name>?namespace=` | `PUT …/<id>?create_new_version=true`, then promote |
+| Workflows | namespace + name | `POST /v1/workflow-management/workflows/<name>?namespace=` | `PUT …/<id>?create_new_version=true`, then `PATCH …/<id>/current-version?version=<new>` |
+| Chatbots | namespace + name | `POST /v1/chatbots` | `PATCH /v1/chatbots/<id>` |
+
+Order matters: configurations, queries and functions first, because workflows refer to them; agents before the workflows that reference them; chatbots last.
+
+<Warning>
+A new workflow or agent version is **not used until it is promoted**. A deploy script that saves new versions without promoting them deploys nothing.
+</Warning>
+
+## A reference script
+
+```python deploy.py
+"""Deploy one app's agents, workflows, functions, queries, configs and chatbots.
+
+    WF_APP=https://your-app.example.com WF_EMAIL=… WF_PASSWORD=… \
+    WF_DATASOURCE=<datasource-id> WF_NAMESPACE=orders python3 deploy.py
+"""
+import json, os, re, sys, urllib.request, urllib.error
+from pathlib import Path
+
+import yaml  # pip install pyyaml
+
+HERE = Path(__file__).parent
+BASE = os.environ['WF_APP'].rstrip('/') + '/floware'
+NS = os.environ['WF_NAMESPACE']
+DATASOURCE = os.environ['WF_DATASOURCE']
+
+
+def call(method, path, token=None, body=None, content_type='application/json'):
+    data = None if body is None else (body.encode() if isinstance(body, str) else json.dumps(body).encode())
+    req = urllib.request.Request(BASE + path, data=data, method=method)
+    if data is not None:
+        req.add_header('Content-Type', content_type)
+    if token:
+        req.add_header('Authorization', f'Bearer {token}')
+    try:
+        with urllib.request.urlopen(req, timeout=120) as res:
+            return json.loads(res.read() or b'{}')
+    except urllib.error.HTTPError as e:
+        sys.exit(f'{method} {path} failed ({e.code}): {e.read().decode()[:500]}')
+
+
+def login():
+    res = call('POST', '/v1/authenticate', body={'email': os.environ['WF_EMAIL'], 'password': os.environ['WF_PASSWORD']})
+    return res['data']['user']['access_token']
+
+
+def with_new_settings(stored, defaults):
+    """Keep every stored value; add settings that are new in git."""
+    if not (isinstance(stored, dict) and isinstance(defaults, dict)):
+        return stored
+    return {**defaults, **{k: with_new_settings(v, defaults.get(k)) for k, v in stored.items()}}
+
+
+def deploy_configs(token):
+    existing = {c['key'] for c in call('GET', f'/v1/configurations?namespace={NS}', token)['data']['configurations']}
+    for path in sorted((HERE / 'configs').glob('*.json')):
+        key, spec = path.stem, json.loads(path.read_text())
+        if key not in existing:
+            call('POST', '/v1/configurations', token, {'namespace': NS, 'key': key, **spec})
+            print('config   created', key)
+            continue
+        stored = call('GET', f'/v1/configurations/{NS}/{key}', token)['data']
+        merged = with_new_settings(stored, spec['value'])
+        if merged != stored:
+            call('PUT', f'/v1/configurations/{NS}/{key}', token, {'value': merged, 'description': spec['description']})
+        print('config   kept', key)
+
+
+def deploy_queries(token):
+    for path in sorted((HERE / 'queries').glob('*.yaml')):
+        call('PUT', f'/v1/{DATASOURCE}/dynamic-queries', token, {'dynamic_query': path.read_text()})
+        print('query   ', path.stem)
+
+
+def deploy_functions(token):
+    existing = {p['name']: p['id'] for p in call('GET', '/v1/message-processors', token)['data']['processors']}
+    ids = {}
+    for path in sorted((HERE / 'functions').glob('*.yaml')):
+        name, content = path.stem, path.read_text()
+        payload = {'name': name, 'yaml_content': content, 'description': yaml.safe_load(content)['description']}
+        if name in existing:
+            call('PUT', f'/v1/message-processors/{existing[name]}', token, payload)
+            ids[name] = existing[name]
+        else:
+            ids[name] = call('POST', '/v1/message-processors', token, payload)['data']['processor_id']
+        print('function', name, ids[name])
+    return ids
+
+
+def deploy_versioned(token, kind, list_path, base, name, content):
+    """Create, or save a new version and promote it. kind: 'agents' or 'workflows'."""
+    items = call('GET', list_path, token)['data']['data'][kind]
+    current = next((i for i in items if i['name'] == name and i['namespace'] == NS), None)
+    if not current:
+        call('POST', f'{base}/{name}?namespace={NS}', token, content, 'text/plain')
+        print(kind[:-1], 'created', name)
+        return
+    item_id = current['id']
+    call('PUT', f'{base}/{item_id}?create_new_version=true', token, content, 'text/plain')
+    versions = call('GET', f'{base}/{item_id}/versions', token)['data']['data']['versions']
+    latest = max(v['version'] for v in versions)
+    call('PATCH', f'{base}/{item_id}/current-version?version={latest}', token)
+    print(kind[:-1], name, '-> version', latest, '(current)')
+
+
+def resolve(text, function_ids):
+    def sub(match):
+        if match.group(1) not in function_ids:
+            sys.exit(f'unknown function {match.group(1)}')
+        return function_ids[match.group(1)]
+    return re.sub(r'\{\{function:([A-Za-z0-9_-]+)\}\}', sub, text)
+
+
+def deploy_chatbots(token):
+    existing = {(c['namespace'], c['name']): c['id'] for c in call('GET', '/v1/chatbots', token)['data']['chatbots']}
+    for path in sorted((HERE / 'chatbots').glob('*.yaml')):
+        spec = yaml.safe_load(path.read_text())
+        key = (spec.get('namespace', 'default'), spec['name'])
+        if key in existing:
+            call('PATCH', f'/v1/chatbots/{existing[key]}', token, {k: v for k, v in spec.items() if k != 'namespace'})
+        else:
+            call('POST', '/v1/chatbots', token, spec)
+        print('chatbot ', spec['name'])
+
+
+if __name__ == '__main__':
+    token = login()
+    deploy_configs(token)
+    deploy_queries(token)
+    function_ids = deploy_functions(token)
+    for path in sorted((HERE / 'agents').glob('*.yaml')):
+        deploy_versioned(token, 'agents', '/v1/agent-management/agents', '/v1/agent-management/agents',
+                         path.stem, resolve(path.read_text(), function_ids))
+    for path in sorted((HERE / 'workflows').glob('*.yaml')):
+        deploy_versioned(token, 'workflows', '/v1/workflow-management/workflows', '/v1/workflow-management/workflows',
+                         path.stem, resolve(path.read_text(), function_ids))
+    deploy_chatbots(token)
+```
+
+## Good practice
+
+- **A dedicated deploy user.** Signing in ends a user's other sessions; never deploy with a person's account. Keep its credentials in your CI secrets, never in the repository.
+- **One namespace per product area**, so a deploy only touches what it owns.
+- **Deploy to staging first,** run a test case end to end, then deploy the same commit to production.
+- **Roll back** by promoting the previous workflow version (`PATCH …/current-version?version=<previous>`), or by deploying the previous commit. Functions have no versions, so redeploy the previous commit for those.
+- **Keep test cases in git** next to the workflow (sample inputs and the expected outcome), and run them after each deploy.

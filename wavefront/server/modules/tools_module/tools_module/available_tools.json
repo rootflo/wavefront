@@ -95,6 +95,28 @@
     "required": [],
     "category": "datasource"
   },
+  "datasource_download_file": {
+    "name": "datasource_download_file",
+    "description": "Download a file from the configured file storage datasource (AWS S3, Google Cloud Storage or Azure Blob Storage) given its path. Images (PNG, JPEG, GIF, WebP) and videos are attached to the conversation as media you can see (up to 20 MB). Any other file returns JSON {\"path\", \"content_type\", \"size_bytes\", \"encoding\", \"content\"}: content is the file's text when it is UTF-8, otherwise base64 with encoding \"base64\"; these files are refused over 5 MB. On failure (file not found, path belonging to another datasource or outside its base path) it returns a descriptive error string instead.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured file storage datasource"
+      },
+      "path": {
+        "type": "string",
+        "description": "The file to download: either the path returned when it was uploaded, e.g. \"datasource://<datasource_id>/reports/q1.csv\" (it must belong to this datasource), or a key relative to the datasource's base path, e.g. \"reports/q1.csv\""
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "path"
+    ],
+    "category": "datasource",
+    "datasource_kind": "file_storage"
+  },
   "send_email": {
     "name": "send_email",
     "description": "Send an email to the specified recipient from the connected mailbox. Returns a descriptive string indicating success or failure of the email delivery process.",
@@ -138,14 +160,48 @@
   },
   "trigger_api_service": {
     "name": "trigger_api_service",
-    "description": "Execute an API service. This template gets expanded into individual tools for each API.",
+    "description": "Execute an API service. This template gets expanded into individual tools for each API. Returns the response body as-is, success or failure, and never raises; {\"error\": ...} only when there is no usable body. Optional retries with exponential backoff: retry_enabled, max_retries (0-10, default 5), retry_window_seconds (the most the node may hold the run, attempts and waits together; default 900). A retry resends the same request, so enable it only for endpoints that tolerate repeats.",
     "parameters": {},
     "prefill_values": [
       "api_service_id",
       "api_id",
-      "api_version"
+      "api_version",
+      "retry_enabled",
+      "max_retries",
+      "retry_window_seconds"
     ],
     "required": [],
     "category": "api_service"
+  },
+  "floware_list_users": {
+    "name": "floware_list_users",
+    "description": "List floware users (id, email, first_name, last_name, username). Pass role to keep only users holding any of those roles. Pass group_name and/or group_id to return only members of those groups, e.g. group_name \"Active\" for the case-assignment pool, or \"Underwriters,Reviewers\" for several. Returns JSON {\"users\": [...]}; unknown groups are skipped and an empty list is a valid result, not an error. On failure it returns a descriptive error string instead.",
+    "parameters": {
+      "group_name": {
+        "type": "string",
+        "description": "One exact group name, or several separated by commas, e.g. \"Active\" or \"Underwriters,Reviewers\".",
+        "required": false
+      },
+      "group_id": {
+        "type": "string",
+        "description": "One group UUID, or several separated by commas. Combined with group_name.",
+        "required": false
+      },
+      "match": {
+        "type": "string",
+        "description": "\"any\" (default): users in at least one of the groups. \"all\": users in every one of them.",
+        "required": false
+      },
+      "search": {
+        "type": "string",
+        "description": "Filter by name or email. Only applies when no group is given.",
+        "required": false
+      },
+      "role": {
+        "type": "string",
+        "description": "One role name, or several separated by commas, e.g. \"admin\" or \"underwriter,reviewer\". Keeps users who hold any of them directly (not through a group). Combined with groups, users must match both.",
+        "required": false
+      }
+    }
   }
 }

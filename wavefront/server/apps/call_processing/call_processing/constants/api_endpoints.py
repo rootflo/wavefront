@@ -6,7 +6,6 @@ LLM_INFERENCE_CONFIG_ENDPOINT = '/floware/v1/llm-inference-configs/{config_id}'
 TTS_CONFIG_ENDPOINT = '/floware/v1/tts-configs/{config_id}'
 STT_CONFIG_ENDPOINT = '/floware/v1/stt-configs/{config_id}'
 TELEPHONY_CONFIG_ENDPOINT = '/floware/v1/telephony-configs/{config_id}'
-TOOLS_ENDPOINT = '/floware/v1/voice-agents/{agent_id}/tools'
 
 # Config type mapping for cache invalidation
 CONFIG_TYPE_ENDPOINTS = {
@@ -19,3 +18,12 @@ CONFIG_TYPE_ENDPOINTS = {
 
 # Valid config types
 VALID_CONFIG_TYPES = set(CONFIG_TYPE_ENDPOINTS.keys())
+
+# Config types fetched with `include_secrets=true`: floware returns their secrets
+# in plaintext (only to internal services)
+SECRET_CONFIG_TYPES = {
+    'llm_inference_config',
+    'tts_config',
+    'stt_config',
+    'telephony_config',
+}

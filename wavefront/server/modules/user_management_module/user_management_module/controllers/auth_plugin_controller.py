@@ -16,6 +16,7 @@ from auth_module.auth_container import AuthContainer
 from auth_module.services.token_service import TokenService
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.authenticator import Authenticator
 from db_repo_module.models.session import Session
@@ -118,6 +119,7 @@ async def unified_authenticate(
     ),
     cache_manager: CacheManager = Depends(Provide[CommonContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Unified authentication endpoint that routes to appropriate authenticator."""
 
@@ -125,7 +127,7 @@ async def unified_authenticate(
         # Get authenticator instance and config by ID
         auth_id = UUID(auth_request.auth_id)
         authenticator, config_data = await get_authenticator_with_config(
-            auth_id, authenticator_repository
+            auth_id, authenticator_repository, secret_cipher
         )
 
         # Handle not found case (both None)
@@ -261,6 +263,7 @@ async def init_oauth_flow(
         Provide[PluginsContainer.authenticator_repository]
     ),
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Initialize OAuth flow and return authorization URL."""
 
@@ -269,7 +272,7 @@ async def init_oauth_flow(
         # Get authenticator instance by ID
         auth_id = UUID(oauth_request.auth_id)
         authenticator = await get_authenticator_instance(
-            auth_id, authenticator_repository
+            auth_id, authenticator_repository, secret_cipher
         )
 
         if not authenticator:
@@ -343,6 +346,7 @@ async def google_oauth_callback(
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
     config: dict = Depends(Provide[PluginsContainer.config]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Handle Google OAuth callback."""
     logger.debug(
@@ -369,6 +373,7 @@ async def google_oauth_callback(
         cache_manager,
         token_service,
         config=config,
+        secret_cipher=secret_cipher,
         expected_nonce=flow.get('nonce'),
     )
 
@@ -398,6 +403,7 @@ async def microsoft_oauth_callback(
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
     config: dict = Depends(Provide[PluginsContainer.config]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Handle Microsoft OAuth callback."""
     logger.debug(
@@ -424,6 +430,7 @@ async def microsoft_oauth_callback(
         cache_manager,
         token_service,
         config=config,
+        secret_cipher=secret_cipher,
         expected_nonce=flow.get('nonce'),
     )
 
@@ -451,6 +458,7 @@ async def microsoft_adfs_oauth_callback(
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
     config: dict = Depends(Provide[PluginsContainer.config]),
+    secret_cipher: SecretCipher = Depends(Provide[CommonContainer.secret_cipher]),
 ):
     """Handle Microsoft ADFS OAuth callback."""
     logger.debug(
@@ -477,6 +485,7 @@ async def microsoft_adfs_oauth_callback(
         cache_manager,
         token_service,
         config=config,
+        secret_cipher=secret_cipher,
         expected_nonce=flow.get('nonce'),
     )
 
@@ -524,6 +533,7 @@ async def _handle_oauth_callback(
     cache_manager: CacheManager,
     token_service: TokenService,
     config: Dict[str, Any],
+    secret_cipher: SecretCipher,
     expected_nonce: Optional[str] = None,
 ) -> RedirectResponse:
     """Common OAuth callback handler."""
@@ -542,7 +552,7 @@ async def _handle_oauth_callback(
         # Get authenticator instance and config
         auth_uuid = UUID(auth_id)
         authenticator, config_data = await get_authenticator_with_config(
-            auth_uuid, authenticator_repository
+            auth_uuid, authenticator_repository, secret_cipher
         )
 
         # Helper to get failure URL from config

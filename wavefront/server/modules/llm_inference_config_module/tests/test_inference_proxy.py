@@ -43,15 +43,15 @@ async def test_get_model_config_success(
 ):
     """Test successful model config retrieval."""
     model_id = str(sample_model_config.id)
-    config_dict = sample_model_config.to_dict(exclude_api_key=False)
-    mock_llm_inference_config_service.get_config.return_value = config_dict
+    config_dict = sample_model_config.to_stored_dict()
+    mock_llm_inference_config_service.get_runtime_config.return_value = config_dict
 
     result = await inference_proxy_service.get_model_config(model_id)
 
     assert str(result.id) == str(sample_model_config.id)
     assert result.llm_model == sample_model_config.llm_model
     assert result.api_key == sample_model_config.api_key
-    mock_llm_inference_config_service.get_config.assert_called_once_with(
+    mock_llm_inference_config_service.get_runtime_config.assert_called_once_with(
         sample_model_config.id
     )
 
@@ -62,7 +62,7 @@ async def test_get_model_config_not_found(
 ):
     """Test model config not found."""
     model_id = str(uuid.uuid4())
-    mock_llm_inference_config_service.get_config.return_value = None
+    mock_llm_inference_config_service.get_runtime_config.return_value = None
 
     result = await inference_proxy_service.get_model_config(model_id)
 
@@ -79,7 +79,7 @@ async def test_get_model_config_invalid_uuid(
     result = await inference_proxy_service.get_model_config(model_id)
 
     assert result is None
-    mock_llm_inference_config_service.get_config.assert_not_called()
+    mock_llm_inference_config_service.get_runtime_config.assert_not_called()
 
 
 def test_construct_target_url(inference_proxy_service):
@@ -148,6 +148,78 @@ def test_prepare_headers_gemini(inference_proxy_service):
     assert result['User-Agent'] == 'test-agent'
     assert result['x-goog-api-key'] == 'test-gemini-key'
     assert 'authorization' not in result  # Should be removed
+
+
+def _auth_headers(spelling='authorization'):
+    return {
+        'Content-Type': 'application/json',
+        spelling: 'Bearer floware-caller-token',
+    }
+
+
+@pytest.mark.parametrize(
+    'provider,api_key',
+    [
+        ('anthropic', 'test-anthropic-key'),
+        ('gemini', 'test-gemini-key'),
+        ('azure_openai', 'test-azure-key'),
+        ('ollama', 'test-ollama-key'),
+        ('vllm', 'test-vllm-key'),
+        ('openai', 'test-openai-key'),
+    ],
+)
+def test_prepare_headers_never_forwards_caller_token(
+    inference_proxy_service, provider, api_key
+):
+    """The caller's Floware bearer token must never reach the provider."""
+    request = Mock()
+    request.headers = _auth_headers()
+
+    model_config = Mock()
+    model_config.api_key = api_key
+    model_config.type = provider
+
+    result = inference_proxy_service.prepare_headers(request, model_config)
+
+    forwarded = {k.lower(): v for k, v in result.items()}
+    assert 'Bearer floware-caller-token' not in forwarded.values()
+
+
+@pytest.mark.parametrize(
+    'spelling', ['Authorization', 'AUTHORIZATION', 'AuThOrIzAtIoN']
+)
+def test_prepare_headers_strips_authorization_any_spelling(
+    inference_proxy_service, spelling
+):
+    """Stripping is keyed on key.lower(), so any inbound spelling is dropped."""
+    request = Mock()
+    request.headers = _auth_headers(spelling)
+
+    model_config = Mock()
+    model_config.api_key = 'test-anthropic-key'
+    model_config.type = 'anthropic'
+
+    result = inference_proxy_service.prepare_headers(request, model_config)
+
+    assert not [k for k in result if k.lower() == 'authorization']
+    assert result['x-api-key'] == 'test-anthropic-key'
+
+
+def test_prepare_headers_strips_authorization_without_api_key(
+    inference_proxy_service,
+):
+    """No api_key means no auth method runs; the token must still be dropped."""
+    request = Mock()
+    request.headers = _auth_headers()
+
+    model_config = Mock()
+    model_config.api_key = None
+    model_config.type = 'anthropic'
+
+    result = inference_proxy_service.prepare_headers(request, model_config)
+
+    assert not [k for k in result if k.lower() == 'authorization']
+    assert result['Content-Type'] == 'application/json'
 
 
 def test_detect_streaming_openai_true(inference_proxy_service):

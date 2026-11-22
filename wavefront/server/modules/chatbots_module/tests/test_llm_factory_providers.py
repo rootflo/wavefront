@@ -126,3 +126,24 @@ class TestParameterHandling:
         llm = build_llm(_config(parameters={'max_tokens': None}))
         assert 'max_tokens' not in llm.kwargs
         assert 'max_completion_tokens' not in llm.kwargs
+
+
+class TestGeminiThinking:
+    @pytest.mark.parametrize(
+        'parameters',
+        [{'thinking_level': 'minimal'}, {'thinking_budget': 0}],
+    )
+    def test_flat_thinking_setting_reaches_the_generation_config(self, parameters):
+        llm = build_llm(_config(type='gemini', parameters=parameters))
+
+        config = llm._generation_config('system', {})
+        # The SDK normalises the level to its enum ('minimal' -> 'MINIMAL')
+        thinking = config.thinking_config.model_dump(mode='json', exclude_none=True)
+        assert {k: str(v).lower() for k, v in thinking.items()} == {
+            k: str(v).lower() for k, v in parameters.items()
+        }
+
+    def test_no_thinking_setting_leaves_the_model_default(self):
+        llm = build_llm(_config(type='gemini', parameters={'top_p': 0.9}))
+
+        assert llm._generation_config('system', {}).thinking_config is None

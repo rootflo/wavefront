@@ -6,11 +6,12 @@ import {
   PolicyPreviewStage,
   PolicyPreviewResult,
   StreamPreference,
-} from '@app/api/guardrails-service';
+} from '@app/types/guardrails';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
-import { extractErrorMessage } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';
 import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { adapterLabel, buildEntityLabels } from './adapter-meta';
@@ -27,12 +28,14 @@ interface Props {
   stream: StreamPreference;
   /** Entity catalog, used to name detections the way the selector does. */
   piiGroups?: PiiEntityGroup[];
+  /** Leave out the heading and intro, for use inside a dialog that already has them. */
+  hideHeading?: boolean;
 }
 
 const ACTION_STYLES: Record<string, string> = {
-  ALLOW: 'bg-green-100 text-green-800',
-  TRANSFORM: 'bg-amber-100 text-amber-800',
-  BLOCK: 'bg-red-100 text-red-800',
+  ALLOW: 'bg-green-500/15 text-green-800 dark:text-green-300',
+  TRANSFORM: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
+  BLOCK: 'bg-red-500/15 text-red-800 dark:text-red-300',
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -41,7 +44,9 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const ActionBadge: React.FC<{ action: string }> = ({ action }) => (
-  <span className={`rounded px-2 py-0.5 text-xs font-medium ${ACTION_STYLES[action] ?? 'bg-gray-100 text-gray-700'}`}>
+  <span
+    className={`rounded px-2 py-0.5 text-xs font-medium ${ACTION_STYLES[action] ?? 'bg-frost-glass frost-text-muted'}`}
+  >
     {action}
   </span>
 );
@@ -76,13 +81,13 @@ const ResultRow: React.FC<{ result: PolicyPreviewResult; labels: Map<string, str
   const message = piiSummary(result, labels) ?? result.message;
 
   return (
-    <div className="flex items-start justify-between gap-4 border-t border-gray-100 py-2 text-sm">
+    <div className="border-frost-border flex items-start justify-between gap-4 border-t py-2 text-sm">
       <div>
         {/* The API answers with adapter keys; those name the engine, so they are labelled before display. */}
-        <span className="font-medium text-gray-800">{adapterLabel(result.adapter)}</span>
-        {message && <p className="mt-0.5 text-gray-600">{message}</p>}
+        <span className="frost-text font-medium">{adapterLabel(result.adapter)}</span>
+        {message && <p className="frost-text-muted mt-0.5">{message}</p>}
         {result.failure_class !== 'NONE' && (
-          <p className="mt-0.5 text-xs text-red-700">failure: {result.failure_class}</p>
+          <p className="mt-0.5 text-xs text-red-800 dark:text-red-300">failure: {result.failure_class}</p>
         )}
       </div>
       <ActionBadge action={result.action} />
@@ -96,19 +101,19 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage; labels: Map<string, str
   const verdict = stage.enforced ? stage.action : stage.observed_action;
 
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div className="frost-card ring-frost-border rounded-2xl border p-4 ring-1">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-900">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
+        <span className="frost-text text-sm font-semibold">{STAGE_LABELS[stage.stage] ?? stage.stage}</span>
         <div className="flex items-center gap-2">
           {!stage.enforced && verdict !== 'ALLOW' && (
-            <span className="text-xs text-gray-500">would have — monitor mode applies nothing</span>
+            <span className="frost-text-subtle text-xs">would have — monitor mode applies nothing</span>
           )}
           <ActionBadge action={verdict} />
         </div>
       </div>
 
       {stage.results.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">No checks run at this stage.</p>
+        <p className="frost-text-subtle mt-2 text-sm">No checks run at this stage.</p>
       ) : (
         <div className="mt-2">
           {stage.results.map((result, i) => (
@@ -119,8 +124,8 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage; labels: Map<string, str
 
       {stage.transformed_text && (
         <div className="mt-3">
-          <Label className="text-xs text-gray-500">Text after redaction</Label>
-          <pre className="mt-1 overflow-x-auto rounded bg-gray-50 p-2 text-sm whitespace-pre-wrap text-gray-800">
+          <Label className="frost-text-subtle text-xs">Text after redaction</Label>
+          <pre className="bg-frost-glass frost-text mt-1 overflow-x-auto rounded p-2 text-sm whitespace-pre-wrap">
             {stage.transformed_text}
           </pre>
         </div>
@@ -137,148 +142,188 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage; labels: Map<string, str
  * that bills per call and rate-limits, so a debounced preview would quietly
  * cost money on every keystroke.
  */
-const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, adapters, stream, piiGroups }, ref) => {
-  const { notifyError } = useNotifyStore();
-  const [text, setText] = useState('');
-  const [running, setRunning] = useState(false);
-  const [stages, setStages] = useState<PolicyPreviewStage[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const resultsRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(
+  ({ isEnabled, mode, adapters, stream, piiGroups, hideHeading }, ref) => {
+    const { notifyError } = useNotifyStore();
+    const [text, setText] = useState('');
+    const [running, setRunning] = useState(false);
+    const [stages, setStages] = useState<PolicyPreviewStage[] | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const resultsRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Scrolling and focusing live here rather than in the page, because the
-  // panel owns the textarea. Focus as well as scroll: the point of the header
-  // button is to start typing a test, and landing near the box without the
-  // cursor in it means a second click every time.
-  useImperativeHandle(ref, () => ({
-    focus: () => {
-      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      textareaRef.current?.focus({ preventScroll: true });
-    },
-  }));
+    // Scrolling and focusing live here rather than in the page, because the
+    // panel owns the textarea. Focus as well as scroll: the point of the header
+    // button is to start typing a test, and landing near the box without the
+    // cursor in it means a second click every time.
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        textareaRef.current?.focus({ preventScroll: true });
+      },
+    }));
 
-  const entityLabels = useMemo(() => buildEntityLabels(piiGroups), [piiGroups]);
+    const entityLabels = useMemo(() => buildEntityLabels(piiGroups), [piiGroups]);
 
-  // Only warn when a run would actually bill. PII redaction is in-process and
-  // free, so a cost notice on a PII-only policy trains people to ignore it.
-  const contentSafety = adapters.find((adapter) => adapter.name === 'azure_content_safety');
-  const contentSafetyStages = contentSafety?.stages.length ?? 0;
-  const injectionCheckOn =
-    !!contentSafety &&
-    contentSafety.options?.enable_prompt_shields !== false &&
-    contentSafety.stages.includes('BEFORE_MODEL');
-  const billable = isEnabled && contentSafetyStages > 0;
+    // Only warn when a run would actually bill. PII redaction is in-process and
+    // free, so a cost notice on a PII-only policy trains people to ignore it.
+    const contentSafety = adapters.find((adapter) => adapter.name === 'azure_content_safety');
+    const contentSafetyStages = contentSafety?.stages.length ?? 0;
+    const injectionCheckOn =
+      !!contentSafety &&
+      contentSafety.options?.enable_prompt_shields !== false &&
+      contentSafety.stages.includes('BEFORE_MODEL');
+    const billable = isEnabled && contentSafetyStages > 0;
 
-  const handleRun = async () => {
-    setRunning(true);
-    setError(null);
-    try {
-      const response = await floConsoleService.guardrailsService.previewPolicy({
-        text,
-        is_enabled: isEnabled,
-        mode,
-        adapters,
-        stream,
-      });
-      // Envelope is { meta, data }, so the payload is one level below
-      // response.data. Reading response.data.stages yields undefined and
-      // renders nothing at all, which looks like the button doing nothing.
-      if (response.data?.meta?.status === 'success' && response.data.data?.stages) {
-        setStages(response.data.data.stages);
-      } else {
+    const handleRun = async () => {
+      setRunning(true);
+      setError(null);
+      try {
+        const response = await floConsoleService.guardrailsService.previewPolicy({
+          text,
+          is_enabled: isEnabled,
+          mode,
+          adapters,
+          stream,
+        });
+        // Envelope is { meta, data }, so the payload is one level below
+        // response.data. Reading response.data.stages yields undefined and
+        // renders nothing at all, which looks like the button doing nothing.
+        if (response.data?.meta?.status === 'success' && response.data.data?.stages) {
+          setStages(response.data.data.stages);
+        } else {
+          setStages(null);
+          setError('The server did not return a result.');
+        }
+      } catch (err) {
         setStages(null);
-        setError('The server did not return a result.');
+        const message = extractErrorMessage(err) || 'Failed to run the test';
+        setError(message);
+        notifyError(message);
+      } finally {
+        setRunning(false);
+        // Only below lg, where the two columns stack and the results land off
+        // screen. On wide screens they are already beside the button, and
+        // scrolling there would move the page for no reason.
+        if (window.matchMedia('(max-width: 1023px)').matches) {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       }
-    } catch (err) {
-      setStages(null);
-      const message = extractErrorMessage(err) || 'Failed to run the test';
-      setError(message);
-      notifyError(message);
-    } finally {
-      setRunning(false);
-      // Only below lg, where the two columns stack and the results land off
-      // screen. On wide screens they are already beside the button, and
-      // scrolling there would move the page for no reason.
-      if (window.matchMedia('(max-width: 1023px)').matches) {
-        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  };
+    };
 
-  return (
-    <div ref={panelRef} className="scroll-mt-4">
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Test this policy</h2>
-      <p className="mb-4 text-sm text-gray-600">
-        Runs the settings above — saved or not — through the real engine. Nothing is stored.
-      </p>
+    return (
+      <div ref={panelRef} className={hideHeading ? 'scroll-mt-4 lg:h-full' : 'scroll-mt-4'}>
+        {hideHeading ? null : (
+          <>
+            <h2 className="frost-text mb-1 text-lg font-semibold">Test this policy</h2>
+            <p className="frost-text-muted mb-4 text-sm">
+              Runs the settings above — saved or not — through the real engine. Nothing is stored.
+            </p>
+          </>
+        )}
 
-      {/*
+        {/*
         Side by side once there is room, rather than results below the button.
         A test tool is used iteratively: you read the verdict, edit the text and
         run again, so the input has to stay on screen next to its result. The
         input column is sticky because results grow much taller than it does.
       */}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-        <div className="lg:sticky lg:top-4">
-          <Textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Paste sample text, e.g. a prompt containing a card number"
-            rows={6}
-            maxLength={4000}
-          />
+        <div
+          className={
+            hideHeading
+              ? 'grid grid-cols-1 gap-6 lg:h-full lg:min-h-0 lg:grid-cols-2'
+              : 'grid grid-cols-1 items-start gap-6 lg:grid-cols-2'
+          }
+        >
+          <div className={hideHeading ? 'flex min-h-0 flex-col' : 'lg:sticky lg:top-4'}>
+            <Textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="Paste sample text, e.g. a prompt containing a card number"
+              rows={6}
+              className={hideHeading ? 'min-h-40 flex-1 resize-none' : undefined}
+              maxLength={4000}
+            />
 
-          {billable && (
-            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <p className="text-sm font-medium text-amber-900">Content safety policy is on — test runs are billed</p>
-              <p className="mt-1 text-sm text-amber-800">
-                Each run sends this text to an external moderation service once for every stage it checks (
-                {contentSafetyStages}
-                {contentSafetyStages === 1 ? ' stage' : ' stages'})
-                {injectionCheckOn ? ', and prompt injection detection is a further call on the prompt' : ''}. Text over
-                10,000 characters is split into chunks that are billed separately. PII redaction runs inside your
-                deployment and costs nothing. Nothing is sent until you press Run test.
-              </p>
+            {billable && (
+              <div className="mt-3 rounded-lg border border-amber-400/50 bg-amber-500/10 p-3">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                  Content safety policy is on — test runs are billed
+                </p>
+                <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+                  Each run sends this text to an external moderation service once for every stage it checks (
+                  {contentSafetyStages}
+                  {contentSafetyStages === 1 ? ' stage' : ' stages'})
+                  {injectionCheckOn ? ', and prompt injection detection is a further call on the prompt' : ''}. Text
+                  over 10,000 characters is split into chunks that are billed separately. PII redaction runs inside your
+                  deployment and costs nothing. Nothing is sent until you press Run test.
+                </p>
+              </div>
+            )}
+
+            <div
+              className={
+                hideHeading
+                  ? 'mt-3 flex flex-row-reverse items-center justify-between gap-3'
+                  : 'mt-3 flex items-center gap-3'
+              }
+            >
+              <Button onClick={handleRun} disabled={running || !text.trim()}>
+                {running ? 'Running...' : 'Run test'}
+              </Button>
+              {!isEnabled && (
+                <span className="frost-text-subtle text-sm">Guardrails are off, so nothing will run.</span>
+              )}
             </div>
-          )}
+          </div>
 
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={handleRun} disabled={running || !text.trim()}>
-              {running ? 'Running...' : 'Run test'}
-            </Button>
-            {!isEnabled && <span className="text-sm text-gray-500">Guardrails are off, so nothing will run.</span>}
+          <div
+            ref={resultsRef}
+            className={hideHeading ? 'flex scroll-mt-4 flex-col lg:min-h-0 lg:overflow-y-auto' : 'scroll-mt-4'}
+          >
+            {error && (
+              <div className="rounded-lg border border-red-400/50 bg-red-500/10 p-4 text-sm text-red-800 dark:text-red-300">
+                {error}
+              </div>
+            )}
+
+            {!error && stages === null && (
+              <div
+                className={cn(
+                  'border-frost-border frost-text-subtle rounded-lg border border-dashed p-6 text-center text-sm',
+                  hideHeading && 'lg:flex lg:flex-1 lg:items-center lg:justify-center'
+                )}
+              >
+                Run a test to see what each check does to your text, at both stages.
+              </div>
+            )}
+
+            {!error && stages?.length === 0 && (
+              <div
+                className={cn(
+                  'border-frost-border frost-text-subtle rounded-lg border border-dashed p-6 text-center text-sm',
+                  hideHeading && 'lg:flex lg:flex-1 lg:items-center lg:justify-center'
+                )}
+              >
+                No checks ran. Nothing is configured for either stage.
+              </div>
+            )}
+
+            {!error && stages && stages.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {stages.map((stage) => (
+                  <StageResult key={stage.stage} stage={stage} labels={entityLabels} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-
-        <div ref={resultsRef} className="scroll-mt-4">
-          {error && <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
-
-          {!error && stages === null && (
-            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-              Run a test to see what each check does to your text, at both stages.
-            </div>
-          )}
-
-          {!error && stages?.length === 0 && (
-            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-              No checks ran. Nothing is configured for either stage.
-            </div>
-          )}
-
-          {!error && stages && stages.length > 0 && (
-            <div className="flex flex-col gap-3">
-              {stages.map((stage) => (
-                <StageResult key={stage.stage} stage={stage} labels={entityLabels} />
-              ))}
-            </div>
-          )}
-        </div>
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 
 PolicyTestPanel.displayName = 'PolicyTestPanel';
 

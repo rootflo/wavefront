@@ -67,12 +67,16 @@ const AppRouter = () => {
         <Route element={<ProtectedLayout setAuthenticatedState={setAuthenticatedState} />}>
           <Route
             element={
-              <DashboardLayout user={user || { first_name: '', last_name: '', email: '', id: '' }} apps={apps} />
+              <DashboardLayout
+                user={user || { first_name: '', last_name: '', email: '', id: '', role: '' }}
+                apps={apps}
+              />
             }
           >
             {routes.private.map((route) => renderChildren(route))}
             {routes.admin.map((route) => renderChildren(route))}
           </Route>
+          {routes.fullscreen.map((route) => renderChildren(route))}
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

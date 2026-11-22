@@ -1,0 +1,66 @@
+---
+title: "Versions"
+description: "Change agents and workflows safely: save new versions, test them, promote, roll back"
+icon: "code-compare"
+---
+
+Agents and workflows keep a history of **versions**. Exactly one version is **current**; runs use it unless they ask for another. This lets you change a live agent or workflow without disturbing the runs that depend on it.
+
+## The two ways to save a change
+
+| | Console | API | Effect |
+|---|---|---|---|
+| **Edit in place** | **Edit → Save** | `PUT …/<id>` | Overwrites the version you are editing. If that is the current version, every run from now on uses the change |
+| **New version** | **Edit → Save as new version** | `PUT …/<id>?create_new_version=true` | Creates the next version number. It is **not current**: runs keep using the current version until you promote the new one |
+
+<Warning>
+Saving a new version does not make it current. If your change seems to have no effect, check the **Current** badge: the new version probably still needs to be promoted.
+</Warning>
+
+## A safe change, step by step
+
+1. **Save as new version.** It gets the next number, for example v4, while v3 stays current.
+2. **Test it.** In the console, pick v4 in the version selector and use the test panel. From the API, run it explicitly:
+   ```bash
+   curl -X POST "$APP/floware/v2/workflows/<id>/inference?version=4" \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"inputs": [{"role": "user", "content": "…"}], "variables": {}}'
+   ```
+3. **Promote it.** Console: **Versions → Promote** on v4. API:
+   ```bash
+   curl -X PATCH "$APP/floware/v1/workflow-management/workflows/<id>/current-version?version=4" \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+4. **Roll back** if needed by promoting v3 again. Old versions are kept until you delete them.
+
+## In the console
+
+On an agent or workflow page:
+
+- the **version selector** (`v3 (current)`) chooses which version you view and test;
+- **Current: vN** shows which version runs use;
+- **Versions** lists every version with **View**, **Promote** and **Delete**. The current version cannot be promoted or deleted.
+
+## API
+
+The same routes exist for agents (`/floware/v1/agent-management/agents/<id>`) and workflows (`/floware/v1/workflow-management/workflows/<id>`):
+
+| Action | Request |
+|---|---|
+| Get a version's YAML | `GET <base>?version=<n>` (omit for the current version) |
+| List versions | `GET <base>/versions` |
+| Edit a version in place | `PUT <base>?version=<n>` (omit `version` to edit the current one), YAML as `text/plain` |
+| Branch a new version | `PUT <base>?create_new_version=true` (from the current version, or from `?version=<n>`) |
+| Make a version current | `PATCH <base>/current-version?version=<n>` |
+| Delete a version | `DELETE <base>/versions/<n>` |
+| Run a specific workflow version | `POST /floware/v2/workflows/<id>/inference?version=<n>` |
+
+## Versions and references
+
+- A workflow that references an agent or a sub-workflow **without** a version (`support/triage`) uses that agent's **current** version at run time, so promoting the agent changes the workflow's behaviour too.
+- Pin a reference with `@<n>` (`support/triage@3`) when a workflow must not change until you decide.
+- [Functions](/wavefront/functions) are **not** versioned: updating one changes every workflow that uses it immediately.
+
+## Keeping versions in git
+
+Treat the YAML in the app as a deployment target, not the source of truth: keep agents, workflows and functions in git, and deploy them with a script that saves a new version and promotes it. See [Deploying from git](/wavefront/deploy-as-code).

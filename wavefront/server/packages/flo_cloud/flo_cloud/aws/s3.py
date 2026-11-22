@@ -3,8 +3,10 @@ import boto3
 import io
 from typing import Optional, List, Tuple, IO, ContextManager
 from contextlib import contextmanager
+from botocore.config import Config
 from botocore.exceptions import ClientError
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_asset_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 
@@ -17,6 +19,7 @@ class S3Storage(CloudStorageHandler):
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
         region_name: Optional[str] = None,
+        asset_url: Optional[str] = None,
     ):
         """
         Initialize AWS client
@@ -25,6 +28,9 @@ class S3Storage(CloudStorageHandler):
             aws_access_key_id: AWS access key ID (optional)
             aws_secret_access_key: AWS secret access key (optional)
             region_name: AWS region name (optional)
+            asset_url: Base URL for presigned URLs (optional). They are signed
+                path-style for s3.<region>.amazonaws.com (s3.amazonaws.com in
+                us-east-1); the proxy must strip any path prefix and send that Host.
         """
         client_kwargs = {}
         if aws_access_key_id is not None:
@@ -34,27 +40,37 @@ class S3Storage(CloudStorageHandler):
         if region_name is not None:
             client_kwargs['region_name'] = region_name
         self.s3_client = boto3.client('s3', **client_kwargs)
+        self._asset_url = normalize_asset_url(asset_url)
+        # Path-style keeps the bucket in the path, so one asset_url fronts every bucket.
+        self._presign_client = (
+            boto3.client(
+                's3',
+                config=Config(
+                    signature_version='s3v4', s3={'addressing_style': 'path'}
+                ),
+                **client_kwargs,
+            )
+            if self._asset_url
+            else self.s3_client
+        )
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Get file from S3 bucket and return as buffer
+        """Get file from S3 bucket and return as buffer."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name (str): Name of the S3 bucket
-            file_path (str): Path to the file in bucket
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        self.s3_client.download_file(bucket_name, file_path, dest)
 
-        Returns:
-            File content as bytes
-
-        Raises:
-            CloudStorageFileNotFoundError: If file not found
-            Exception: If other errors occur
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get file bytes and the object's stored ContentType, if any."""
         try:
             s3_response = self.s3_client.get_object(Bucket=bucket_name, Key=file_path)
             file_content = s3_response['Body'].read()
-
-            return file_content
+            content_type = s3_response.get('ContentType')
+            return file_content, content_type
         except ClientError as e:
             # Check if the error is specifically "NoSuchKey" or "NoSuchBucket"
             if e.response['Error']['Code'] in ['NoSuchKey', 'NoSuchBucket']:
@@ -135,12 +151,12 @@ class S3Storage(CloudStorageHandler):
             Exception: If URL generation fails
         """
         try:
-            presigned_url = self.s3_client.generate_presigned_url(
+            presigned_url = self._presign_client.generate_presigned_url(
                 type,
                 Params={'Bucket': bucket_name, 'Key': key},
                 ExpiresIn=expiresIn,
             )
-            return presigned_url
+            return rebase_url(presigned_url, self._asset_url)
         except Exception as e:
             raise Exception(f'Error generating presigned URL for S3: {str(e)}')
 
@@ -202,6 +218,52 @@ class S3Storage(CloudStorageHandler):
                 raise Exception(f'Error listing files from S3: {str(e)}')
         except Exception as e:
             raise Exception(f'Error listing files from S3: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using S3's Delimiter and ContinuationToken."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            request = {
+                'Bucket': bucket_name,
+                'Prefix': prefix,
+                'Delimiter': delimiter,
+                'MaxKeys': page_size,
+            }
+            if page_token:
+                request['ContinuationToken'] = page_token
+            response = self.s3_client.list_objects_v2(**request)
+
+            files = [
+                StorageObject(
+                    key=item['Key'],
+                    size=item.get('Size'),
+                    updated_at=item.get('LastModified'),
+                )
+                for item in response.get('Contents', [])
+            ]
+            folders = [entry['Prefix'] for entry in response.get('CommonPrefixes', [])]
+            return FolderListing(
+                folders=sorted(folders),
+                files=files,
+                next_page_token=response.get('NextContinuationToken')
+                if response.get('IsTruncated')
+                else None,
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchBucket':
+                raise Exception(f'Bucket {bucket_name} not found')
+            raise Exception(f'Error listing folder from S3: {str(e)}')
+        except Exception as e:
+            raise Exception(f'Error listing folder from S3: {str(e)}')
 
     def delete_file(self, bucket_name: str, file_path: str) -> None:
         """

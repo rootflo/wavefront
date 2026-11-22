@@ -1,4 +1,3 @@
-import json
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI, BadRequestError
 from .base_llm import (
@@ -9,7 +8,7 @@ from .base_llm import (
     split_request_kwargs,
 )
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
-from flo_ai.tool.base_tool import Tool
+from .openai_tool_calling import OpenAIToolCallingMixin
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
     trace_llm_stream,
@@ -20,7 +19,7 @@ from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
 
-class OpenAI(BaseLLM):
+class OpenAI(OpenAIToolCallingMixin, BaseLLM):
     provider_name = 'openai'
 
     def __init__(
@@ -116,13 +115,7 @@ class OpenAI(BaseLLM):
         if output_schema:
             # Convert output_schema to OpenAI format for structured output
             kwargs['response_format'] = {'type': 'json_object'}
-            kwargs['functions'] = [
-                {
-                    'name': output_schema.get('title', 'default'),
-                    'parameters': output_schema.get('schema', output_schema),
-                }
-            ]
-            kwargs['function_call'] = {'name': output_schema.get('title', 'default')}
+            kwargs.update(self._tool_request_kwargs(None, output_schema))
 
             # Add JSON format instruction to the system prompt
             if messages and messages[0]['role'] == 'system':
@@ -139,12 +132,7 @@ class OpenAI(BaseLLM):
                     },
                 )
         elif functions:
-            # Tool calling when output_schema is not provided. Sent through
-            # `tools`, not the older `functions` parameter: newer models reject
-            # the `function` message role that goes with it.
-            kwargs['tools'] = [
-                {'type': 'function', 'function': function} for function in functions
-            ]
+            kwargs.update(self._tool_request_kwargs(functions))
             # The agent loop runs one tool per model turn, and every call the
             # model makes has to be answered.
             kwargs.setdefault('parallel_tool_calls', False)
@@ -153,7 +141,7 @@ class OpenAI(BaseLLM):
         openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 **flatten_extra_body(self.kwargs),
                 **flatten_extra_body(kwargs),
@@ -203,7 +191,7 @@ class OpenAI(BaseLLM):
         openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 'stream': True,
                 **flatten_extra_body(self.kwargs),
@@ -211,8 +199,7 @@ class OpenAI(BaseLLM):
             }
         )
 
-        if functions:
-            openai_kwargs['functions'] = functions
+        openai_kwargs.update(self._tool_request_kwargs(functions))
 
         # Stream the API call and yield content deltas
         response = await self._create(openai_kwargs)
@@ -226,88 +213,12 @@ class OpenAI(BaseLLM):
                 if content:
                     yield {'content': content}
 
-    requires_tool_call_ids = True
-
-    async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
-        """The first tool call in the response, with the id its result must name"""
-        tool_calls = getattr(response, 'tool_calls', None)
-        if tool_calls:
-            call = tool_calls[0]
-            return {
-                'name': call.function.name,
-                'arguments': call.function.arguments,
-                'id': call.id,
-            }
-        # A structured-output response, which still uses function_call.
-        return await super().get_function_call(response)
-
-    def format_tool_call_message(
-        self, content: str, tool_calls: List[Any]
-    ) -> Optional[Dict[str, Any]]:
-        """An assistant message carrying the tool call, as the API returns it"""
-        # One call per message is all the agent loop makes.
-        call = tool_calls[0]
-        arguments = json.dumps(call.arguments)
-        if call.id:
-            return {
-                'role': 'assistant',
-                'content': content or None,
-                'tool_calls': [
-                    {
-                        'id': call.id,
-                        'type': 'function',
-                        'function': {'name': call.name, 'arguments': arguments},
-                    }
-                ],
-            }
-        # No id to tie a result to: the older function_call form.
-        return {
-            'role': 'assistant',
-            'content': content or None,
-            'function_call': {'name': call.name, 'arguments': arguments},
-        }
-
-    def format_function_result_message(
-        self, function_name: str, content: str, tool_use_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """A tool result, naming the call it answers"""
-        if tool_use_id:
-            return {'role': 'tool', 'tool_call_id': tool_use_id, 'content': content}
-        return {'role': 'function', 'name': function_name, 'content': content}
-
     def get_message_content(self, response: Dict[str, Any]) -> str:
         if isinstance(response, str):
             return response
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
         return ''
-
-    def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
-        """Format a single tool for OpenAI's API"""
-        return {
-            'name': tool.name,
-            'description': tool.description,
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    name: {
-                        'type': info['type'],
-                        'description': info['description'],
-                        **(
-                            {'items': info['items']}
-                            if info.get('type') == 'array' and 'items' in info
-                            else {}
-                        ),
-                    }
-                    for name, info in tool.parameters.items()
-                },
-                'required': list(tool.parameters.keys()),
-            },
-        }
-
-    def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
-        """Format tools for OpenAI's API"""
-        return [self.format_tool_for_llm(tool) for tool in tools]
 
     async def _format_native_document(
         self, document: DocumentMessageContent

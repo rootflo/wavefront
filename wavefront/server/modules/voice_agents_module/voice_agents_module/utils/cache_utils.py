@@ -37,8 +37,8 @@ def get_voice_agent_cache_key(agent_id: UUID) -> str:
 
 
 def get_voice_agents_list_cache_key() -> str:
-    """Generate cache key for voice agents list"""
-    return 'voice_agents:list'
+    """Generate cache key for voice agents list (summary fields only)."""
+    return 'voice_agents:list:v1'
 
 
 def get_welcome_message_url_cache_key(agent_id: UUID) -> str:

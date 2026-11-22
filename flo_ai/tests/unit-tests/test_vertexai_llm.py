@@ -106,6 +106,42 @@ class TestVertexAI:
         )
         assert llm.client == mock_client
 
+        # Test with base_url
+        mock_genai_client.reset_mock()
+        llm = VertexAI(
+            project='test-project',
+            location='us-central1',
+            base_url='https://custom-gateway.invalid',
+        )
+
+        mock_genai_client.assert_called_once_with(
+            project='test-project',
+            location='us-central1',
+            vertexai=True,
+            http_options={'base_url': 'https://custom-gateway.invalid'},
+        )
+        assert llm.base_url == 'https://custom-gateway.invalid'
+
+        # Test with base_url and custom_headers
+        mock_genai_client.reset_mock()
+        llm = VertexAI(
+            project='test-project',
+            location='us-central1',
+            base_url='https://custom-gateway.invalid',
+            custom_headers={'X-Custom-Header': 'val'},
+        )
+
+        mock_genai_client.assert_called_once_with(
+            project='test-project',
+            location='us-central1',
+            vertexai=True,
+            http_options={
+                'base_url': 'https://custom-gateway.invalid',
+                'headers': {'X-Custom-Header': 'val'},
+            },
+        )
+        assert llm.base_url == 'https://custom-gateway.invalid'
+
     @pytest.mark.asyncio
     @patch('flo_ai.llm.vertexai_llm.genai.Client')
     async def test_vertexai_generate_basic(self, mock_genai_client):

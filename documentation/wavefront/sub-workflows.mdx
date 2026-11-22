@@ -1,0 +1,112 @@
+---
+title: "Sub-workflows"
+description: "Nest workflows to keep each agent's context small and reuse building blocks"
+icon: "layer-group"
+---
+
+A **sub-workflow** is a workflow used as a single node of another workflow. It has its **own memory**, sees only the inputs it is given, and passes **only its final output** back to the parent.
+
+Use sub-workflows to:
+
+- **keep model context small:** an agent that reads three images does that inside a sub-workflow, and only its short JSON verdict reaches the parent, not the images;
+- **group steps** that belong together (prepare a brief, load files, run the agent) so the parent graph stays readable;
+- **reuse** a saved workflow inside others.
+
+## Inline sub-workflows
+
+Declare a sub-workflow under `arium.ariums` and connect it like any node:
+
+```yaml
+arium:
+  function_nodes:
+    - name: load_claim
+      function_name: datasource_execute_query
+      prefilled_params: { datasource_id: <id>, query_id: claim_detail }
+    - name: decide
+      function_name: trigger_message_processor
+      input_filter: [photo_review]           # the sub-workflow's final output
+      prefilled_params: { message_processor_id: <function-id> }
+
+  ariums:
+    - name: photo_review                     # a node of the parent
+      inherit_variables: true                # the sub-workflow sees the run's variables
+      input_filter: [load_claim]             # what the parent forwards into it
+      function_nodes:
+        - name: brief
+          function_name: trigger_message_processor
+          input_filter: [input]              # the forwarded messages
+          prefilled_params: { message_processor_id: <brief-function-id> }
+      agents:
+        - name: photo_inspector
+          input_filter: [brief]
+          role: Damage inspector
+          job: Describe the damage visible in the photos.
+          model: { provider: rootflo, model_id: <llm-config-id> }
+      workflow:
+        start: brief
+        edges:
+          - from: brief
+            to: [photo_inspector]
+        end: [photo_inspector]
+
+  workflow:
+    start: load_claim
+    edges:
+      - from: load_claim
+        to: [photo_review]
+      - from: photo_review
+        to: [decide]
+    end: [decide]
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | The node's name in the parent; the parent's edges and `input_filter`s use it |
+| `input_filter` | Which parent outputs are forwarded into the sub-workflow |
+| `inherit_variables` | Pass the run's variables into the sub-workflow |
+| `agents`, `function_nodes`, `routers`, `ariums`, `iterators`, `workflow` | The sub-workflow itself, exactly as in a top-level workflow |
+
+## Inside a sub-workflow, the parent's data is `input`
+
+This is the rule that most often trips people up:
+
+<Warning>
+Inside a sub-workflow, select what the parent forwarded with **`input_filter: [input]`**, **not** with the parent node's name. In the example above, `input_filter: [load_claim]` inside `photo_review` selects **nothing**.
+</Warning>
+
+The data still carries its origin: in a function's `node_outputs`, the forwarded payload is grouped under the node that produced it (`load_claim`), even though you selected it as `input`.
+
+## Only the last output comes back
+
+The parent receives **only the final output** of the sub-workflow, the output of the node that ended it. Intermediate outputs (the brief, downloaded images) stay inside. If the parent needs several values, make the last node return them all, for example a function that combines them, or an agent whose parser includes everything.
+
+## Referencing a saved workflow
+
+Instead of declaring the body inline, reference a workflow saved in the app by `namespace/name`, optionally pinned to a version:
+
+```yaml
+ariums:
+  - name: claims/photo-review@2      # saved workflow, version 2
+    input_filter: [load_claim]
+    inherit_variables: true
+workflow:
+  start: load_claim
+  edges:
+    - from: load_claim
+      to: [photo-review]             # edges use the local name: the last part, without @version
+    - from: photo-review
+      to: [decide]
+  end: [decide]
+```
+
+The referenced workflow is inlined when the parent is built. `input_filter` and `inherit_variables` set at the reference apply. References can nest; a cycle is rejected.
+
+## Pattern: one agent, one sub-workflow
+
+For multi-agent reviews, give every agent its own sub-workflow containing:
+
+1. a **brief** function that cuts the shared case down to what this agent needs;
+2. **file nodes** that load the agent's images or documents (see [function nodes](/wavefront/function-nodes#datasource_download_file));
+3. the **agent**, with `input_filter` set to the brief and its files.
+
+The parent then sees one compact JSON verdict per agent, and each model call carries only what that agent needs.

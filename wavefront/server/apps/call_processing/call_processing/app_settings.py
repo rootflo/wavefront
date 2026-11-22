@@ -31,18 +31,29 @@ class PipecatSettings:
     enable_turn_tracking: bool
     otlp_endpoint: str | None
     tracing_service_name: str
-    enable_filler_phrases_before_tool_call: bool
+
+
+@dataclass(frozen=True)
+class WebRTCSettings:
+    signaling_public_url: str
+    room_ttl_secs: int
+    max_session_secs: int
+    connect_timeout_secs: int
+    sample_rate: int
+    ice_servers: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class CallProcessingAppSettings:
     call_eval: CallEvalSettings
     pipecat: PipecatSettings
+    webrtc: WebRTCSettings
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> CallProcessingAppSettings:
         call_eval = config['call_eval']
         pipecat = config['pipecat']
+        webrtc = config['webrtc']
 
         def truthy(value: Any) -> bool:
             return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -63,8 +74,17 @@ class CallProcessingAppSettings:
                 enable_turn_tracking=truthy(pipecat['enable_turn_tracking']),
                 otlp_endpoint=otlp,
                 tracing_service_name=pipecat['tracing_service_name'],
-                enable_filler_phrases_before_tool_call=truthy(
-                    pipecat['enable_filler_phrases_before_tool_call']
+            ),
+            webrtc=WebRTCSettings(
+                signaling_public_url=str(webrtc['signaling_public_url']).rstrip('/'),
+                room_ttl_secs=int(webrtc['room_ttl_secs']),
+                max_session_secs=int(webrtc['max_session_secs']),
+                connect_timeout_secs=int(webrtc['connect_timeout_secs']),
+                sample_rate=int(webrtc['sample_rate']),
+                ice_servers=tuple(
+                    url.strip()
+                    for url in str(webrtc['ice_servers']).split(',')
+                    if url.strip()
                 ),
             ),
         )

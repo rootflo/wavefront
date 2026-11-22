@@ -1,11 +1,13 @@
 import { CURRENT_PATH_KEY, TOKEN_KEY } from '@app/lib/constants';
-import { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { isStandalonePath } from '@app/router/standalone-paths';
+import { Outlet, useLocation, useNavigate } from 'react-router';
+import { useMountEffect } from '@app/hooks/use-mount-effect';
 
 const ProtectedLayout = ({ setAuthenticatedState }: { setAuthenticatedState: (authenticated: boolean) => void }) => {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  useEffect(() => {
+  useMountEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     const currentPath = localStorage.getItem(CURRENT_PATH_KEY);
 
@@ -17,10 +19,12 @@ const ProtectedLayout = ({ setAuthenticatedState }: { setAuthenticatedState: (au
       setAuthenticatedState(true);
     }
 
-    if (currentPath) {
+    // Standalone pages (e.g. the workflow editor tab) must open where they were linked, not at the
+    // last dashboard path, which localStorage shares across tabs.
+    if (currentPath && !isStandalonePath(location.pathname)) {
       navigate(currentPath);
     }
-  }, []);
+  });
 
   // Render child routes if authenticated
   return <Outlet />;

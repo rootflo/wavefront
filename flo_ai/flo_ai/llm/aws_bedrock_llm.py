@@ -271,7 +271,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
             return response['raw_message']
         return None
 
-    def format_tool_call_message(
+    def format_stored_tool_call_message(
         self, content: str, tool_calls: List[Any]
     ) -> Optional[Dict[str, Any]]:
         """An assistant message with tool_calls, as the API returns it"""

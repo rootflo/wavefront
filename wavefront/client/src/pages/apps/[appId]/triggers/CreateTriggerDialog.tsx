@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,9 +10,8 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { TRIGGER_ENTITY_TYPES, TRIGGER_MIME_TYPE_OPTIONS, TRIGGER_PROVIDER_GMAIL } from '@app/constants/trigger';
-import { useGetAgents, useGetEmailConnections, useGetWorkflows } from '@app/hooks';
+import { useCreateTrigger, useGetAgents, useGetEmailConnections, useGetWorkflows } from '@app/hooks';
 import { cn } from '@app/lib/utils';
-import { useNotifyStore } from '@app/store';
 import { TriggerEntityType } from '@app/types/trigger';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -22,11 +20,9 @@ interface CreateTriggerDialogProps {
   isOpen: boolean;
   appId: string;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
 }
 
-const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId, onOpenChange, onSuccess }) => {
-  const { notifySuccess } = useNotifyStore();
+const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId, onOpenChange }) => {
   const { data: emailConnections = [] } = useGetEmailConnections(appId);
   const { data: agents = [], isLoading: agentsLoading } = useGetAgents(appId);
   const { data: workflows = [], isLoading: workflowsLoading } = useGetWorkflows(appId);
@@ -38,7 +34,8 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
   const [namespace, setNamespace] = useState('');
   const [subjectRegex, setSubjectRegex] = useState('');
   const [selectedMimeTypes, setSelectedMimeTypes] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const createTrigger = useCreateTrigger(appId);
+  const saving = createTrigger.isPending;
   const [error, setError] = useState('');
 
   const readableConnections = useMemo(
@@ -88,7 +85,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
     );
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!name.trim()) {
       setError('Name is required');
       return;
@@ -102,10 +99,9 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
       return;
     }
 
-    setSaving(true);
     setError('');
-    try {
-      await floConsoleService.triggerService.createTrigger({
+    createTrigger.mutate(
+      {
         name: name.trim(),
         provider: TRIGGER_PROVIDER_GMAIL,
         entity_type: entityType,
@@ -116,15 +112,13 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
           subject_regex: subjectRegex.trim() || null,
           allowed_mime_types: selectedMimeTypes.length > 0 ? selectedMimeTypes : null,
         },
-      });
-      notifySuccess('Trigger created successfully');
-      onSuccess();
-      handleOpenChange(false);
-    } catch {
-      setError('Unable to create trigger. Confirm the mailbox is authorized for read access and try again.');
-    } finally {
-      setSaving(false);
-    }
+      },
+      {
+        onSuccess: () => handleOpenChange(false),
+        onError: () =>
+          setError('Unable to create trigger. Confirm the mailbox is authorized for read access and try again.'),
+      }
+    );
   };
 
   return (
@@ -139,16 +133,16 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
         <div className="space-y-5">
           <div>
-            <p className="mb-1 text-xs text-[#878787]">Name</p>
+            <p className="frost-text-muted mb-1 text-xs">Name</p>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Invoice intake" />
           </div>
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Mailbox to watch</p>
+              <p className="frost-text-muted text-xs">Mailbox to watch</p>
             </div>
             {readableConnections.length === 0 ? (
-              <p className="text-sm text-[#878787]">
+              <p className="frost-text-muted text-sm">
                 No active Gmail connections.{' '}
                 <Link to={`/apps/${appId}/email-connections`} className="hover:text-foreground underline">
                   Connect a mailbox
@@ -170,9 +164,9 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Run</p>
+              <p className="frost-text-muted mb-1 text-xs">Run</p>
               <Select value={entityType} onValueChange={handleEntityTypeChange}>
                 <SelectTrigger>
                   <SelectValue />
@@ -187,7 +181,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
               </Select>
             </div>
             <div>
-              <p className="mb-1 text-xs text-[#878787]">{entityType === 'agent' ? 'Agent' : 'Workflow'}</p>
+              <p className="frost-text-muted mb-1 text-xs">{entityType === 'agent' ? 'Agent' : 'Workflow'}</p>
               <Select value={entityId || undefined} onValueChange={setEntityId} disabled={entitiesLoading}>
                 <SelectTrigger>
                   <SelectValue placeholder={entitiesLoading ? 'Loading...' : `Select ${entityType}`} />
@@ -206,14 +200,14 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Namespace (optional)</p>
+              <p className="frost-text-muted text-xs">Namespace (optional)</p>
             </div>
             <Input value={namespace} onChange={(e) => setNamespace(e.target.value)} placeholder="production" />
           </div>
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Subject regex (optional)</p>
+              <p className="frost-text-muted text-xs">Subject regex (optional)</p>
             </div>
             <Input
               value={subjectRegex}
@@ -225,7 +219,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
           <div>
             <div className="mb-2 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Allowed attachment types (optional)</p>
+              <p className="frost-text-muted text-xs">Allowed attachment types (optional)</p>
             </div>
             <div className="frost-glass border-frost-border flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
               {TRIGGER_MIME_TYPE_OPTIONS.map((option) => {

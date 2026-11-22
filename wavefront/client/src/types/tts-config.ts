@@ -8,6 +8,8 @@ export interface TtsConfig {
   description: string | null;
   provider: TtsProvider;
   region: string | null;
+  /** The api_key itself is never returned. */
+  has_api_key: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -43,7 +45,7 @@ export type TtsConfigListResponse = IApiResponse<TtsConfigListData>;
 
 // ElevenLabs specific parameters
 export interface ElevenLabsParameters {
-  model?: string; // default: 'eleven_turbo_v2_5'
+  model?: string; // default: 'eleven_flash_v2_5'
   language?: string; // Language enum
   stability?: number; // 0-1
   similarity_boost?: number; // 0-1
@@ -61,14 +63,14 @@ export interface DeepgramTtsParameters {
 
 // Cartesia specific parameters
 export interface CartesiaParameters {
-  model?: string; // default: 'sonic-2'
+  model?: string; // default: 'sonic-3.6'
   language?: string; // Language enum
   speed?: number;
 }
 
 // Sarvam TTS specific parameters
 export interface SarvamTtsParameters {
-  model?: string; // default: 'bulbul:v2'
+  model?: string; // default: 'bulbul:v4-flash'
   language?: string;
   pitch?: number; // -0.75 to 0.75
   pace?: number; // 0.3 to 3.0

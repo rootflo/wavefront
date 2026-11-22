@@ -1,0 +1,118 @@
+---
+title: "Guide: configurable rules and scoring"
+description: "Decide and score from evidence with rules that administrators can change without a deploy"
+icon: "scale-balanced"
+---
+
+Decisions change: a risk team lowers a threshold, a new finding should refer instead of decline, a score should weigh some evidence more. This guide keeps all of that in a [configuration](/wavefront/configurations), edited from a screen in your application, and applied by a [function](/wavefront/functions) on every run.
+
+## 1. Design the rule document
+
+Describe your rules as data. A decision policy and a score model:
+
+```json namespace "reviews", key "decision-policy"
+{
+  "finding_effects": {
+    "NAME_MISMATCH": "DECLINE",
+    "LOW_IMAGE_QUALITY": "REFER",
+    "TAMPER_SUSPECTED": "REFER",
+    "MISSING_DOCUMENT": "DECLINE"
+  },
+  "confidence": { "fail_below": 60, "pass_from": 80 }
+}
+```
+
+```json namespace "reviews", key "score-model"
+{
+  "out_of": 10,
+  "weights": { "identity": 4, "documents": 3, "consistency": 3 },
+  "grades": [
+    { "grade": "A", "min_score": 8.5, "label": "Excellent" },
+    { "grade": "B", "min_score": 7,   "label": "Good" },
+    { "grade": "C", "min_score": 0,   "label": "Needs attention" }
+  ]
+}
+```
+
+Keep the defaults in git, next to the workflow, and create them at deploy time without overwriting documents that already exist.
+
+## 2. Read them in the workflow
+
+```yaml
+function_nodes:
+  - name: policy
+    function_name: fetch_configuration
+    prefilled_params: { namespace: reviews, key: decision-policy }
+  - name: score_model
+    function_name: fetch_configuration
+    prefilled_params: { namespace: reviews, key: score-model }
+  - name: decide
+    function_name: trigger_message_processor
+    input_filter: [policy, score_model, evidence]
+    prefilled_params: { message_processor_id: <decide-function-id> }
+```
+
+## 3. Apply them in a function
+
+```js
+const EFFECTS = new Set(['DECLINE', 'REFER', 'IGNORE']);
+
+function loadPolicy(doc) {
+  if (!doc || typeof doc !== 'object') throw new Error('reviews/decision-policy was not loaded');
+  for (const [code, effect] of Object.entries(doc.finding_effects ?? {}))
+    if (!EFFECTS.has(effect)) throw new Error(`decision-policy: finding_effects.${code} must be DECLINE, REFER or IGNORE`);
+  return doc;
+}
+
+export default function (input) {
+  const policy = loadPolicy(input.node_outputs?.policy?.[0]);
+  const model = input.node_outputs?.score_model?.[0];
+  const evidence = input.node_outputs?.evidence?.[0];
+  if (!model || !evidence) throw new Error('score model or evidence missing');
+
+  // Decision: every finding gets the effect the policy gives it; unknown findings refer.
+  const reasons = [], ignored = [];
+  for (const f of evidence.findings) {
+    const effect = policy.finding_effects[f.code] ?? 'REFER';
+    (effect === 'IGNORE' ? ignored : reasons).push({ ...f, effect });
+  }
+  const state = reasons.some(r => r.effect === 'DECLINE') ? 'DECLINED' : reasons.length ? 'REFERRED' : 'APPROVED';
+
+  // Score: each part is a 0–1 factor from the evidence, times its weight, scaled to out_of.
+  const total = Object.values(model.weights).reduce((s, w) => s + w, 0);
+  const parts = Object.entries(model.weights).map(([name, w]) => {
+    const factor = Math.max(0, Math.min(1, evidence.factors[name] ?? 0));
+    return { name, points: Math.round(factor * w / total * model.out_of * 100) / 100, max: w / total * model.out_of };
+  });
+  const score = Math.round(parts.reduce((s, p) => s + p.points, 0) * 10) / 10;
+  const grade = [...model.grades].sort((a, b) => b.min_score - a.min_score).find(g => score >= g.min_score);
+
+  return { state, reasons, ignored, score, grade: grade.grade, label: grade.label, parts, model };
+}
+```
+
+What makes this robust:
+
+- **Validation:** a malformed rule document stops the run with a message naming the field, instead of quietly changing outcomes.
+- **Safe default:** a finding the policy does not list is referred, so a new check can never approve anything on its own.
+- **Ignored, not lost:** findings set to IGNORE are kept, in `ignored`, for the record.
+- **Self-explaining results:** `parts` and a copy of the `model` go into every result, so a score can be explained with the rules that produced it, even after the rules change.
+
+## 4. Give the rules a screen
+
+In your application, an admin page that:
+
+1. reads both documents (`GET /floware/v1/configurations/reviews/<key>`);
+2. shows them as forms: a segmented **Decline / Refer / Ignore** control per finding, number inputs for thresholds and weights, a table for grades;
+3. validates before saving: weights add up, grades start at 0, thresholds in range;
+4. saves with `PUT`, and shows "applies from the next run".
+
+Because `PUT` replaces the whole document and keeps no history, keep a version number inside the document, and log each save in your own table if you need a change history.
+
+## 5. Explain the result to people
+
+Render the score with its formula built **from the stored model**, not from code constants, for example "Identity (4) + Documents (3) + Consistency (3)", with the grade bands. A [chat assistant](/guides/record-chat-assistant) can explain a specific result's breakdown from the same data.
+
+## 6. Prove the link
+
+After building it, change a rule in the screen (set one finding to IGNORE, change a weight, rename a grade), run a test case, and check that the result follows. Then restore the defaults.

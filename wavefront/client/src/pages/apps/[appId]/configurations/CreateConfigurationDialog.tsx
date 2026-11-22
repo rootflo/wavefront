@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,12 +10,11 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { useGetNamespaces } from '@app/hooks';
-import { useNotifyStore } from '@app/store';
+import { useCreateConfiguration, useGetNamespaces } from '@app/hooks';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -53,16 +51,10 @@ interface CreateConfigurationDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
-const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  appId,
-  onSuccess,
-}) => {
-  const { notifySuccess, notifyError } = useNotifyStore();
+const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({ isOpen, onOpenChange, appId }) => {
+  const createConfiguration = useCreateConfiguration(appId);
   // A dropdown rather than a text field: the server rejects a namespace that
   // does not exist, so offering only real ones turns a 400 into an impossible
   // choice.
@@ -89,25 +81,16 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
     }
   }, [isOpen, form]);
 
-  const onSubmit = async (data: CreateConfigurationInput) => {
-    try {
-      const response = await floConsoleService.configurationService.createConfiguration({
+  const onSubmit = (data: CreateConfigurationInput) => {
+    createConfiguration.mutate(
+      {
         namespace: data.namespace,
         key: data.key.trim(),
         value: JSON.parse(data.value),
         description: data.description?.trim() || undefined,
-      });
-
-      if (response.data) {
-        notifySuccess('Configuration created successfully');
-        onSuccess?.();
-        onOpenChange(false);
-      } else {
-        notifyError('Failed to create configuration');
-      }
-    } catch (error) {
-      console.error('Error creating configuration:', error);
-    }
+      },
+      { onSuccess: () => onOpenChange(false) }
+    );
   };
 
   if (!appId) {
@@ -124,7 +107,7 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <FormField
                 control={form.control}
                 name="namespace"
@@ -193,10 +176,9 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
                   </FormLabel>
                   <FormControl>
                     <div className="w-full min-w-0">
-                      <CodeMirror
+                      <CodeEditor
                         value={field.value}
                         onChange={field.onChange}
-                        theme="dark"
                         height="400px"
                         width="100%"
                         maxWidth="100%"
@@ -215,7 +197,7 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={form.formState.isSubmitting}>
+              <Button type="submit" loading={createConfiguration.isPending}>
                 Create Configuration
               </Button>
             </DialogFooter>

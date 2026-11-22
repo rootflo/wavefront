@@ -1,0 +1,89 @@
+---
+title: "Tour of the Wavefront Console"
+description: "Sign in, add an app, and find each building block in the UI"
+icon: "map"
+---
+
+The Wavefront Console is where you build and operate apps. This page shows where everything is. Later pages explain each section in depth.
+
+## Signing in
+
+Open your console's address and sign in with your console account. If you forget your password, use **Reset here** under the sign-in form to get a reset link by email.
+
+<Frame>
+  <img src="/images/wavefront/console-signin.png" alt="The Wavefront Console sign-in page" />
+</Frame>
+
+## The app list
+
+After signing in you see every app this console manages, with its status.
+
+<Frame>
+  <img src="/images/wavefront/console-apps.png" alt="The app list in the Wavefront Console" />
+</Frame>
+
+From here you can:
+
+- **open an app** to work inside it;
+- **add an app** (see below);
+- **edit an app**'s name or URLs;
+- **manage console users** (who can sign in to this console).
+
+### Adding an app
+
+An app is a Wavefront backend that is already running (see [Operations](/operations/architecture) for how to deploy one). To manage it from the console, register it:
+
+| Field | What to enter |
+|---|---|
+| **App Name** | A name people will recognise, such as "Claims – staging" |
+| **Deployment Type** | **Manual** for an app you deployed yourself |
+| **Public URL** | The address your users and your application use to reach the app |
+| **Private URL** | The address the console uses to reach the app, usually an internal network address. It can be the same as the public URL |
+
+The console and the app share a secret, configured when the app is deployed. The console uses it to create a short-lived credential for each request, so the app trusts the console without you signing in to the app.
+
+## Inside an app
+
+Opening an app shows its sidebar. Each entry is one building block:
+
+<Frame>
+  <img src="/images/wavefront/console-app-sidebar.png" alt="Inside an app: the sidebar and the Agents page" />
+</Frame>
+
+| Section | What you do there |
+|---|---|
+| **Agents** | Create agents in YAML, test them in a chat panel (text, images and documents), manage versions |
+| **Workflows** | Create workflows in YAML, run them with input and variables, view and switch versions |
+| **Functions** | Create and test JavaScript functions (message processors) used by workflows |
+| **LLM Repository** | Add the models the app may use, with their keys |
+| **Datasources** | Connect databases and file storage, save and run dynamic queries, upload and download files |
+| **Configurations** | Create and edit the JSON documents workflows read at run time |
+| **Chatbots** | Create and edit chatbots: system prompt, welcome message, model and settings |
+| **Knowledge Bases** | Upload and index documents for retrieval |
+| **Guardrails** | Define checks on model input and output |
+| **API Services** | Define outbound APIs agents and workflows can call |
+| **Authenticators** and **OAuth Apps** | Configure how users and external systems sign in to the app |
+| **Emails** | Connect mailboxes |
+| **Scheduled Jobs** | Run work on a schedule |
+| **Voice Agents** | Build voice agents, with speech-to-text, text-to-speech and telephony settings |
+
+Some sections appear only when the feature is enabled for your deployment.
+
+## Testing as you build
+
+You can test most building blocks without writing any code:
+
+- **Agents** have a chat panel. Type in the **Ask anything** box and send. The **+** button next to it lets you **Select Images**, **Select Documents** or **Add variables** (as JSON). Above the conversation you can turn **Stream** on to see the reply as it is generated, and pick which **version** to test; below it you can try a different model from the LLM Repository without changing the agent.
+- **Workflows** show their YAML on the left and the same chat panel on the right, with a **JSON output** toggle to pretty-print the result. Variables go in through **+ → Add variables**.
+- **Functions** can be run on a sample input.
+- **Dynamic queries** can be run with parameters.
+
+Chatbots are tried from your application, or through the chat API (see [Chatbots](/wavefront/chatbots)); the console does not have a chat panel for them yet.
+
+<Tip>
+Build bottom-up: test each agent and function on its own before putting them in a workflow. When a workflow misbehaves, you will already know each step works by itself.
+</Tip>
+
+## Users of an app
+
+Console users manage apps. **App users**, the accounts your application and its people use to call an app's API, are managed per app, by app admins, through the app's user management API. See [Users and access](/wavefront/users-and-access).

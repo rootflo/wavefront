@@ -1,0 +1,103 @@
+---
+title: "Concepts"
+description: "One short definition for every term used in the Wavefront documentation"
+icon: "book"
+---
+
+Terms are grouped by area. Each links to the page that covers it in depth.
+
+## Apps and access
+
+**App**
+: One Wavefront backend: its own database, models, agents, workflows, datasources, configurations, chatbots and users. Apps are fully separate from each other. Typical uses are one app per customer, team or environment (development, staging, production).
+
+**Wavefront Console**
+: The web UI for building and operating apps. You add an app to the console by registering its URLs; from then on you manage it from the console without signing in to it separately.
+
+**Console user** and **app user**
+: Console users sign in to the Wavefront Console. App users sign in to one app directly, which is what your own application does when it calls the API. The two are separate accounts.
+
+**Role**
+: Permissions of an app user. *Admin* can do everything, including managing users and reading the audit trail; other roles are more limited. Some APIs are admin-only.
+
+**Namespace**
+: A label that groups resources inside an app (agents, workflows, configurations, chatbots). It is for organisation and lookup, not for security: anyone with access to the app can see every namespace.
+
+## AI building blocks
+
+**LLM config**
+: An entry in the **LLM Repository**: a provider (OpenAI, Azure OpenAI, Anthropic, Gemini, Groq, Ollama, vLLM), a model, credentials and settings. Agents refer to it by id, so keys never appear in agent or workflow definitions and a model can be swapped in one place. See [LLM Repository](/wavefront/llm-configs).
+
+**Agent**
+: One model with a role, a job description (its instructions), optional tools and an optional **parser**. You can test an agent on its own from the console. See [Agents](/wavefront/agents).
+
+**Parser** (structured output)
+: The schema an agent's answer must follow: named fields with types, nested objects and lists. With a parser, an agent returns JSON your code can rely on instead of free text. See [Structured output](/wavefront/structured-output).
+
+**Tool**
+: Something an agent may call while it works, such as running a datasource query, downloading a file or calling a function. See [Tools](/wavefront/tools).
+
+**Workflow**
+: A graph of steps (**nodes**) that runs in order: agents, function nodes, routers, iterators and sub-workflows, joined by **edges**, with a start node and one or more end nodes. Written in YAML. See [Workflows](/wavefront/workflows).
+
+**Node**
+: One step of a workflow. The kinds you will use most:
+- *agent node*: runs an agent;
+- *function node*: runs a built-in function such as a datasource query, a file download, a configuration read or a [function](#function);
+- *router*: picks the next node based on the previous output;
+- *iterator* (ForEach): runs a node once per item in a list;
+- *sub-workflow*: a workflow nested inside another, with its own memory.
+
+**Sub-workflow**
+: A workflow used as one node of another workflow. It sees only the inputs it is given and returns only its final result, which keeps each agent's context small. See [Sub-workflows](/wavefront/sub-workflows).
+
+**`input_filter`**
+: The list of earlier nodes whose outputs a node receives. Without it, a node sees the whole conversation so far. See [Passing data between nodes](/wavefront/workflow-data-flow).
+
+**Workflow variables**
+: Named values passed when a workflow is run (for example the id of the record to process). Every node can read them.
+
+**Version**
+: Agents and workflows keep a history of versions. Saving a new version and making it the **current** version are separate steps; runs use the current version. See [Versions](/wavefront/versions).
+
+## Deterministic logic
+
+**Function**
+: A small JavaScript program, shown in the console under **Functions** and called a *message processor* in the API. It takes a JSON input and returns JSON. Functions do the parts that must be exact: computing, comparing, deciding, reshaping. They run in a sandbox with no network access. See [Functions](/wavefront/functions).
+
+**Configuration**
+: A named JSON document stored in the app (namespace + key) that workflows read at run time: thresholds, rule tables, scoring weights, lookup lists. Editing a configuration changes behaviour from the next run, with no workflow change. See [Configurations](/wavefront/configurations).
+
+## Data and files
+
+**Datasource**
+: A connection to a database (for example PostgreSQL or BigQuery) or to file storage (S3, Google Cloud Storage, Azure Blob Storage). See [Datasources](/wavefront/datasources).
+
+**Dynamic query**
+: A named, parameterised SQL query saved on a datasource and run by name with parameters. One dynamic query can return several result sets. It is the standard way to read data. See [Dynamic queries](/wavefront/dynamic-queries).
+
+**File store path**
+: Files uploaded to a file-storage datasource are referred to by a `datasource://<datasource-id>/<path>` reference, which you can store in a table and pass to workflows. See [File storage](/wavefront/file-storage).
+
+**Audit trail**
+: When enabled, a record of every row inserted, updated or deleted through the datasource API, and every file uploaded or downloaded, with who did it and when. See [Audit trail](/wavefront/audit-trail).
+
+## Running things
+
+**Inference**
+: Running an agent or workflow. *Synchronous* inference waits for the result in the same API call; *asynchronous* inference queues the run and returns an **execution** id.
+
+**Execution**
+: One asynchronous run: its status (pending, in progress, completed, failed), error and output. See [Running workflows](/wavefront/running-workflows).
+
+**Worker**
+: The background process that runs queued (asynchronous) work.
+
+**Chatbot** and **session**
+: A chatbot is a model with a system prompt and a welcome message. Each conversation is a **session** that belongs to one user and keeps its message history; replies can be streamed. See [Chatbots](/wavefront/chatbots).
+
+**Trigger** and **scheduled job**
+: Ways to start work automatically: on an event, or on a schedule.
+
+**Guardrail**
+: A check applied to model input or output, for example to block or rewrite unsafe content.

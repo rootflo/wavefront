@@ -10,28 +10,42 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=floware
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - /var/lib/postgres-data:/var/lib/postgresql/data
       - /var/lib/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - floware-network
 
+  # Celery broker and floware cache. noeviction so queued tasks are never
+  # evicted; at the cap, writes fail and reads keep working.
   redis:
     image: redis:7.4
     container_name: redis
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - "6379:6379"
     networks:
       - floware-network
 
   # Local S3 + SQS for CLOUD_PROVIDER=aws.
-  # Pinned to 4.14, the last community release that runs without LOCALSTACK_AUTH_TOKEN.
-  # State is in-memory; dev-start.sh creates the bucket and queue after it starts.
+  # Official localstack/localstack community (incl. 4.14) does not persist state —
+  # PERSISTENCE=1 is Pro-only. gresau/localstack-persist is a community drop-in
+  # that saves S3/KMS/SQS under /persisted-data across restarts. Pin major.minor
+  # to match the last LocalStack that runs without LOCALSTACK_AUTH_TOKEN.
+  # Do not set PERSISTENCE=1 here (that enables LocalStack's unused Pro path).
+  # dev-start.sh still idempotently ensures the bucket, queue, and keys exist.
   localstack:
-    image: localstack/localstack:4.14
+    image: gresau/localstack-persist:4.14
     container_name: localstack
     security_opt:
       - no-new-privileges:true
@@ -40,12 +54,16 @@ services:
       - SQS_ENDPOINT_STRATEGY=path
       - LOCALSTACK_HOST=localhost:4566
     ports:
-      - '4566:4566'
+      - "4566:4566"
+    volumes:
+      - localstack-data:/persisted-data
     networks:
       - floware-network
 
 volumes:
   db:
+    driver: local
+  localstack-data:
     driver: local
 
 networks:

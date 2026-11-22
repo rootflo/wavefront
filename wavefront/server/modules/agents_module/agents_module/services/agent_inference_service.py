@@ -288,7 +288,13 @@ class AgentInferenceService:
         Returns:
             Tool object if API service found, None otherwise
         """
-        return await load_api_service_tool(tool_name, self.api_services_manager)
+        # The registry's copy has the floware client bound to its `api`
+        # argument; the bare function would be missing it.
+        return await load_api_service_tool(
+            tool_name,
+            self.api_services_manager,
+            self.tool_loader.function_registry['trigger_api_service'],
+        )
 
     def _create_llm_instance(self, config: LlmInferenceConfig):
         """
@@ -357,6 +363,15 @@ class AgentInferenceService:
                 **llm_kwargs,
             )
         elif config.type == 'gemini':
+            # The config UI stores Gemini's thinking setting flat; the SDK takes it
+            # nested (and drops a flat one with a warning).
+            thinking = {
+                key: llm_kwargs.pop(key)
+                for key in ('thinking_level', 'thinking_budget')
+                if key in llm_kwargs
+            }
+            if thinking:
+                llm_kwargs['thinking_config'] = thinking
             return Gemini(
                 model=config.llm_model,
                 api_key=config.api_key,
@@ -508,7 +523,7 @@ class AgentInferenceService:
                 'Required to resolve rootflo model_id references.'
             )
 
-        llm_config_dict = await self.llm_inference_config_service.get_config(
+        llm_config_dict = await self.llm_inference_config_service.get_runtime_config(
             config_uuid
         )
         if not llm_config_dict:

@@ -59,7 +59,12 @@ class ImageEmbedding:
         }
 
     def _extract_clip_features(self, inputs: Dict[str, Any]) -> torch.Tensor:
-        return self.clip_model.get_image_features(**inputs)
+        # transformers 5 returns a BaseModelOutputWithPooling whose pooler_output
+        # holds the projected image embedding (4.x returned that tensor directly).
+        features = self.clip_model.get_image_features(**inputs)
+        if isinstance(features, torch.Tensor):
+            return features
+        return features.pooler_output
 
     def _extract_dino_features(self, inputs: Dict[str, Any]) -> torch.Tensor:
         outputs = self.dino_model(**inputs)

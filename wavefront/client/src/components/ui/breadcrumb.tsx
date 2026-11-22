@@ -2,7 +2,8 @@ import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { ChevronRight, MoreHorizontal } from 'lucide-react';
 
-import { cn, formatAppName } from '@app/lib/utils';
+import { cn } from '@app/lib/utils';
+import { formatAppName } from '@app/utils/string-formatting';
 
 const Breadcrumb = React.forwardRef<
   HTMLElement,
@@ -45,8 +46,21 @@ const BreadcrumbLink = React.forwardRef<
 });
 BreadcrumbLink.displayName = 'BreadcrumbLink';
 
-const BreadcrumbPage = React.forwardRef<HTMLSpanElement, React.ComponentPropsWithoutRef<'span'>>(
-  ({ className, children, ...props }, ref) => (
+const BreadcrumbPage = React.forwardRef<
+  HTMLSpanElement,
+  React.ComponentPropsWithoutRef<'span'> & {
+    /** While the page's resource loads, a placeholder bar stands in for its name. */
+    loading?: boolean;
+  }
+>(({ className, children, loading, ...props }, ref) =>
+  loading ? (
+    <span
+      ref={ref}
+      aria-label="Loading"
+      className={cn('bg-primary/10 inline-block h-3.5 w-24 animate-pulse rounded align-middle', className)}
+      {...props}
+    />
+  ) : (
     <span
       ref={ref}
       role="link"

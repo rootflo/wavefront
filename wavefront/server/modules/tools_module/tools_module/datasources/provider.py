@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from datasource.types import is_file_storage_type
 from tools_module.interfaces.tool_details_provider import ToolDetailsProvider
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.datasource import Datasource
@@ -20,7 +21,14 @@ class DatasourceToolDetailsProvider(ToolDetailsProvider):
 
         if 'datasource_id' in prefill_values:
             all_datasource = await self.datasource_repository.find()
-            all_datasource = [datasource.to_dict() for datasource in all_datasource]
+            # File tools only work on file storage datasources and SQL tools
+            # only on SQL ones, so each tool is offered for its own kind.
+            wants_file_storage = tool_metadata.get('datasource_kind') == 'file_storage'
+            all_datasource = [
+                datasource.to_dict()
+                for datasource in all_datasource
+                if is_file_storage_type(datasource.type) == wants_file_storage
+            ]
 
             for datasource in all_datasource:
                 tool_details.append(

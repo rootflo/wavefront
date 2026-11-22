@@ -1,30 +1,30 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetMessageProcessors } from '@app/hooks';
+import { useDeleteMessageProcessor, useGetMessageProcessors } from '@app/hooks';
 import { getMessageProcessorsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/utils/download';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { MessageProcessorListItem } from '@app/types/message-processor';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, Trash2 } from 'lucide-react';
+import { Copy, Download, Trash2, Braces, Upload } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateFunctionDialog from './CreateFunctionDialog';
 import { parseUploadedFunction } from './function-utils';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/utils/search';
 
 const formatCreatedAt = (value?: string) => {
   if (!value) return '—';
@@ -36,10 +36,11 @@ const formatCreatedAt = (value?: string) => {
 const FunctionsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView('functions');
   const queryClient = useQueryClient();
+  const deleteMessageProcessor = useDeleteMessageProcessor(appId);
+  const deletion = useDeleteConfirm<MessageProcessorListItem>((item) => deleteMessageProcessor.mutateAsync(item.id));
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteItem, setDeleteItem] = useState<MessageProcessorListItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
@@ -52,28 +53,15 @@ const FunctionsManagement: React.FC = () => {
   const { data: processors = [], isLoading: loading } = useGetMessageProcessors(appId);
 
   const filteredProcessors = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = term
-      ? processors.filter(
-          (processor) =>
-            processor.name.toLowerCase().includes(term) ||
-            processor.id.toLowerCase().includes(term) ||
-            (processor.description || '').toLowerCase().includes(term)
-        )
-      : processors;
+    const filtered = processors.filter((processor) =>
+      matchesSearch(searchTerm, processor.name, processor.id, processor.description)
+    );
 
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [processors, searchTerm]);
 
   const handleCreateProcessor = () => {
     setCreateDialogOpen(true);
-  };
-
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({
-      queryKey: getMessageProcessorsKey(appId || ''),
-    });
-    setCreateDialogOpen(false);
   };
 
   const handleProcessorClick = (processorId: string) => {
@@ -164,81 +152,37 @@ const FunctionsManagement: React.FC = () => {
 
     if (created > 0) {
       notifySuccess(`Created ${created} ${created === 1 ? 'function' : 'functions'}`);
+      queryClient.invalidateQueries({ queryKey: getMessageProcessorsKey(appId || '') });
     }
     setBulkError(failed.length > 0 ? `Failed to create functions: ${failed.join(', ')}` : '');
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-
-    setDeleting(true);
-    try {
-      await floConsoleService.messageProcessorService.deleteMessageProcessor(deleteItem.id);
-      notifySuccess('Function deleted successfully');
-      queryClient.invalidateQueries({
-        queryKey: getMessageProcessorsKey(appId || ''),
-      });
-      setDeleteItem(null);
-    } catch {
-      notifyError('Failed to delete function');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
-      <Breadcrumb className="mb-4 shrink-0">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/functions`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Functions
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <PageBreadcrumb className="shrink-0" items={[{ label: 'Functions', to: `/apps/${appId}/functions` }]} />
 
-      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Functions</h1>
-          <p className="frost-text-muted mt-2">Manage and configure functions for {selectedApp?.app_name}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Input
-            className="w-[200px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button variant="outline" onClick={() => setBulkDownloadOpen(true)} disabled={processors.length === 0}>
-            Download
-          </Button>
-          <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-            Upload
-          </Button>
-          <Button onClick={handleCreateProcessor}>Create Function</Button>
-        </div>
-      </div>
+      <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
+        title="Functions"
+        count={filteredProcessors.length || undefined}
+        subtitle={<>Manage and configure functions for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search functions' }}
+        secondary={[
+          {
+            label: 'Download',
+            icon: Download,
+            onClick: () => setBulkDownloadOpen(true),
+            disabled: processors.length === 0,
+          },
+          { label: 'Upload', icon: Upload, onClick: () => setBulkUploadOpen(true) },
+        ]}
+        primary={{ label: 'Create function', onClick: handleCreateProcessor }}
+      />
 
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
-        <p className="frost-text-muted text-sm">Loading functions...</p>
+        <ResourceListSkeleton view={view} />
       ) : filteredProcessors.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -249,81 +193,106 @@ const FunctionsManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>ID</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <ResourceList
+          view={view}
+          cards={
+            <>
               {filteredProcessors.map((processor) => (
-                <TableRow
+                <ResourceCard
                   key={processor.id}
-                  className="cursor-pointer"
+                  icon={Braces}
+                  title={processor.name}
+                  description={processor.description || undefined}
+                  metadata={[
+                    { label: 'Id', value: processor.id, isMono: true, isCopyable: true },
+                    { label: 'Created', value: formatCreatedAt(processor.created_at) },
+                  ]}
                   onClick={() => handleProcessorClick(processor.id)}
-                >
-                  <TableCell className="max-w-[220px] truncate font-medium" title={processor.name}>
-                    {processor.name}
-                  </TableCell>
-                  <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <span className="truncate font-mono text-xs" title={processor.id}>
-                        {processor.id}
-                      </span>
-                      <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(processor.id)}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-[280px] truncate text-sm" title={processor.description || ''}>
-                    {processor.description || '—'}
-                  </TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(processor.created_at)}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Download"
-                        loading={downloadingId === processor.id}
-                        onClick={() => void handleFunctionDownload(processor)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(processor)}>
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                  onDeleteClick={() => deletion.ask(processor)}
+                  deleteTitle="Delete function"
+                  extraActions={[
+                    {
+                      label: 'Download',
+                      icon: Download,
+                      disabled: downloadingId === processor.id,
+                      onClick: () => void handleFunctionDownload(processor),
+                    },
+                  ]}
+                />
               ))}
-            </TableBody>
-          </Table>
-        </div>
+            </>
+          }
+          table={
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProcessors.map((processor) => (
+                  <TableRow
+                    key={processor.id}
+                    className="cursor-pointer"
+                    onClick={() => handleProcessorClick(processor.id)}
+                  >
+                    <TableCell className="max-w-[220px] truncate font-medium" title={processor.name}>
+                      {processor.name}
+                    </TableCell>
+                    <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-mono text-xs" title={processor.id}>
+                          {processor.id}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copy ID"
+                          onClick={() => void handleCopyId(processor.id)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[280px] truncate text-sm" title={processor.description || ''}>
+                      {processor.description || '—'}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(processor.created_at)}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Download"
+                          loading={downloadingId === processor.id}
+                          onClick={() => void handleFunctionDownload(processor)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" title="Delete" onClick={() => deletion.ask(processor)}>
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          }
+        />
       )}
 
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Function"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleting}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
-      {appId && (
-        <CreateFunctionDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
+      {appId && <CreateFunctionDialog isOpen={createDialogOpen} onOpenChange={setCreateDialogOpen} appId={appId} />}
 
       <BulkDownloadDialog
         isOpen={bulkDownloadOpen}

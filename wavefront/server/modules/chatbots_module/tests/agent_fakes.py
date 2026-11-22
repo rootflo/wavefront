@@ -47,7 +47,7 @@ class ScriptedLLM(BaseLLM):
     async def format_document_in_message(self, document):
         return ''
 
-    def format_tool_call_message(self, content, tool_calls):
+    def format_stored_tool_call_message(self, content, tool_calls):
         # A provider that is sent the call itself, so replay can be asserted.
         return {
             'role': 'assistant',

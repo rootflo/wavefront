@@ -1,4 +1,3 @@
-import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import {
@@ -12,8 +11,7 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { EMAIL_CAPABILITIES, getEmailProviderOptions } from '@app/config/email-providers';
-import { useGetOAuthApps } from '@app/hooks';
-import { extractErrorMessage } from '@app/lib/utils';
+import { useCreateEmailConnection, useGetOAuthApps } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { EmailCapability, EmailProviderType } from '@app/types/email';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -22,10 +20,9 @@ interface ConnectMailboxDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
-  onSuccess?: () => void;
 }
 
-const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onOpenChange, appId, onSuccess }) => {
+const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onOpenChange, appId }) => {
   const { notifyError } = useNotifyStore();
   const { data: oauthApps = [] } = useGetOAuthApps(appId);
 
@@ -33,7 +30,7 @@ const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onO
   const [provider, setProvider] = useState<EmailProviderType>('gmail');
   const [oauthAppId, setOauthAppId] = useState<string>('');
   const [capabilities, setCapabilities] = useState<EmailCapability[]>(['read']);
-  const [loading, setLoading] = useState(false);
+  const createConnection = useCreateEmailConnection(appId);
 
   const eligibleApps = useMemo(
     () => oauthApps.filter((oauthApp) => oauthApp.provider === provider && oauthApp.is_enabled),
@@ -59,7 +56,7 @@ const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onO
     );
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!name.trim()) {
       notifyError('Name is required');
       return;
@@ -73,34 +70,30 @@ const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onO
       return;
     }
 
-    setLoading(true);
-    try {
-      const emailsPageUrl = `${window.location.origin}/apps/${appId}/email-connections`;
-      const response = await floConsoleService.emailConnectionService.createEmailConnection({
+    const emailsPageUrl = `${window.location.origin}/apps/${appId}/email-connections`;
+    createConnection.mutate(
+      {
         name: name.trim(),
         provider,
         oauth_app_id: oauthAppId,
         capabilities,
         success_redirect_url: emailsPageUrl,
         failure_redirect_url: emailsPageUrl,
-      });
-
-      const authorizationUrl = response.data?.data?.authorization_url;
-      if (!authorizationUrl) {
-        notifyError('Connection created but no consent URL was returned');
-        return;
+      },
+      {
+        onSuccess: (response) => {
+          const authorizationUrl = response.data?.data?.authorization_url;
+          if (!authorizationUrl) {
+            notifyError('Connection created but no consent URL was returned');
+            return;
+          }
+          onOpenChange(false);
+          // The mailbox owner has to grant consent on the provider's own domain, so
+          // the flow leaves the app here and comes back through the OAuth callback.
+          window.location.assign(authorizationUrl);
+        },
       }
-
-      onSuccess?.();
-      onOpenChange(false);
-      // The mailbox owner has to grant consent on the provider's own domain, so
-      // the flow leaves the app here and comes back through the OAuth callback.
-      window.location.assign(authorizationUrl);
-    } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to start connecting the mailbox');
-    } finally {
-      setLoading(false);
-    }
+    );
   };
 
   return (
@@ -188,7 +181,12 @@ const ConnectMailboxDialog: React.FC<ConnectMailboxDialogProps> = ({ isOpen, onO
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" loading={loading} disabled={eligibleApps.length === 0} onClick={handleSubmit}>
+          <Button
+            type="button"
+            loading={createConnection.isPending}
+            disabled={eligibleApps.length === 0}
+            onClick={handleSubmit}
+          >
             Continue to Consent
           </Button>
         </DialogFooter>

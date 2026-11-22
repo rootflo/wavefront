@@ -32,7 +32,7 @@ from user_management_module.utils.user_utils import check_is_admin, get_current_
 
 datasource_audit_router = APIRouter()
 
-VALID_OPERATIONS = ('insert', 'update', 'delete')
+VALID_OPERATIONS = ('insert', 'update', 'delete', 'upload', 'download')
 
 # Query params starting with this address a column of the *mutated* row, looked
 # up in filter_params. The prefix is not decoration: the audited schemas are the

@@ -38,7 +38,7 @@ ORDERS = {
 PROVIDERS = ['openai', 'anthropic', 'gemini']
 
 # Providers whose message format carries the tool call itself, not only the
-# result (see BaseLLM.format_tool_call_message).
+# result (see BaseLLM.format_stored_tool_call_message).
 PROVIDERS_SENT_THE_CALL = ['openai', 'anthropic']
 
 
@@ -335,7 +335,7 @@ class TestStoredConversationReal:
     @pytest.mark.parametrize('provider', PROVIDERS_SENT_THE_CALL, indirect=True)
     @pytest.mark.asyncio
     async def test_formatted_call_and_result_are_accepted(self, llm):
-        """format_tool_call_message output, sent straight to the provider."""
+        """format_stored_tool_call_message output, sent straight to the provider."""
         tool = order_tool([])
         functions = llm.format_tools_for_llm([tool])
         messages = [
@@ -358,7 +358,7 @@ class TestStoredConversationReal:
             id=llm.get_tool_use_id(function_call),
         )
 
-        call_message = llm.format_tool_call_message(
+        call_message = llm.format_stored_tool_call_message(
             llm.get_message_content(response) or '', [call]
         )
         assert call_message is not None

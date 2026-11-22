@@ -30,7 +30,7 @@ class WebhookConfig(BaseModel):
     status_callback_url: str = Field(
         ...,
         description='URL to receive call status updates (ringing, answered, completed)',
-        example='https://example.com/webhooks/call-status',
+        examples=['https://example.com/webhooks/call-status'],
     )
 
 
@@ -44,17 +44,17 @@ class SipConfig(BaseModel):
     sip_domain: str = Field(
         ...,
         description='SIP domain (e.g., pstn.twilio.com, example.sip.daily.co)',
-        example='pstn.twilio.com',
+        examples=['pstn.twilio.com'],
     )
     port: Optional[int] = Field(
         None,
         description='SIP port (optional, provider-specific)',
         ge=1,
         le=65535,
-        example=5061,
+        examples=[5061],
     )
     transport: Optional[Literal['udp', 'tcp', 'tls']] = Field(
-        None, description='SIP transport protocol (optional)', example='tls'
+        None, description='SIP transport protocol (optional)', examples=['tls']
     )
 
 

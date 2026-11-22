@@ -18,12 +18,11 @@ class AuthManager:
         self._auth_handlers: Dict[str, AuthHandler] = {}
 
     def register_service_auth(self, service_definition: ServiceDefinition):
-        """Register authentication handler for a service."""
+        """Register, or replace on reload, the authentication handler for a service."""
         auth_key = f'{service_definition.id}:{service_definition.auth.version}'
-
-        if auth_key not in self._auth_handlers:
-            handler = AuthHandlerFactory.create_handler(service_definition.auth)
-            self._auth_handlers[auth_key] = handler
+        self._auth_handlers[auth_key] = AuthHandlerFactory.create_handler(
+            service_definition.auth
+        )
 
     def get_auth_handler(
         self, service_id: str, auth_version: str = 'v1'

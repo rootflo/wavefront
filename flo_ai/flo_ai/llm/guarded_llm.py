@@ -187,8 +187,13 @@ class GuardedLLM(BaseLLM):
         # the provider's native document handling and cache under 'GuardedLLM'.
         return await self._inner_llm.format_document_in_message(document)
 
-    # Delegated rather than inherited, for the same reason: BaseLLM gives each
-    # of these a default, so __getattr__ never fires for them and the wrapped
+    async def format_video_in_message(self, video: Any) -> Any:
+        # Delegated for the same reason as documents: Gemini sends video
+        # natively, and the cache key must be the provider's.
+        return await self._inner_llm.format_video_in_message(video)
+
+    # Tool-call protocol, delegated for the same reason: BaseLLM gives each of
+    # these a default, so __getattr__ never fires for them and the wrapped
     # provider's own version (Claude's tool_use handling, say) would be
     # replaced by the default.
 
@@ -202,6 +207,11 @@ class GuardedLLM(BaseLLM):
     def get_assistant_message_for_tool_call(self, response: Any) -> Optional[Any]:
         return self._inner_llm.get_assistant_message_for_tool_call(response)
 
+    def format_tool_call_message(
+        self, response: Any, function_call: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        return self._inner_llm.format_tool_call_message(response, function_call)
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         return self._inner_llm.get_tool_use_id(function_call)
 
@@ -212,10 +222,10 @@ class GuardedLLM(BaseLLM):
             function_name, content, tool_use_id
         )
 
-    def format_tool_call_message(
+    def format_stored_tool_call_message(
         self, content: str, tool_calls: List[Any]
     ) -> Optional[Dict[str, Any]]:
-        return self._inner_llm.format_tool_call_message(content, tool_calls)
+        return self._inner_llm.format_stored_tool_call_message(content, tool_calls)
 
     # -- inference -------------------------------------------------------
 

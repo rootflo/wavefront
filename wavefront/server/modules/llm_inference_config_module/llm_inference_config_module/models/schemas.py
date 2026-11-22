@@ -3,10 +3,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Sentinel value to distinguish between "not provided" and "explicitly null"
 UNSET = object()
+
+API_KEY_MAX_LENGTH = 512
 
 
 class InferenceEngineType(str, Enum):
@@ -17,6 +19,7 @@ class InferenceEngineType(str, Enum):
     ANTHROPIC = 'anthropic'
     AZURE_OPENAI = 'azure_openai'
     GROQ = 'groq'
+    BEDROCK = 'bedrock'
 
 
 class CreateLlmInferenceConfigPayload(BaseModel):
@@ -25,7 +28,9 @@ class CreateLlmInferenceConfigPayload(BaseModel):
         ..., description='Human-readable display name for the configuration'
     )
     api_key: Optional[str] = Field(
-        None, description='API key for the inference engine (optional)'
+        None,
+        max_length=API_KEY_MAX_LENGTH,
+        description='API key for the inference engine (optional)',
     )
     type: InferenceEngineType = Field(..., description='Type of inference engine')
     model_type: Optional[str] = Field(
@@ -61,6 +66,13 @@ class UpdateLlmInferenceConfigPayload(BaseModel):
     parameters: Union[Optional[Dict[str, Any]], Any] = Field(
         default=UNSET, description='LLM parameters like temperature, max_tokens, etc.'
     )
+
+    @field_validator('api_key')
+    @classmethod
+    def _api_key_max_length(cls, value):
+        if isinstance(value, str) and len(value) > API_KEY_MAX_LENGTH:
+            raise ValueError(f'api_key must be at most {API_KEY_MAX_LENGTH} characters')
+        return value
 
 
 class LlmInferenceConfigResponse(BaseModel):

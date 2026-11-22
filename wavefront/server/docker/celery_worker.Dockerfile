@@ -27,6 +27,7 @@ COPY wavefront/server/modules/user_management_module /app/modules/user_managemen
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
+COPY wavefront/server/packages/flo_lib /app/packages/flo_lib
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
@@ -35,16 +36,6 @@ COPY wavefront/server/plugins/mailer /app/plugins/mailer
 COPY wavefront/server/background_jobs/celery_worker /app/background_jobs/celery_worker
 
 RUN uv sync --package celery-worker --frozen --no-dev
-
-# spaCy model for Presidio, and the regex bound Presidio reads at import time.
-# The worker registers the PII adapter at startup just like floware does, so
-# both apply here for the same reasons -- see floware.Dockerfile, which carries
-# the full rationale. Without the model, the first guarded task pays a
-# multi-hundred-MB download inside the task itself.
-RUN uv pip install pip && \
-    /app/.venv/bin/python -m spacy download en_core_web_lg
-
-ENV REGEX_TIMEOUT_SECONDS=2
 
 RUN useradd -m -u 1000 celery && \
     chown -R celery:celery /app

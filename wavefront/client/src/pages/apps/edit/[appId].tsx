@@ -1,11 +1,10 @@
+import AppsBackdrop from '@app/components/AppsBackdrop';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetAppById, useUpdateApp } from '@app/hooks';
-import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -18,11 +17,9 @@ type TEditAppInputSchema = z.infer<typeof createAppSchema>;
 const EditApp: React.FC = () => {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
 
   const { data: response } = useGetAppById(appId!, !!appId);
-  const queryClient = useQueryClient();
-  const { mutate: updateApp, isPending: isUpdating } = useUpdateApp(queryClient, notifySuccess, notifyError);
+  const { mutate: updateApp, isPending: isUpdating } = useUpdateApp();
   // Extract app data from response - adjust based on actual API response structure
   const appData = response;
 
@@ -48,18 +45,18 @@ const EditApp: React.FC = () => {
     }
   }, [appData, form]);
 
-  const handleEditAppSubmit = async (formData: TEditAppInputSchema) => {
-    try {
-      updateApp({
+  const handleEditAppSubmit = (formData: TEditAppInputSchema) => {
+    updateApp(
+      {
         appId: appId!,
-        appName: formData.app_name,
-        public_url: formData.public_url!,
-        private_url: formData.private_url!,
-      });
-      navigate(`/apps`);
-    } catch (error) {
-      console.error('Error updating app:', error);
-    }
+        data: {
+          app_name: formData.app_name,
+          public_url: formData.public_url!,
+          private_url: formData.private_url!,
+        },
+      },
+      { onSuccess: () => navigate('/apps') }
+    );
   };
 
   const handleCancel = () => {
@@ -67,12 +64,13 @@ const EditApp: React.FC = () => {
   };
 
   return (
-    <div className="frost-canvas relative flex h-full items-center justify-center p-6 px-[210px] pt-[139px] pb-[138px]">
+    <div className="frost-canvas relative isolate flex h-full items-start justify-center overflow-y-auto p-4 sm:p-6 md:items-center md:px-[210px] md:pt-[139px] md:pb-[138px]">
+      <AppsBackdrop />
       <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(handleEditAppSubmit)}
-          className="frost-card ring-frost-border relative flex w-full max-w-[940px] flex-col gap-16 rounded-2xl border p-8 ring-1"
+          className="frost-card ring-frost-border relative flex w-full max-w-[940px] flex-col gap-8 rounded-2xl border p-4 ring-1 sm:gap-16 sm:p-8"
         >
           <div className="flex justify-between">
             <div className="flex flex-col gap-2">
@@ -88,7 +86,7 @@ const EditApp: React.FC = () => {
             </button>
           </div>
           <div className="flex flex-col gap-10">
-            <div className="flex justify-between gap-10">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:gap-10">
               <FormField
                 control={form.control}
                 name="app_name"
@@ -129,7 +127,7 @@ const EditApp: React.FC = () => {
               />
             </div>
 
-            <div className="flex justify-between gap-10">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:gap-10">
               <FormField
                 control={form.control}
                 name="public_url"

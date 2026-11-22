@@ -82,7 +82,7 @@ export const chatbotFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['llm_config_id'],
-        message: 'LLM configuration is required',
+        message: 'Model is required',
       });
     }
   });

@@ -2,7 +2,6 @@ import * as React from 'react';
 
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -64,16 +63,16 @@ const DeleteConfirmationDialog: React.FC<DeleteConfirmationDialogProps> = ({
           <AlertDialogCancel onClick={onCancel} disabled={isDeleting || loading}>
             {cancelLabel}
           </AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant="destructive"
-              onClick={handleConfirm}
-              loading={isDeleting || loading}
-              disabled={isDeleting || loading}
-            >
-              {confirmLabel}
-            </Button>
-          </AlertDialogAction>
+          {/* A plain button, not AlertDialogAction: that closes the dialog on click, before the delete has
+              finished. The caller closes it once the delete succeeds, so a failure can be retried. */}
+          <Button
+            variant="destructive"
+            onClick={handleConfirm}
+            loading={isDeleting || loading}
+            disabled={isDeleting || loading}
+          >
+            {confirmLabel}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

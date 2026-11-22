@@ -39,6 +39,16 @@ def test_app_broker_matches_settings():
     assert app.conf.result_backend == settings.CELERY_RESULT_BACKEND
 
 
+def test_app_consumes_the_configured_queue():
+    name = settings.CELERY_QUEUE_NAME
+    assert app.conf.task_default_queue == '{' + name + '}'
+    assert app.conf.broker_transport_options == {
+        'unacked_key': '{' + name + '}.unacked',
+        'unacked_index_key': '{' + name + '}.unacked_index',
+        'unacked_mutex_key': '{' + name + '}.unacked_mutex',
+    }
+
+
 def test_teardown_helpers_are_callable():
     # Idempotent / safe when telemetry + loop were never started.
     teardown_event_loop()

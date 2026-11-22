@@ -1,7 +1,10 @@
+import asyncio
 import uuid
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from agents_module.utils.celery_backpressure import ensure_queue_capacity
+from agents_module.utils.celery_settings import CeleryProducerSettings
 from celery import Celery
 from common_module.log.logger import logger
 from db_repo_module.models.agentic_trigger import AgenticTrigger
@@ -37,10 +40,12 @@ class TriggerPushReceiver:
         trigger_repository: SQLAlchemyRepository[AgenticTrigger],
         email_connection_service: EmailConnectionService,
         celery_client: Celery,
+        celery_settings: CeleryProducerSettings | None = None,
     ):
         self._triggers = trigger_repository
         self._connections = email_connection_service
         self._celery = celery_client
+        self._celery_settings = celery_settings or CeleryProducerSettings()
 
     async def handle_push(
         self,
@@ -112,7 +117,13 @@ class TriggerPushReceiver:
             uuid.uuid4()
         )
 
-        self._celery.send_task(
+        # After verification, so only an accepted push can get a 429. Pub/Sub
+        # redelivers a non-2xx, so the event is deferred, not lost.
+        await ensure_queue_capacity(self._celery, self._celery_settings)
+
+        # send_task is blocking redis-py.
+        await asyncio.to_thread(
+            self._celery.send_task,
             _TRIGGER_EVENT_TASK_NAME,
             kwargs={
                 'trigger_id': str(trigger_id),

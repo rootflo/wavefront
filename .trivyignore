@@ -1,0 +1,3 @@
+# CVEs accepted by the Docker vulnerability scan (.github/workflows/docker-vulnerability-scan.yml).
+# One ID per line, with a comment saying why and until when, e.g.
+# CVE-2026-12345  # no fixed release yet; revisit 2026-12-01

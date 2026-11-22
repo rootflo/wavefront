@@ -32,6 +32,7 @@ const getAuthenticatorsKey = (appId: string) => ['authenticators', appId];
 const getAuthenticatorKey = (appId: string, authId: string) => ['authenticator', appId, authId];
 const getOAuthAppsKey = (appId: string) => ['oauth-apps', appId];
 const getOAuthAppKey = (appId: string, oauthAppId: string) => ['oauth-app', appId, oauthAppId];
+const getSecretsKey = (appId: string) => ['secrets', appId];
 const getEmailConnectionsKey = (appId: string) => ['email-connections', appId];
 const getEmailConnectionKey = (appId: string, connectionId: string) => ['email-connection', appId, connectionId];
 const getLLMConfigsKey = (appId: string) => ['llm-configs', appId];
@@ -58,6 +59,9 @@ const getVoiceAgentKey = (appId: string, agentId: string) => ['voice-agent', app
 const getTtsConfigKey = (appId: string, configId: string) => ['tts-config', appId, configId];
 const getSttConfigKey = (appId: string, configId: string) => ['stt-config', appId, configId];
 const getTelephonyConfigKey = (appId: string, configId: string) => ['telephony-config', appId, configId];
+/** Without a version this is the prefix of every version's key, so it refreshes them all. */
+const getWorkflowKey = (appId: string, workflowId: string, version?: number) =>
+  version !== undefined ? ['workflow', appId, workflowId, version] : ['workflow', appId, workflowId];
 const getAgentKey = (appId: string, agentId: string, version?: number) =>
   version !== undefined ? ['agent', appId, agentId, version] : ['agent', appId, agentId];
 const getAgentVersionsKey = (appId: string, agentId: string) => ['agent-versions', appId, agentId];
@@ -73,6 +77,7 @@ const getAppByIdKey = (appId: string) => ['app-by-id', appId];
 const getAppUsersKey = (appId: string) => ['app-users', appId];
 const getConsoleUsersKey = () => ['console-users'];
 const getUserKey = (userId: string) => ['user', userId];
+const getUserAppsKey = (userId: string) => ['user-apps', userId];
 const getVoiceAgentToolsKey = (appId: string) => ['voice-agent-tools', appId];
 const getVoiceAgentToolKey = (appId: string, toolId: string) => ['voice-agent-tool', appId, toolId];
 const getAgentToolsKey = (appId: string, agentId: string) => ['agent-tools', appId, agentId];
@@ -100,6 +105,7 @@ export {
   getEmailConnectionsKey,
   getOAuthAppKey,
   getOAuthAppsKey,
+  getSecretsKey,
   readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseIndexStatusKey,
@@ -124,11 +130,13 @@ export {
   getTtsConfigKey,
   getTtsConfigsKey,
   getUserKey,
+  getUserAppsKey,
   getConsoleUsersKey,
   getVoiceAgentKey,
   getVoiceAgentToolKey,
   getVoiceAgentToolsKey,
   getVoiceAgentsKey,
+  getWorkflowKey,
   getWorkflowsKey,
   getAppByIdKey,
   getAppUsersKey,

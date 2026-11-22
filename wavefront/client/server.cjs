@@ -1,6 +1,7 @@
 const compression = require('compression');
 const crypto = require('crypto');
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
@@ -8,6 +9,9 @@ const NAMESPACE = process.env.NAMESPACE || 'staging-aws';
 const BASE_URL = process.env.BASE_URL || `https://${NAMESPACE}.rootflo.ai/floconsole`;
 const APP_ENV = process.env.APP_ENV || 'production';
 const FEATURE_API_SERVICES = process.env.FEATURE_API_SERVICES || 'false';
+
+// index.html is fixed at build time, so read it once instead of per request
+const indexContent = fs.readFileSync(path.join(__dirname, 'dist', 'index.html'), 'utf8');
 
 const app = express();
 
@@ -47,7 +51,8 @@ app.use((req, res, next) => {
   express.static(path.join(__dirname, 'dist'), staticOptions)(req, res, next);
 });
 
-app.get('*', (req, res) => {
+// Express 5 (path-to-regexp 8) needs a named wildcard; '/{*splat}' also matches '/'
+app.get('/{*splat}', (req, res) => {
   // Generate nonce for CSP
   const nonce = crypto.randomBytes(16).toString('base64');
   const defaultSrc = `'self'`;
@@ -67,10 +72,6 @@ app.get('*', (req, res) => {
     'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
   });
   res.setHeader('X-Frame-Options', 'DENY');
-
-  // Read the index.html file
-  const indexPath = path.join(__dirname, 'dist', 'index.html');
-  const indexContent = require('fs').readFileSync(indexPath, 'utf8');
 
   // Add nonce to script tags
   const modifiedContent = indexContent.replace(/<script/g, `<script nonce="${nonce}"`);

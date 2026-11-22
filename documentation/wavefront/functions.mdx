@@ -1,0 +1,127 @@
+---
+title: "Functions"
+description: "Small JavaScript steps for the exact parts of a workflow: computing, comparing, deciding, reshaping"
+icon: "function"
+---
+
+A **function** is a small JavaScript program saved in an app. It takes a JSON object and returns one. In the console they are listed under **Functions**; the API calls them **message processors**.
+
+Use functions for everything that must be exact and explainable:
+
+- turning variables into the parameters of the next step;
+- cutting a large record down to the brief one agent needs;
+- comparing an agent's findings with the submitted data;
+- **deciding** an outcome from rules, and computing scores;
+- reshaping a result into a table row, and checking it before it is saved.
+
+Agents gather evidence; functions decide. Functions are fast, cost nothing per call, always give the same answer for the same input, and can be tested on their own.
+
+## Anatomy
+
+```yaml
+type: javascript
+description: >-
+  Approves an order when the agent found no issues and the amount is under the limit.
+function:
+  code: |
+    export default function (input) {
+      const review = input.node_outputs?.order_review?.[0];
+      if (!review) throw new Error('order_review output is missing');
+      const limit = Number(input.approval_limit ?? 1000);
+      const approved = review.issues.length === 0 && input.amount <= limit;
+      return {
+        decision: approved ? 'APPROVE' : 'REFER',
+        reasons: approved ? [] : [...review.issues, ...(input.amount > limit ? ['amount over limit'] : [])],
+      };
+    }
+input_schema:
+  required:
+    - amount
+  properties:
+    amount:
+      type: number
+      description: Order amount
+    approval_limit:
+      type: number
+      description: Optional limit, default 1000
+```
+
+| Key | Required | |
+|---|---|---|
+| `type` | yes | `javascript` |
+| `description` | yes | What the function does. Shown in the console |
+| `function.code` | yes | The program. Its default export is called with the input object |
+| `input_schema.required` | yes | Inputs that must be present (may be empty: `required: []`). A run without one is refused with *"Input `amount` is required but not provided"* |
+| `input_schema.properties` | no | Documents each input |
+
+The default export may be `async`. Return any JSON-serialisable value; return an object when the next step reads fields from it.
+
+## The sandbox
+
+Functions run in an isolated JavaScript runtime:
+
+| | |
+|---|---|
+| Time limit | **3 seconds** per call; longer runs fail with *"The script exceeded the 3 second timeout limit"* |
+| Network | **None.** `fetch` exists but every request is refused |
+| Modules | None: no `require`, no imports. Standard JavaScript only |
+| Language | Modern JavaScript: optional chaining, `??=`, `structuredClone`, `Array.prototype.toSorted` and so on |
+
+Functions cannot read data themselves. Load what a function needs in earlier workflow steps (a [query](/wavefront/function-nodes#datasource_execute_query), a [configuration](/wavefront/function-nodes#fetch_configuration)) and select those steps in its `input_filter`.
+
+## What a function receives in a workflow
+
+Inside a workflow, a function runs through the [`trigger_message_processor`](/wavefront/function-nodes#trigger_message_processor) node. Its input object holds:
+
+- the fields of the selected upstream outputs, merged flat;
+- `node_outputs`: those outputs grouped by the node that produced them;
+- the run's variables;
+- `_wf_execution_id`.
+
+Details and an example are in [Passing data between nodes](/wavefront/workflow-data-flow#what-a-function-node-receives).
+
+## Creating and testing
+
+<Tabs>
+  <Tab title="Console">
+    Go to **Functions → Create Function**. Enter a name and a description, paste the YAML into the editor, and click **Create Processor**. Open the function to test it with a sample input.
+  </Tab>
+  <Tab title="API">
+    ```bash
+    # create
+    curl -X POST "$APP/floware/v1/message-processors" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg yaml "$(cat approve-order.yaml)" \
+            '{name: "approve-order", description: "Approves small clean orders", yaml_content: $yaml}')"
+
+    # test
+    curl -X POST "$APP/floware/v1/message-processors/<function-id>/execute" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d '{"input_data": {"amount": 250, "node_outputs": {"order_review": [{"issues": []}]}}}'
+    ```
+    ```json
+    { "meta": { "status": "success", "code": 1, "error": null },
+      "data": { "result": { "decision": "APPROVE", "reasons": [] } } }
+    ```
+  </Tab>
+</Tabs>
+
+| Action | Request |
+|---|---|
+| List | `GET /floware/v1/message-processors` |
+| Get one | `GET /floware/v1/message-processors/<id>` |
+| Update | `PUT /floware/v1/message-processors/<id>` with `yaml_content` and/or `description` |
+| Delete | `DELETE /floware/v1/message-processors/<id>` |
+| Run | `POST /floware/v1/message-processors/<id>/execute` with `{"input_data": {...}}` |
+
+<Note>
+Updating a function changes it **in place**: every workflow that uses it picks up the new code on its next run. Functions are not versioned like agents and workflows. To change a function used by a live workflow safely, create a new function, point a new workflow version at it, and switch versions.
+</Note>
+
+## Writing good functions
+
+- **Fail loudly.** `throw new Error('order_review output is missing')` stops the run with that message. Returning a half-result lets a later step misread it.
+- **Read inputs by node name** through `node_outputs` when there is more than one upstream node.
+- **Keep rules out of code** when people other than developers should change them: read thresholds and tables from a [configuration](/wavefront/configurations).
+- **Return reasons with decisions.** `{decision, reasons}` makes outcomes explainable to users and auditors.
+- **Test with real outputs.** Copy an agent's actual output from a run into the function's test input.

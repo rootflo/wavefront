@@ -14,6 +14,7 @@ from .chat_message import (
     MediaMessageContent,
     TextMessageContent,
     ImageMessageContent,
+    VideoMessageContent,
     DocumentMessageContent,
     MessageType,
 )
@@ -31,6 +32,7 @@ __all__ = [
     'MediaMessageContent',
     'TextMessageContent',
     'ImageMessageContent',
+    'VideoMessageContent',
     'DocumentMessageContent',
     'MessageType',
 ]

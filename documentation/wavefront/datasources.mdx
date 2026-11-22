@@ -1,0 +1,140 @@
+---
+title: "Datasources"
+description: "Connect databases and file storage, and read and write data through one API"
+icon: "database"
+---
+
+A **datasource** connects an app to a database or to file storage. Once connected, agents, workflows and your application read and write it through the app's API, with one authentication model, one response format and, optionally, an [audit trail](/wavefront/audit-trail).
+
+| Type | Value of `type` | Used for |
+|---|---|---|
+| PostgreSQL | `postgres` | Tables your workflows read and write |
+| Microsoft SQL Server | `mssql` | |
+| Google BigQuery | `gcp_bigquery` | |
+| AWS Redshift | `aws_redshift` | |
+| AWS S3 | `aws_s3` | Files: uploads, documents, images, video. See [File storage](/wavefront/file-storage) |
+| Google Cloud Storage | `gcs` | |
+| Azure Blob Storage | `azure_blob_storage` | |
+
+## Adding a datasource
+
+<Tabs>
+  <Tab title="Console">
+    Go to **Datasources → Create Datasource**, enter a **Datasource Name**, choose the **Datasource Type**, add an optional description, and paste the **Connection Configuration (JSON)**. The dialog shows a sample configuration for the chosen type.
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -X POST "$APP/floware/v1/datasources" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d '{
+        "name": "Orders DB",
+        "type": "postgres",
+        "description": "Order data for the review workflows",
+        "config": "{\"host\": \"db.internal\", \"port\": 5432, \"database\": \"orders\", \"user\": \"wavefront\", \"password\": \"…\", \"schema\": \"public\"}"
+      }'
+    ```
+    `config` is a JSON **string**. Adding, editing and deleting datasources needs an admin user.
+  </Tab>
+</Tabs>
+
+Connection configuration by type:
+
+| Type | Keys |
+|---|---|
+| `postgres` | `host`, `port`, `database`, `user`, `password`, `schema` |
+| `mssql` | `host`, `port`, `database`, `user`, `password`, `schema`, `encrypt`, `trust_server_certificate` |
+| `aws_redshift` | `host`, `port`, `database`, `user`, `password` |
+| `gcp_bigquery` | `project_id`, `dataset_id`, `location`, and `credentials_json` (or `credentials_path`) |
+| `aws_s3` | `bucket_name`, `region_name`, `aws_access_key_id`, `aws_secret_access_key`, optional `base_path` |
+| `gcs` | `bucket_name`, `project_id`, `credentials_json`, optional `base_path` |
+| `azure_blob_storage` | `container_name`, `account_url`, optional `base_path` |
+
+Check a connection from the datasource's page in the console, or with `POST /floware/v1/datasources/<id>/test-connection`.
+
+<Tip>
+Give Wavefront a database user with only the permissions your workflows need: read on the tables they query, insert or update on the tables they write.
+</Tip>
+
+## Reading data: use dynamic queries
+
+Read your own tables with **[dynamic queries](/wavefront/dynamic-queries)**: named SQL saved on the datasource and run with parameters. They can join, aggregate and return several result sets in one call.
+
+<Note>
+The generic table-read route (`GET /floware/v1/datasources/<id>/resources/<table>`) is restricted to a few built-in tables. For your own tables it answers *"Invalid resource name"*. Use a dynamic query instead.
+</Note>
+
+## Writing data
+
+Writes go through the table routes. Each one records an [audit](/wavefront/audit-trail) entry when auditing is enabled.
+
+### Insert
+
+```bash
+curl -X POST "$APP/floware/v1/datasources/<datasource-id>/resources/orders" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data": [{"order_id": "O-1001", "customer_id": "C-17", "amount": 250}]}'
+```
+
+### Update
+
+```bash
+curl -X PATCH "$APP/floware/v1/datasources/<datasource-id>/resources/orders" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"filter": "order_id eq '\''O-1001'\''", "data": {"status": "SHIPPED"}}'
+```
+
+### Delete
+
+```bash
+curl -X DELETE "$APP/floware/v1/datasources/<datasource-id>/resources/orders" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"filter": "order_id eq '\''O-1001'\''"}'
+```
+
+Update and delete need a non-empty `filter`, and return how many rows they touched (`updated_rows`, `deleted_rows`).
+
+### Several tables at once
+
+| Route | Body | |
+|---|---|---|
+| `POST …/resources/insert` | `{"inserts": [{"table_name": …, "data": [rows]}, …]}` | All tables in one transaction (PostgreSQL) |
+| `PATCH …/resources/update` | `{"updates": [{"table_name": …, "filter": …, "data": {…}}, …]}` | All tables in one transaction (PostgreSQL). By default (`require_all_matched: true`) the whole update is rolled back if any entry's filter matches nothing |
+
+From a workflow, use the [`datasource_insert_rows`](/wavefront/function-nodes#datasource_insert_rows) and [`datasource_insert_multi`](/wavefront/function-nodes#datasource_insert_multi) nodes.
+
+## Filters
+
+Updates, deletes and dynamic queries' `{{filters}}` take a filter expression:
+
+| Write | Means |
+|---|---|
+| `status eq 'OPEN'` | equals |
+| `amount gt 100`, `amount lt 100` | greater, less |
+| `amount gte 100`, `amount lte 100` | greater or equal, less or equal (note: `gte` / `lte`, not `ge` / `le`) |
+| `name contains 'acme'` | substring match |
+| `status in ['OPEN', 'HELD']` | one of a list, in **square brackets** |
+| `a eq 1 $and b eq 2`, `a eq 1 $or b eq 2` | combine conditions; `AND` and `OR` in capitals also work |
+| `(a eq 1 $and b eq 2) $or c eq 3` | group with parentheses |
+
+Quote text values with single quotes.
+
+<Warning>
+**Join conditions with `$and` / `$or` (or uppercase `AND` / `OR`), never lowercase `and` / `or`.** A lowercase `and` is not rejected: everything after it is **silently ignored**. `order_id eq 'O-1' and status eq 'OPEN'` updates or deletes **every** row with `order_id 'O-1'`, whatever its status. This is a known issue ([#446](https://github.com/rootflo/wavefront/issues/446)); until it is fixed, check your filters, and check `updated_rows` / `deleted_rows` in the response.
+</Warning>
+
+`ne` (not equal) is not supported in update and delete filters.
+
+## Other routes
+
+| Action | Request |
+|---|---|
+| List datasources | `GET /floware/v1/datasources` |
+| Get one | `GET /floware/v1/datasources/<id>` |
+| Update | `PATCH /floware/v1/datasources/<id>` (file-storage datasources can only be renamed) |
+| Delete | `DELETE /floware/v1/datasources/<id>` |
+| List tables | `GET /floware/v1/datasources/<id>/resources` |
+
+## Who can do what
+
+- **Admins** can add, change and delete datasources, define dynamic queries, and read and write data.
+- **Other users** need data permissions assigned to them; without them, reads answer *"Data access not set for non-admin user"*. A deployment can open data access to all signed-in users with a feature flag. See [Users and access](/wavefront/users-and-access).

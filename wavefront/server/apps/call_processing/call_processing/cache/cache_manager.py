@@ -1,9 +1,8 @@
+import asyncio
 import json
 import time
 from typing import Any, Dict, Optional, Union
 
-from azure.core.exceptions import ClientAuthenticationError
-from azure.identity import DefaultAzureCredential
 from call_processing.log.logger import logger
 
 from redis import Connection
@@ -14,32 +13,94 @@ from redis import Redis
 from redis import RedisError
 from redis import SSLConnection
 from redis import TimeoutError
-from redis.credentials import CredentialProvider
+from redis.exceptions import OutOfMemoryError
 from tenacity import retry
-from tenacity import retry_if_exception_type
+from tenacity import retry_if_exception
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 
-class AzureManagedRedisProvider(CredentialProvider):
-    """
-    Adapter to bridge Azure Identity with Redis CredentialProvider.
-    Azure Managed Redis requires 'default' as the username and the
-    Entra ID access token as the password.
-    """
+def _is_retryable_redis_error(exc: BaseException) -> bool:
+    """Retry everything except OOM, which fails the same way every time."""
+    if isinstance(exc, OutOfMemoryError):
+        return False
+    return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
 
-    def __init__(self, username: str = 'default'):
-        self.credential = DefaultAzureCredential()
-        self.scope = 'https://redis.azure.com/.default'
-        self.username = username
 
-    def get_credentials(self):
-        try:
-            token = self.credential.get_token(self.scope)
-            return (self.username, token.token)
-        except ClientAuthenticationError as e:
-            logger.error(f'Azure authentication failed: {e}')
-            raise
+# Consume the join token: validate, flip pending -> joined, drop the token hash.
+# Runs atomically so two concurrent offers cannot both win.
+#
+# KEYS[1] room key
+# ARGV[1] token hash, ARGV[2] voice_agent_id, ARGV[3] joined_at, ARGV[4] joined TTL
+# Returns {'ok'} or {'err', <code>}
+_CONSUME_ROOM_JOIN_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return {'err', 'room_expired'}
+end
+local room = cjson.decode(raw)
+if room['status'] == 'ended' then
+    return {'err', 'room_expired'}
+end
+if room['status'] ~= 'pending' then
+    return {'err', 'room_already_joined'}
+end
+if room['voice_agent_id'] ~= ARGV[2] then
+    return {'err', 'invalid_join_token'}
+end
+if (not room['join_token_hash']) or room['join_token_hash'] ~= ARGV[1] then
+    return {'err', 'invalid_join_token'}
+end
+room['status'] = 'joined'
+room['joined_at'] = ARGV[3]
+room['join_token_hash'] = nil
+redis.call('SET', KEYS[1], cjson.encode(room), 'EX', tonumber(ARGV[4]))
+return {'ok'}
+"""
+
+# Attach pc_id / instance_id to a joined room, keeping its TTL.
+# ARGV[1] pc_id, ARGV[2] instance_id
+_ATTACH_ROOM_CONNECTION_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return 0
+end
+local room = cjson.decode(raw)
+room['pc_id'] = ARGV[1]
+room['instance_id'] = ARGV[2]
+redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
+return 1
+"""
+
+# Record a completed agent swap, keeping the room TTL. Refuses agents that are not
+# on the room's allowlist, so the record can never point outside it.
+# ARGV[1] agent_id
+# Returns {'ok', <swap_count>} or {'err', <code>}
+_RECORD_ROOM_SWAP_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return {'err', 'room_expired'}
+end
+local room = cjson.decode(raw)
+if room['status'] ~= 'joined' then
+    return {'err', 'room_expired'}
+end
+local allowed = false
+if type(room['allowed_agent_ids']) == 'table' then
+    for _, id in ipairs(room['allowed_agent_ids']) do
+        if id == ARGV[1] then
+            allowed = true
+        end
+    end
+end
+if not allowed then
+    return {'err', 'agent_not_allowed'}
+end
+room['active_voice_agent_id'] = ARGV[1]
+room['swap_count'] = (tonumber(room['swap_count']) or 0) + 1
+redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
+return {'ok', room['swap_count']}
+"""
 
 
 class CacheManager:
@@ -59,8 +120,6 @@ class CacheManager:
         redis_protocol: str = 'redis',
         redis_password: str | None = None,
         redis_db: int = 0,
-        redis_username: str = 'default',
-        cloud_provider: str = '',
         pool_timeout: float = 2.0,
     ):
         """
@@ -71,16 +130,14 @@ class CacheManager:
                 a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
                 released, then gets ConnectionError('No connection available.').
         """
-        if pool_size is None:
-            pool_size = 10
+        # config.ini values arrive as strings
+        pool_size = int(pool_size) if pool_size is not None else 10
         self.namespace = namespace
         self.redis_host = redis_host
         self.redis_port = int(redis_port)
         self.redis_protocol = redis_protocol
         self.redis_password = redis_password or None
         self.redis_db = int(redis_db)
-        self.redis_username = redis_username
-        self.cloud_provider = (cloud_provider or '').lower()
         self.pool_timeout = float(pool_timeout)
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
@@ -108,7 +165,6 @@ class CacheManager:
             port = self.redis_port
             protocol = self.redis_protocol
             password = self.redis_password
-            cloud_provider = self.cloud_provider
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -130,14 +186,7 @@ class CacheManager:
                 'decode_responses': True,
             }
 
-            if cloud_provider == 'azure' and not password:
-                logger.info(
-                    'Configuring Azure Entra ID (Workload Identity) authentication'
-                )
-                pool_kwargs['credential_provider'] = AzureManagedRedisProvider(
-                    username=self.redis_username
-                )
-            elif password:
+            if password:
                 pool_kwargs['password'] = password
 
             # Blocking: when every connection is busy, wait briefly for one to
@@ -163,7 +212,7 @@ class CacheManager:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def add(
         self,
@@ -184,7 +233,7 @@ class CacheManager:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def get_str(self, key: str, default: Any = None) -> Optional[str]:
         try:
@@ -218,6 +267,14 @@ class CacheManager:
             logger.error(f'Error decoding JSON for key: {key}: {e}')
             return None
 
+    async def aget_json(self, key: str) -> Optional[Dict]:
+        """Async wrapper so Redis I/O does not block the event loop."""
+        return await asyncio.to_thread(self.get_json, key)
+
+    async def aget_str(self, key: str, default: Any = None) -> Optional[str]:
+        """Async wrapper for ``get_str``."""
+        return await asyncio.to_thread(self.get_str, key, default)
+
     def set_json(self, key: str, value: Dict, expiry: int = 3600) -> bool:
         """
         Set JSON value in cache
@@ -237,6 +294,10 @@ class CacheManager:
             logger.error(f'Error encoding JSON for key: {key}: {e}')
             return False
 
+    async def aset_json(self, key: str, value: Dict, expiry: int = 3600) -> bool:
+        """Async wrapper for ``set_json``."""
+        return await asyncio.to_thread(self.set_json, key, value, expiry)
+
     def remove(self, key: str) -> bool:
         try:
             return bool(self.redis.delete(f'{self.namespace}/{key}'))
@@ -244,19 +305,69 @@ class CacheManager:
             logger.error(f'Error getting key: {key} from cache: {e}')
             raise
 
-    def invalidate_query(self, pattern: str) -> int:
-        """Remove all keys matching the given pattern"""
+    def _eval_fixed_script(self, script: str, key: str, args: list[Any]) -> Any:
+        """Run one of this module's fixed Lua scripts on a single namespaced key.
+
+        Private on purpose: callers pick a script via a specific method below and
+        never supply script text.
+        """
+        namespaced = f'{self.namespace}/{key}'
         try:
-            # Get all keys matching the pattern
+            return self.redis.eval(script, 1, namespaced, *args)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error running script on key {key}: {e}')
+            raise
+
+    def consume_room_join_token(
+        self,
+        key: str,
+        token_hash: str,
+        voice_agent_id: str,
+        joined_at: str,
+        joined_ttl_secs: int,
+    ) -> Any:
+        """Atomically validate a room's join token and flip it pending -> joined."""
+        return self._eval_fixed_script(
+            _CONSUME_ROOM_JOIN_SCRIPT,
+            key,
+            [token_hash, voice_agent_id, joined_at, joined_ttl_secs],
+        )
+
+    def attach_room_connection(self, key: str, pc_id: str, instance_id: str) -> Any:
+        """Attach pc_id / instance_id to a room record, keeping its TTL."""
+        return self._eval_fixed_script(
+            _ATTACH_ROOM_CONNECTION_SCRIPT, key, [pc_id, instance_id]
+        )
+
+    def record_room_swap(self, key: str, agent_id: str) -> Any:
+        """Atomically record an agent swap if the agent is on the room's allowlist."""
+        return self._eval_fixed_script(_RECORD_ROOM_SWAP_SCRIPT, key, [agent_id])
+
+    _INVALIDATE_BATCH = 500
+
+    def invalidate_query(self, pattern: str) -> int:
+        """Remove all keys matching the given pattern (SCAN, not KEYS)."""
+        try:
             search_pattern = f'{self.namespace}/{pattern}'
-            keys = self.redis.keys(search_pattern)
-            if keys:
+            deleted = 0
+            batch: list = []
+            for key in self.redis.scan_iter(
+                match=search_pattern, count=self._INVALIDATE_BATCH
+            ):
+                batch.append(key)
+                if len(batch) >= self._INVALIDATE_BATCH:
+                    deleted += self.redis.delete(*batch)
+                    batch.clear()
+            if batch:
+                deleted += self.redis.delete(*batch)
+
+            if deleted:
                 logger.info(
-                    f'Invalidating {len(keys)} cache keys matching pattern: {pattern}'
+                    f'Invalidated {deleted} cache keys matching pattern: {pattern}'
                 )
-                return self.redis.delete(*keys)
-            logger.info(f'No cache keys found matching pattern: {pattern}')
-            return 0
+            else:
+                logger.info(f'No cache keys found matching pattern: {pattern}')
+            return deleted
         except (RedisError, ConnectionError, TimeoutError) as e:
             logger.error(f'Error removing keys with pattern: {pattern} from cache: {e}')
             raise

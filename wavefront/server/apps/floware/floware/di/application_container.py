@@ -20,7 +20,6 @@ from dependency_injector import containers
 from dependency_injector import providers
 from floware.di.helpers import (
     guardrails_engine,
-    guardrails_mode,
     scheduler_worker_id,
     start_logging,
     start_presidio_timeout,
@@ -67,15 +66,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
         cache_manager=db.cache_manager,
     )
 
-    guardrails = providers.Selector(
-        providers.Callable(guardrails_mode, config.guardrails.enabled),
-        on=providers.Container(
-            GuardrailsContainer,
-            config=config,
-            db_client=db.db_client,
-            cache_manager=db.cache_manager,
-        ),
-        off=providers.Object(None),
+    guardrails = providers.Container(
+        GuardrailsContainer,
+        config=config,
+        db_client=db.db_client,
+        cache_manager=db.cache_manager,
     )
 
     auth = providers.Container(
@@ -84,6 +79,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         kms_signer=common.kms_signer,
+        secret_cipher=common.secret_cipher,
     )
 
     plugins = providers.Container(
@@ -92,6 +88,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cloud_storage_manager=common.cloud_storage_manager,
         kms_cipher=common.kms_cipher,
+        secret_cipher=common.secret_cipher,
         dynamic_query_repository=db.dynamic_query_repository,
         cache_manager=db.cache_manager,
         namespace_repository=db.namespace_repository,
@@ -109,6 +106,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         email_send_service=plugins.email_send_service,
+        secret_cipher=common.secret_cipher,
     )
 
     knowledge_base = providers.Container(
@@ -134,10 +132,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ApiServicesContainer,
         config=config,
         api_services_repository=db.api_services_repository,
+        secret_repository=db.secret_repository,
         cloud_storage_manager=common.cloud_storage_manager,
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         response_formatter=common.response_formatter,
+        secret_cipher=common.secret_cipher,
     )
 
     tools = providers.Container(
@@ -158,6 +158,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+        secret_cipher=common.secret_cipher,
     )
 
     agents = providers.Container(
@@ -188,6 +189,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         cache_manager=db.cache_manager,
         cloud_storage_manager=common.cloud_storage_manager,
         call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+        secret_cipher=common.secret_cipher,
     )
 
     chatbots = providers.Container(

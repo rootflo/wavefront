@@ -12,10 +12,18 @@ from redis import Redis
 from redis import RedisError
 from redis import SSLConnection
 from redis import TimeoutError
+from redis.exceptions import OutOfMemoryError
 from tenacity import retry
-from tenacity import retry_if_exception_type
+from tenacity import retry_if_exception
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
+
+
+def _is_retryable_redis_error(exc: BaseException) -> bool:
+    """Retry everything except OOM, which fails the same way every time."""
+    if isinstance(exc, OutOfMemoryError):
+        return False
+    return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
 
 
 class CacheManager(CommonCache):
@@ -126,7 +134,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def add(
         self,
@@ -147,7 +155,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def get_str(self, key: str, default: Any = None) -> Optional[str]:
         try:
@@ -165,7 +173,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def pop_str(self, key: str, default: Any = None) -> Optional[str]:
         """GETDEL when available; otherwise a GET+DEL pipeline."""
@@ -187,7 +195,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def incr_with_expiry(self, key: str, expiry: int) -> int:
         """INCR a fixed-window counter. EXPIRE NX opens the window on first hit."""
@@ -209,7 +217,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def remove(self, key: str) -> bool:
         try:
@@ -218,19 +226,31 @@ class CacheManager(CommonCache):
             logger.error(f'Error removing key: {key} from cache: {e}')
             raise
 
+    _INVALIDATE_BATCH = 500
+
     def invalidate_query(self, pattern: str) -> int:
-        """Remove all keys matching the given pattern"""
+        """Remove all keys matching the given pattern (SCAN, not KEYS)."""
         try:
-            # Get all keys matching the pattern
             search_pattern = f'{self.namespace}/{pattern}'
-            keys = self.redis.keys(search_pattern)
-            if keys:
+            deleted = 0
+            batch: List[str] = []
+            for key in self.redis.scan_iter(
+                match=search_pattern, count=self._INVALIDATE_BATCH
+            ):
+                batch.append(key)
+                if len(batch) >= self._INVALIDATE_BATCH:
+                    deleted += self.redis.delete(*batch)
+                    batch.clear()
+            if batch:
+                deleted += self.redis.delete(*batch)
+
+            if deleted:
                 logger.info(
-                    f'Invalidating {len(keys)} cache keys matching pattern: {pattern}'
+                    f'Invalidated {deleted} cache keys matching pattern: {pattern}'
                 )
-                return self.redis.delete(*keys)
-            logger.info(f'No cache keys found matching pattern: {pattern}')
-            return 0
+            else:
+                logger.info(f'No cache keys found matching pattern: {pattern}')
+            return deleted
         except (RedisError, ConnectionError, TimeoutError) as e:
             logger.error(f'Error removing keys with pattern: {pattern} from cache: {e}')
             raise
@@ -238,7 +258,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def publish(self, channel: str, message: str) -> int:
         """
@@ -315,7 +335,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def xadd(self, stream: str, fields: dict, maxlen: int = 10000) -> str:
         """Append an entry to a Redis Stream. Returns the message ID."""
@@ -346,7 +366,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def xread_group(
         self,
@@ -380,7 +400,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def xack(self, stream: str, group: str, *message_ids: str) -> int:
         """Acknowledge one or more messages in a consumer group."""
@@ -393,7 +413,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def xpending_range(
         self,
@@ -425,7 +445,7 @@ class CacheManager(CommonCache):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def xautoclaim(
         self,

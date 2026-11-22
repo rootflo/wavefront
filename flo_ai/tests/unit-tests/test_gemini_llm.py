@@ -592,7 +592,7 @@ class TestToolCallContents:
         from flo_ai.models import ToolCall
 
         llm = self.llm()
-        call = llm.format_tool_call_message(
+        call = llm.format_stored_tool_call_message(
             'Checking.', [ToolCall(name='lookup', arguments={'order_id': 'A-1'})]
         )
         result = llm.format_function_result_message('lookup', 'shipped')

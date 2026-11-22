@@ -1,7 +1,11 @@
 from enum import Enum
 from typing import AsyncIterator, Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
+from flo_ai.models.chat_message import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+)
 import jwt
 import httpx
 import asyncio
@@ -341,8 +345,12 @@ class RootFloLLM(BaseLLM):
             # Construct full URL for LLM inference
             full_url = f'{self._base_url}/v1/llm-inference/{self._model_id}'
 
-            # Prepare custom headers for proxy authentication (only if app_key is provided)
-            custom_headers = {'X-Rootflo-Key': self._app_key} if self._app_key else {}
+            # Prepare custom headers for proxy authentication
+            custom_headers = {}
+            if self._app_key:
+                custom_headers['X-Rootflo-Key'] = self._app_key
+            if api_token:
+                custom_headers['Authorization'] = f'Bearer {api_token}'
 
             # Instantiate appropriate SDK wrapper based on llm_provider
             if llm_provider in (LLMProvider.OPENAI, LLMProvider.AZURE_OPENAI):
@@ -450,3 +458,59 @@ class RootFloLLM(BaseLLM):
         if self._llm is None:
             raise RuntimeError('LLM initialization failed: _llm is None')
         return await self._llm.format_document_in_message(document)
+
+    async def format_video_in_message(self, video: VideoMessageContent) -> Any:
+        """Delegate video formatting to the underlying provider LLM."""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return await self._llm.format_video_in_message(video)
+
+    @property
+    def _provider_llm(self) -> BaseLLM:
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return self._llm
+
+    # Tool-call protocol, delegated so the provider's message shapes are used.
+
+    # The provider is created on the first request, but a request is built
+    # from the stored history before that. Until then these use BaseLLM's
+    # defaults, which every provider accepts.
+
+    @property
+    def requires_tool_call_ids(self) -> bool:  # type: ignore[override]
+        if self._llm is None:
+            return False
+        return self._llm.requires_tool_call_ids
+
+    async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
+        return await self._provider_llm.get_function_call(response)
+
+    def get_assistant_message_for_tool_call(self, response: Any) -> Optional[Any]:
+        return self._provider_llm.get_assistant_message_for_tool_call(response)
+
+    def format_tool_call_message(
+        self, response: Any, function_call: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        return self._provider_llm.format_tool_call_message(response, function_call)
+
+    def format_stored_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        if self._llm is None:
+            return super().format_stored_tool_call_message(content, tool_calls)
+        return self._llm.format_stored_tool_call_message(content, tool_calls)
+
+    def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
+        return self._provider_llm.get_tool_use_id(function_call)
+
+    def format_function_result_message(
+        self, function_name: str, content: str, tool_use_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        if self._llm is None:
+            return super().format_function_result_message(
+                function_name, content, tool_use_id
+            )
+        return self._llm.format_function_result_message(
+            function_name, content, tool_use_id
+        )

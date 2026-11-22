@@ -13,6 +13,7 @@ import {
   ToolListData,
   AgentToolsData,
   ToolData,
+  ToolNamesResponse,
 } from '@app/types/tool';
 import { AxiosInstance } from 'axios';
 
@@ -44,11 +45,11 @@ export class ToolService {
   }
 
   /**
-   * Get tool names and details
+   * Get built-in registry tool details (agents / workflow tool picker).
+   * Distinct from listTools(), which returns user-created voice-agent tools.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getToolNamesAndDetails(): Promise<any> {
-    const response = await this.http.get(`/v1/:appId/floware/v1/tools`);
+  async getToolNamesAndDetails(): Promise<ToolNamesResponse> {
+    const response = await this.http.get(`/v1/:appId/floware/v1/tools/tool-details`);
     return response;
   }
 

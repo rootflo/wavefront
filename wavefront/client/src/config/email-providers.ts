@@ -8,8 +8,8 @@ export const EMAIL_PROVIDERS_CONFIG: Record<EmailProviderType, ProviderConfig> =
   gmail: {
     name: 'Gmail',
     badge: {
-      bg: 'bg-red-100',
-      text: 'text-red-800',
+      bg: 'bg-red-500/12',
+      text: 'text-red-700 dark:text-red-300',
     },
     parameters: {
       client_id: {
@@ -39,8 +39,8 @@ export const EMAIL_PROVIDERS_CONFIG: Record<EmailProviderType, ProviderConfig> =
   outlook: {
     name: 'Outlook',
     badge: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-800',
+      bg: 'bg-blue-500/12',
+      text: 'text-blue-700 dark:text-blue-300',
     },
     parameters: {
       client_id: {
@@ -88,11 +88,11 @@ export const EMAIL_CAPABILITIES: Array<{ value: EmailCapability; label: string; 
 ];
 
 const STATUS_BADGES: Record<EmailConnectionStatus, { label: string; bg: string; text: string }> = {
-  active: { label: 'Active', bg: 'bg-green-50', text: 'text-green-700' },
-  pending_auth: { label: 'Awaiting consent', bg: 'bg-amber-50', text: 'text-amber-700' },
-  error: { label: 'Error', bg: 'bg-red-50', text: 'text-red-700' },
-  revoked: { label: 'Revoked', bg: 'bg-gray-50', text: 'text-gray-500' },
-  deleted: { label: 'Deleted', bg: 'bg-gray-50', text: 'text-gray-400' },
+  active: { label: 'Active', bg: 'bg-green-500/12', text: 'text-green-700 dark:text-green-300' },
+  pending_auth: { label: 'Awaiting consent', bg: 'bg-amber-500/12', text: 'text-amber-700 dark:text-amber-300' },
+  error: { label: 'Error', bg: 'bg-red-500/12', text: 'text-red-700 dark:text-red-300' },
+  revoked: { label: 'Revoked', bg: 'bg-gray-500/12', text: 'text-gray-500 dark:text-gray-400' },
+  deleted: { label: 'Deleted', bg: 'bg-gray-500/12', text: 'text-gray-500 dark:text-gray-400' },
 };
 
 export function getEmailProviderConfig(provider: EmailProviderType): ProviderConfig | null {
@@ -101,7 +101,7 @@ export function getEmailProviderConfig(provider: EmailProviderType): ProviderCon
 
 export function getEmailProviderBadge(provider: EmailProviderType): { bg: string; text: string } {
   const config = EMAIL_PROVIDERS_CONFIG[provider];
-  return config ? config.badge : { bg: 'bg-gray-100', text: 'text-gray-800' };
+  return config ? config.badge : { bg: 'bg-gray-500/12', text: 'text-gray-700 dark:text-gray-300' };
 }
 
 export function getEmailProviderOptions(): Array<{ value: EmailProviderType; label: string }> {
@@ -112,7 +112,7 @@ export function getEmailProviderOptions(): Array<{ value: EmailProviderType; lab
 }
 
 export function getConnectionStatusBadge(status: EmailConnectionStatus): { label: string; bg: string; text: string } {
-  return STATUS_BADGES[status] || { label: status, bg: 'bg-gray-50', text: 'text-gray-700' };
+  return STATUS_BADGES[status] || { label: status, bg: 'bg-gray-500/12', text: 'text-gray-700 dark:text-gray-300' };
 }
 
 /** Config defaults for a provider, as the create form's starting state. */

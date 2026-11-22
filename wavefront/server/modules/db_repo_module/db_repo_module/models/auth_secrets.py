@@ -25,7 +25,6 @@ class AuthSecrets(Base):
         return {
             'id': str(self.id),
             'client_key': self.client_key,
-            'client_secret': self.client_secret,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }

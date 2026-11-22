@@ -115,6 +115,15 @@ def build_llm(
             **llm_kwargs,
         )
     elif config.type == 'gemini':
+        # The config UI stores Gemini's thinking setting flat; the SDK takes it
+        # nested (and drops a flat one with a warning).
+        thinking = {
+            key: llm_kwargs.pop(key)
+            for key in ('thinking_level', 'thinking_budget')
+            if key in llm_kwargs
+        }
+        if thinking:
+            llm_kwargs['thinking_config'] = thinking
         return Gemini(
             model=config.llm_model,
             api_key=config.api_key,

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Type definitions for Tools
  *
@@ -56,7 +55,7 @@ export interface ToolsDetailsData {
 export interface ToolNamesData {
   message: string;
   data: {
-    tool_details: ToolDetails;
+    tool_details: ToolDetails[];
     count: number;
   };
 }
@@ -75,9 +74,9 @@ export type ToolDetailsResponse = IApiResponse<ToolDetailsData>;
 // TOOLS FOR VOICE AGENTS (Function Calling)
 // ============================================================================
 
-export type ToolType = 'api' | 'python';
+export type ToolType = 'api' | 'python' | 'app';
 
-export type AuthType = 'none' | 'bearer' | 'api_key';
+export type AuthType = 'none' | 'bearer' | 'api_key' | 'basic';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -107,6 +106,19 @@ export interface PythonToolConfig {
 }
 
 /**
+ * App Tool Configuration — handled by the browser app (no HTTP call from the agent).
+ */
+export interface AppToolConfig {
+  /** Seconds to wait for the app to acknowledge the event (default 4). */
+  ack_timeout_s?: number;
+  /**
+   * Let the agent speak after a successful call. Default false (stay quiet so the
+   * app's next step can open the conversation).
+   */
+  speak_on_success?: boolean;
+}
+
+/**
  * Voice Agent Tool (database model)
  */
 export interface VoiceAgentTool {
@@ -115,8 +127,8 @@ export interface VoiceAgentTool {
   display_name: string;
   description: string;
   tool_type: ToolType;
-  config: ApiToolConfig | PythonToolConfig;
-  parameter_schema?: Record<string, any>;
+  config: ApiToolConfig | PythonToolConfig | AppToolConfig;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
   created_by?: string;
   created_at: string;
@@ -132,7 +144,7 @@ export interface VoiceAgentToolAssociation {
   voice_agent_id: string;
   tool_id: string;
   is_enabled: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority: number;
   created_at: string;
   updated_at: string;
@@ -145,7 +157,7 @@ export interface VoiceAgentToolWithAssociation extends VoiceAgentTool {
   association: {
     id: string;
     is_enabled: boolean;
-    config_overrides?: Record<string, any>;
+    config_overrides?: Record<string, unknown>;
     priority: number;
   };
 }
@@ -158,8 +170,8 @@ export interface CreateToolRequest {
   display_name: string;
   description: string;
   tool_type: ToolType;
-  config: ApiToolConfig | PythonToolConfig;
-  parameter_schema?: Record<string, any>;
+  config: ApiToolConfig | PythonToolConfig | AppToolConfig;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
 }
 
@@ -169,8 +181,8 @@ export interface CreateToolRequest {
 export interface UpdateToolRequest {
   display_name?: string;
   description?: string;
-  config?: ApiToolConfig | PythonToolConfig;
-  parameter_schema?: Record<string, any>;
+  config?: ApiToolConfig | PythonToolConfig | AppToolConfig;
+  parameter_schema?: Record<string, unknown>;
   response_template?: string;
 }
 
@@ -180,7 +192,7 @@ export interface UpdateToolRequest {
 export interface AttachToolToAgentRequest {
   tool_id: string;
   is_enabled?: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority?: number;
 }
 
@@ -189,7 +201,7 @@ export interface AttachToolToAgentRequest {
  */
 export interface UpdateAgentToolRequest {
   is_enabled?: boolean;
-  config_overrides?: Record<string, any>;
+  config_overrides?: Record<string, unknown>;
   priority?: number;
 }
 
@@ -200,16 +212,6 @@ export interface ListToolsParams {
   tool_type?: ToolType;
   limit?: number;
   offset?: number;
-}
-
-/**
- * Tool execution result (from Pipecat)
- */
-export interface ToolExecutionResult {
-  success: boolean;
-  status_code?: number;
-  data?: any;
-  error?: string;
 }
 
 /**

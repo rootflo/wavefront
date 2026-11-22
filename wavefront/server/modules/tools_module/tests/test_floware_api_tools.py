@@ -85,6 +85,8 @@ class TestBuildFunctionRegistry:
             'fetch_configuration',
             'message_processor',
             'trigger_message_processor',
+            'rf_api_service',
+            'trigger_api_service',
         ):
             assert isinstance(registry[name], MethodType), name
             assert registry[name].__self__ is api, name
@@ -92,8 +94,7 @@ class TestBuildFunctionRegistry:
     def test_tools_that_do_not_call_floware_stay_unbound(self):
         registry = build_function_registry(FlowareApiClient('http://f'))
 
-        for name in ('rf_api_service', 'passthrough', 'trigger_api_service'):
-            assert not isinstance(registry[name], MethodType), name
+        assert not isinstance(registry['passthrough'], MethodType)
 
     def test_bound_tools_keep_their_name_and_docstring(self):
         registry = build_function_registry(FlowareApiClient('http://f'))
@@ -196,6 +197,18 @@ class TestFunctionNodeAdapterWithBoundTools:
         assert sent['api'] == 'workflow-value'
         assert 'message_processor_id' not in sent
 
+    async def test_failed_insert_fails_the_node(self, http):
+        http.reply = lambda request: httpx.Response(500, text='boom')
+        registry = build_function_registry(FlowareApiClient('http://one'))
+        adapter = create_function_node_adapter(
+            registry['datasource_insert_multi'], 'datasource_insert_multi'
+        )
+
+        with pytest.raises(Exception, match=r'Multi-insert failed \(500\): boom'):
+            await adapter(
+                inputs=[UserMessage(content='{"inserts": []}')], datasource_id='ds-1'
+            )
+
     def test_lookup_uses_the_given_registry(self):
         registry = build_function_registry(FlowareApiClient('http://one'))
 
@@ -211,7 +224,18 @@ class TestToolLoader:
         tool = loader.load_tool('send_email')
 
         assert tool is not None
-        assert tool.function is registry['send_email']
+        assert tool.function.__wrapped__ is registry['send_email']
+
+    async def test_failure_reaches_the_agent_as_the_result(self, http):
+        http.reply = lambda request: httpx.Response(500, text='boom')
+        loader = ToolLoader(
+            function_registry=build_function_registry(FlowareApiClient('http://one'))
+        )
+
+        tool = loader.load_tool('datasource_insert_multi')
+        result = await tool.execute(datasource_id='ds-1', inserts=[])
+
+        assert result == 'Multi-insert failed (500): boom'
 
     def test_unregistered_tool_is_not_loaded(self):
         loader = ToolLoader(function_registry={})

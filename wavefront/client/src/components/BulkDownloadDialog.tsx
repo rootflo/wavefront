@@ -74,7 +74,7 @@ const BulkDownloadDialog = <T,>({
         </DialogHeader>
 
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">
+          <p className="frost-text-muted text-sm">
             {selectedIds.length} of {sortedItems.length} selected
           </p>
           <div className="flex gap-2">

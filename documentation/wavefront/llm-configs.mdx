@@ -1,0 +1,99 @@
+---
+title: "LLM Repository"
+description: "Register the models an app may use, and refer to them from agents and workflows by id"
+icon: "brain"
+---
+
+The **LLM Repository** holds the models an app can use. Each entry, an **LLM config**, stores the provider, the model, the credentials and default settings. Agents and workflows refer to an entry by its id, never to a provider key directly.
+
+Keeping models in one place means:
+
+- **Keys stay out of YAML.** Agent and workflow definitions can be shared, versioned and committed to git without leaking secrets. Keys are stored securely and never returned in API responses.
+- **Models are swapped in one place.** Point the config at a new deployment or model and every agent that uses it follows.
+- **Rate limits and costs are easier to reason about,** because you know which agents share a model.
+
+## Supported providers
+
+| Inference engine type | Notes |
+|---|---|
+| **OpenAI GPT** | Needs an API key |
+| **Azure OpenAI** | Needs an API key, the base URL of your Azure resource and an API version. The *LLM Model Name* is your deployment name |
+| **Anthropic Claude** | Needs an API key |
+| **Google Gemini** | Needs an API key |
+| **Groq** | Needs an API key |
+| **Ollama (Local)** | Needs a base URL; no key |
+| **vLLM** | Needs a base URL (an OpenAI-compatible server) |
+
+Each config also has a **Model Type**: **LLM** for chat models, or **Embedding** for models that turn text into vectors (used by knowledge bases).
+
+## Adding a model in the console
+
+Go to **LLM Repository → Add LLM**:
+
+| Field | What to enter |
+|---|---|
+| **Display Name** | How the model appears in the console, e.g. `Extraction model` |
+| **Inference Engine Type** | The provider |
+| **Model Type** | LLM or Embedding |
+| **LLM Model Name** | The provider's model name, or your Azure deployment name |
+| **API Key** | The provider key, where required |
+| **Base URL**, **API Version** | Only for providers that need them |
+| **Model Parameters** | Optional defaults: temperature, max completion tokens, top P, penalties, seed |
+
+<Frame>
+  <img src="/images/wavefront/qs-llm-config.png" alt="The Add LLM to Repository dialog" />
+</Frame>
+
+Click **Add Model**. The new entry's **Id** is shown in the list; that is what agents use.
+
+## Using a model from an agent or workflow
+
+In any agent definition, inline or saved, point the `model` block at the config:
+
+```yaml
+model:
+  provider: rootflo
+  model_id: 3f2a…            # the LLM config id from the repository
+```
+
+`provider: rootflo` means "use a model from this app's LLM Repository". The agent picks up the provider, model, key and base URL from the config at run time.
+
+<Tip>
+Prefer `provider: rootflo` over writing a provider and model name directly in the YAML (`provider: openai`, `name: gpt-4o`). Direct provider blocks work, but they need the key from the server's environment and bypass the repository.
+</Tip>
+
+Model parameters on the agent (for example `settings.temperature: 0`) override the config's defaults for that agent.
+
+## Trying another model without editing the agent
+
+The agent's chat panel in the console has a model picker under the conversation. Pick another config to test the same agent against a different model. Nothing is saved.
+
+## Calling a model directly
+
+An application sometimes needs a plain model call outside an agent. The app can proxy that call so the key stays on the server:
+
+```http
+POST /floware/v1/llm-inference/<config-id>/<provider path>
+```
+
+The request body is passed through unchanged to the model's base URL with `<provider path>` appended, using the config's key. For an Azure OpenAI deployment, for example:
+
+```bash
+curl -X POST "$APP/floware/v1/llm-inference/<config-id>/openai/deployments/<deployment>/chat/completions?api-version=<version>" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"messages": [{"role": "user", "content": "Say hello"}]}'
+```
+
+## API
+
+| Action | Request |
+|---|---|
+| List | `GET /floware/v1/llm-inference-configs` |
+| Get one | `GET /floware/v1/llm-inference-configs/<id>` |
+| Create | `POST /floware/v1/llm-inference-configs` with `display_name`, `type`, `llm_model`, `model_type`, `api_key`, `base_url`, `parameters` |
+| Update | `PATCH /floware/v1/llm-inference-configs/<id>` with only the fields to change |
+| Delete | `DELETE /floware/v1/llm-inference-configs/<id>` |
+
+<Warning>
+Deleting a config breaks every agent and workflow that refers to it by id. Check before deleting, or update the config in place instead.
+</Warning>

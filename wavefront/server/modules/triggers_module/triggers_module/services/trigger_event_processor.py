@@ -181,6 +181,8 @@ class TriggerEventProcessor:
             'email_from': event.sender or '',
         }
 
+        # No queue limit here: the event was already gated at the webhook, and a
+        # refusal would mark it failed for good.
         if trigger.entity_type == 'agent':
             return await self._async_exec.create_and_enqueue_agent(
                 agent_id=trigger.entity_id,
@@ -189,6 +191,7 @@ class TriggerEventProcessor:
                 output_json_enabled=True,
                 access_token=None,
                 app_key=None,
+                enforce_queue_limit=False,
             )
 
         workflow = await self._workflows.find_one(id=trigger.entity_id)
@@ -203,4 +206,5 @@ class TriggerEventProcessor:
             output_json_enabled=False,
             access_token=None,
             app_key=None,
+            enforce_queue_limit=False,
         )

@@ -4,53 +4,74 @@ from itertools import islice
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from typing import Optional, List, Tuple, IO, ContextManager
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_asset_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
 from google.auth.transport import requests as google_requests
 import google.auth
+from google.oauth2 import service_account
 
 
 class GCSStorage(CloudStorageHandler):
     """Google Cloud Storage implementation"""
 
-    def __init__(self, credentials_path: Optional[str] = None):
+    def __init__(
+        self,
+        credentials_path: Optional[str] = None,
+        credentials_info: Optional[dict] = None,
+        project_id: Optional[str] = None,
+        asset_url: Optional[str] = None,
+    ):
         """
         Initialize GCP client
 
         Args:
             credentials_path: Path to GCP credentials JSON file (optional)
+            credentials_info: Parsed service account JSON (optional)
+            project_id: GCP project to bill/scope requests to (optional)
+            asset_url: Base URL for signed URLs (optional); the proxy must strip
+                any path prefix and send Host storage.googleapis.com.
         """
         self.signing_credentials = None
         self.credential_path = credentials_path
+        self._asset_url = normalize_asset_url(asset_url)
 
         if credentials_path:
-            self.client = storage.Client.from_service_account_json(credentials_path)
+            self.client = storage.Client.from_service_account_json(
+                credentials_path, project=project_id
+            )
+        elif credentials_info:
+            self.credentials = service_account.Credentials.from_service_account_info(
+                credentials_info
+            )
+            self.project_id = project_id or credentials_info.get('project_id')
+            self.client = storage.Client(
+                project=self.project_id, credentials=self.credentials
+            )
         else:
             self.credentials, self.project_id = google.auth.default()
 
-            self.client = storage.Client()
+            self.client = storage.Client(project=project_id)
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Get file from GCS bucket and return as buffer
+        """Get file from GCS bucket and return as buffer."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name (str): Name of the GCS bucket
-            file_path (str): Path to the file in bucket
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        self.client.bucket(bucket_name).blob(file_path).download_to_filename(dest)
 
-        Returns:
-            File content as bytes
-
-        Raises:
-            CloudStorageFileNotFoundError: If file not found
-            Exception: If other errors occur
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get file bytes and the blob's stored content_type, if any."""
         try:
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(file_path)
-            return blob.download_as_bytes()
+            content = blob.download_as_bytes()
+            return content, blob.content_type
         except NotFound:
             # GCS-specific NotFound exception
             raise CloudStorageFileNotFoundError(bucket_name, file_path)
@@ -173,7 +194,7 @@ class GCSStorage(CloudStorageHandler):
                 else None,
                 access_token=token if token else None,
             )
-            return presigned_url
+            return rebase_url(presigned_url, self._asset_url)
         except Exception as e:
             raise Exception(f'Error generating presigned URL for GCS: {str(e)}')
 
@@ -232,6 +253,48 @@ class GCSStorage(CloudStorageHandler):
             raise Exception(f'Bucket {bucket_name} not found')
         except Exception as e:
             raise Exception(f'Error listing files from GCS: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using GCS's own delimiter listing and page token."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            iterator = self.client.bucket(bucket_name).list_blobs(
+                prefix=prefix or None,
+                delimiter=delimiter,
+                max_results=page_size,
+                page_token=page_token or None,
+            )
+            # One API page; its sub-folders arrive as `prefixes` alongside the blobs.
+            page = next(iterator.pages, None)
+            if page is None:
+                return FolderListing()
+            files = [
+                StorageObject(
+                    key=blob.name,
+                    size=blob.size,
+                    content_type=blob.content_type,
+                    updated_at=blob.updated,
+                )
+                for blob in page
+            ]
+            return FolderListing(
+                folders=sorted(getattr(page, 'prefixes', ()) or ()),
+                files=files,
+                next_page_token=iterator.next_page_token,
+            )
+        except NotFound:
+            raise Exception(f'Bucket {bucket_name} not found')
+        except Exception as e:
+            raise Exception(f'Error listing folder from GCS: {str(e)}')
 
     def delete_file(self, bucket_name: str, file_path: str) -> None:
         """

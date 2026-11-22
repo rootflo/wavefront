@@ -1,0 +1,61 @@
+---
+title: "File storage"
+description: "Upload and download files through an S3, Google Cloud Storage or Azure Blob datasource"
+icon: "folder-open"
+---
+
+A **file-storage datasource** connects an app to a bucket or container: AWS S3, Google Cloud Storage or Azure Blob Storage. Your application uploads files through the app's API; workflows and agents read them back, and the file never needs a public URL.
+
+Add one like any [datasource](/wavefront/datasources), with type `aws_s3`, `gcs` or `azure_blob_storage`. The optional `base_path` keeps all of the app's files under one prefix of the bucket.
+
+## Uploading
+
+<Tabs>
+  <Tab title="Console">
+    Open the datasource and use **Upload File**. Enter the path to store it under, or leave it empty to use the file's name.
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -X POST "$APP/floware/v1/datasources/<file-store-id>/files" \
+      -H "Authorization: Bearer $TOKEN" \
+      -F "file=@receipt.png" \
+      -F "path=claims/C-1042/receipt.png"
+    ```
+    ```json
+    { "meta": { "status": "success" },
+      "data": { "path": "datasource://<file-store-id>/claims/C-1042/receipt.png",
+                "storage_uri": "s3://…/claims/C-1042/receipt.png" } }
+    ```
+  </Tab>
+</Tabs>
+
+- `path` is the key relative to `base_path`. A path ending in `/` (or no path) stores the file under that folder with its own name.
+- An existing file at the same path is replaced.
+- The response's **`path`**, a `datasource://<datasource-id>/<key>` reference, is what you keep: store it in your table rows and pass it to workflows. It names the datasource as well as the file, so it stays meaningful when an app has several stores.
+
+<Note>
+Files whose type a browser could execute (HTML, SVG, XML and similar) are stored as `application/octet-stream`, so they download instead of rendering. Images, PDFs, video and ordinary documents keep their type.
+</Note>
+
+## Downloading
+
+```bash
+curl "$APP/floware/v1/datasources/<file-store-id>/files?path=datasource://<file-store-id>/claims/C-1042/receipt.png" \
+  -H "Authorization: Bearer $TOKEN" -o receipt.png
+```
+
+`path` can be the `datasource://` reference or the key relative to `base_path`. A `datasource://` reference that names a different datasource is refused.
+
+In a browser application, fetch the file with the user's token and display it from a `blob:` URL; there is no public link to hand to an `<img>` tag. Allow `blob:` in your Content-Security-Policy for images and media.
+
+## In workflows
+
+The [`datasource_download_file`](/wavefront/function-nodes#datasource_download_file) node loads a file by its reference. Images and videos come out as media that an agent selecting the node **sees**; other files come out as text or base64. See [Images, documents and video](/wavefront/media).
+
+## Pattern: keep references in your records
+
+1. Your application uploads each file and gets its `datasource://` reference.
+2. It saves the record, with the references, through the [datasource API](/wavefront/datasources#insert).
+3. A workflow loads the record with a [dynamic query](/wavefront/dynamic-queries), and downloads exactly the files each agent needs.
+
+The record and its files then travel together, and the [audit trail](/wavefront/audit-trail) records every upload and download alongside the row changes.

@@ -5,6 +5,15 @@ from dataclasses import dataclass
 
 from flo_cloud.postgres import RowMutationResult
 
+from .validation import (
+    IDENTIFIER_RE,
+    TABLE_NAME_MAX_LEN,
+    InvalidResourceError,
+    validate_group_by,
+    validate_order_by,
+    validate_select,
+)
+
 
 @dataclass
 class Meta:
@@ -52,10 +61,94 @@ class DataSourceType(str, Enum):
     SQLITE = 'sqlite'
 
 
+FILE_STORAGE_TYPES: frozenset[DataSourceType] = frozenset(
+    {
+        DataSourceType.AWS_S3,
+        DataSourceType.GCS,
+        DataSourceType.AZURE_BLOB_STORAGE,
+    }
+)
+
+
+def is_file_storage_type(datasource_type: str | DataSourceType | None) -> bool:
+    """True for object-storage datasources (upload/download), not SQL ones."""
+    try:
+        return DataSourceType(datasource_type) in FILE_STORAGE_TYPES
+    except ValueError:
+        return False
+
+
+# Config keys holding credentials: stored through SecretCipher and masked in
+# API responses.
+DATASOURCE_SECRET_FIELDS: dict[DataSourceType, tuple[str, ...]] = {
+    DataSourceType.POSTGRES: ('password',),
+    DataSourceType.MSSQL: ('password',),
+    DataSourceType.AWS_REDSHIFT: ('password',),
+    DataSourceType.GCP_BIGQUERY: ('credentials_json', 'credentials_path'),
+    DataSourceType.AWS_S3: ('aws_secret_access_key',),
+    DataSourceType.GCS: ('credentials_json',),
+    DataSourceType.AZURE_BLOB_STORAGE: ('client_secret',),
+}
+
+
+def get_datasource_secret_fields(
+    datasource_type: str | DataSourceType | None,
+) -> tuple[str, ...]:
+    """Secret config keys for ``datasource_type``; empty for an unknown type."""
+    try:
+        return DATASOURCE_SECRET_FIELDS.get(DataSourceType(datasource_type), ())
+    except ValueError:
+        return ()
+
+
+class FileStorageABC(ABC):
+    @abstractmethod
+    async def test_connection(self) -> bool:
+        pass
+
+    @abstractmethod
+    def upload_file(
+        self, file_content: bytes, path: str, content_type: Optional[str] = None
+    ) -> str:
+        """Store ``file_content`` at ``path``; return its full URI."""
+        pass
+
+    @abstractmethod
+    def download_file(self, path: str) -> bytes:
+        """Return the bytes at ``path`` (a full URI or a key)."""
+        pass
+
+
 class DataSourceABC(ABC):
     @abstractmethod
     async def test_connection(self) -> bool:
         pass
+
+    def validate_table_name(self, table_name: str) -> None:
+        """Raise InvalidResourceError unless ``table_name`` is safe to query.
+
+        The default accepts a plain identifier only: reads prefix the name with
+        the configured schema or dataset, so a qualified name could only point
+        outside it. Datasources whose naming rules differ override this.
+        """
+        if (
+            not table_name
+            or len(table_name) > TABLE_NAME_MAX_LEN
+            or not IDENTIFIER_RE.fullmatch(table_name)
+        ):
+            raise InvalidResourceError(f'Invalid resource name: {table_name}')
+
+    def validate_query_clauses(
+        self,
+        projection: Optional[str],
+        order_by: Optional[str],
+        group_by: Optional[str],
+    ) -> None:
+        """Raise InvalidQueryError unless $select, $orderby and $groupby fit the
+        grammar in ``validation``. Override to widen it for a dialect."""
+        validate_select(projection)
+        validate_order_by(order_by)
+        validate_group_by(group_by)
 
     @abstractmethod
     def get_schema(self) -> dict:

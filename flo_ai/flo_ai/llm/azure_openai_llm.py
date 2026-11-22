@@ -1,4 +1,3 @@
-import json
 from typing import Dict, Any, List, AsyncIterator, Optional
 
 from openai import AsyncAzureOpenAI
@@ -11,7 +10,7 @@ from .base_llm import (
     split_request_kwargs,
 )
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
-from flo_ai.tool.base_tool import Tool
+from .openai_tool_calling import OpenAIToolCallingMixin
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
     trace_llm_stream,
@@ -22,7 +21,7 @@ from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
 
-class AzureOpenAI(BaseLLM):
+class AzureOpenAI(OpenAIToolCallingMixin, BaseLLM):
     provider_name = 'azure_openai'
 
     def __init__(
@@ -107,13 +106,7 @@ class AzureOpenAI(BaseLLM):
         # Handle structured output vs tool calling
         if output_schema:
             kwargs['response_format'] = {'type': 'json_object'}
-            kwargs['functions'] = [
-                {
-                    'name': output_schema.get('title', 'default'),
-                    'parameters': output_schema.get('schema', output_schema),
-                }
-            ]
-            kwargs['function_call'] = {'name': output_schema.get('title', 'default')}
+            kwargs.update(self._tool_request_kwargs(None, output_schema))
 
             if messages and messages[0]['role'] == 'system':
                 messages[0]['content'] = (
@@ -129,12 +122,12 @@ class AzureOpenAI(BaseLLM):
                     },
                 )
         elif functions:
-            kwargs['functions'] = functions
+            kwargs.update(self._tool_request_kwargs(functions))
 
         azure_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 **flatten_extra_body(self.kwargs),
                 **flatten_extra_body(kwargs),
@@ -179,7 +172,7 @@ class AzureOpenAI(BaseLLM):
         azure_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 'stream': True,
                 **flatten_extra_body(self.kwargs),
@@ -187,8 +180,7 @@ class AzureOpenAI(BaseLLM):
             }
         )
 
-        if functions:
-            azure_kwargs['functions'] = functions
+        azure_kwargs.update(self._tool_request_kwargs(functions))
 
         response = await self.client.chat.completions.create(**azure_kwargs)
         async for chunk in response:
@@ -201,55 +193,12 @@ class AzureOpenAI(BaseLLM):
                 if content:
                     yield {'content': content}
 
-    def format_tool_call_message(
-        self, content: str, tool_calls: List[Any]
-    ) -> Optional[Dict[str, Any]]:
-        """An assistant message carrying the function call, as the API returns it"""
-        # The functions API allows one call per message, which is also all
-        # the agent loop makes.
-        call = tool_calls[0]
-        return {
-            'role': 'assistant',
-            'content': content or None,
-            'function_call': {
-                'name': call.name,
-                'arguments': json.dumps(call.arguments),
-            },
-        }
-
     def get_message_content(self, response: Dict[str, Any]) -> str:
         if isinstance(response, str):
             return response
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
         return ''
-
-    def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
-        """Format a single tool for Azure OpenAI's API (OpenAI-compatible)."""
-        return {
-            'name': tool.name,
-            'description': tool.description,
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    name: {
-                        'type': info['type'],
-                        'description': info['description'],
-                        **(
-                            {'items': info['items']}
-                            if info.get('type') == 'array' and 'items' in info
-                            else {}
-                        ),
-                    }
-                    for name, info in tool.parameters.items()
-                },
-                'required': list(tool.parameters.keys()),
-            },
-        }
-
-    def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
-        """Format tools for Azure OpenAI's API (OpenAI-compatible)."""
-        return [self.format_tool_for_llm(tool) for tool in tools]
 
     async def _format_native_document(
         self, document: DocumentMessageContent

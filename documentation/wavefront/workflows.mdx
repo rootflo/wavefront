@@ -1,0 +1,164 @@
+---
+title: "Workflows"
+description: "Combine agents, functions, routers and sub-workflows into one process"
+icon: "diagram-project"
+---
+
+A **workflow** runs several steps in order. Steps (nodes) can be agents, built-in function nodes such as a database query, a file download or one of your [functions](/wavefront/functions), routers that choose the next step, iterators that repeat a step, and nested sub-workflows. A workflow is written in YAML, saved in an app, versioned, and run from the console or the API.
+
+## Anatomy
+
+```yaml
+metadata:
+  name: ticket-intake
+  version: 1.0.0
+  description: Classifies a support ticket and routes it
+
+arium:
+  agents:                       # agent nodes
+    - name: triage
+      role: Support triage assistant
+      job: Classify the ticket.
+      model: { provider: rootflo, model_id: <llm-config-id> }
+      parser:
+        name: triage
+        fields:
+          - name: category
+            type: enum
+            description: What the ticket is about
+            values: [billing, bug, other]
+
+  function_nodes:               # deterministic steps
+    - name: open_billing_case
+      function_name: trigger_message_processor
+      input_filter: [triage]
+      prefilled_params: { message_processor_id: <function-id> }
+    - name: open_bug_report
+      function_name: trigger_message_processor
+      input_filter: [triage]
+      prefilled_params: { message_processor_id: <function-id> }
+
+  routers:                      # choose the next node
+    - name: by_category
+      type: field_match
+      field: category
+      routes: { billing: open_billing_case, bug: open_bug_report }
+      default: open_bug_report
+
+  workflow:                     # the graph
+    start: triage
+    edges:
+      - from: triage
+        to: [open_billing_case, open_bug_report]
+        router: by_category
+    end: [open_billing_case, open_bug_report]
+```
+
+| Section | Holds |
+|---|---|
+| `metadata` | Name, version and description, for humans |
+| `arium.agents` | Agent nodes, defined inline or [referenced](#referencing-saved-agents) |
+| `arium.function_nodes` | [Built-in function nodes](/wavefront/function-nodes): queries, file downloads, configuration reads, your functions, and more |
+| `arium.routers` | [Routers](/wavefront/routing-and-iteration) that pick the next node |
+| `arium.iterators` | [ForEach nodes](/wavefront/routing-and-iteration#foreach) that repeat a sub-workflow per item |
+| `arium.ariums` | [Sub-workflows](/wavefront/sub-workflows), nested in this workflow |
+| `arium.workflow` | The graph: `start`, `edges` (each `from` one node `to` a list of nodes, optionally through a `router`) and `end` |
+
+Every declared node must be connected by an edge. A node that nothing leads to and that leads nowhere is rejected as an orphan.
+
+## Inline and referenced agents
+
+You can define an agent **inline**, as above, with the same keys as a [standalone agent](/wavefront/agents) plus `input_filter`.
+
+### Referencing saved agents
+
+You can also reuse an agent saved in the app by writing only its `namespace/name`:
+
+```yaml
+arium:
+  agents:
+    - name: support/support-triage      # a saved agent
+  workflow:
+    start: support/support-triage
+    edges:
+      - from: support/support-triage
+        to: [route_ticket]
+    end: [route_ticket]
+```
+
+- Edges, `start` and `end` use the full reference (`support/support-triage`). Add `@<version>` to pin a version (`support/support-triage@3`); without it the agent's current version is used.
+- The agent's **output** is stored under the name in the agent's own YAML (`agent.name`, here `support-triage`). Downstream nodes select it with `input_filter: [support-triage]`, not with the reference. See [Passing data between nodes](/wavefront/workflow-data-flow).
+
+Referencing is useful when one agent serves several workflows, or when the agent is maintained separately. Inline agents keep the whole workflow in one file.
+
+## Creating a workflow
+
+<Tabs>
+  <Tab title="Console">
+    Go to **Workflows → Create Workflow**, enter a **Workflow ID** and a **Namespace**, paste the YAML and click **Create Workflow**. The YAML is checked when you save: invalid structure, orphan nodes or unknown references are rejected, for now with a generic error message ([#450](https://github.com/rootflo/wavefront/issues/450)).
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -X POST "$APP/floware/v1/workflow-management/workflows/ticket-intake?namespace=support" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: text/plain' \
+      --data-binary @ticket-intake.yaml
+    ```
+    The response contains the workflow's `id`.
+  </Tab>
+</Tabs>
+
+## Running a workflow
+
+**In the console**, open the workflow. Its YAML is on the left and a chat panel on the right: type the input in **Ask anything**, add variables with **+ → Add variables**, attach images or documents with **+**, and send. Turn on **JSON output** to pretty-print the result.
+
+<Frame>
+  <img src="/images/wavefront/qs-workflow-run.png" alt="Running a workflow in the console" />
+</Frame>
+
+**From the API:**
+
+```bash
+curl -X POST "$APP/floware/v2/workflows/<workflow-id>/inference" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "inputs": [{ "role": "user", "content": "My invoice was charged twice" }],
+    "variables": { "customer_id": "C-1001" },
+    "output_json_enabled": true
+  }'
+```
+
+| Field | Meaning |
+|---|---|
+| `inputs` | The input messages, as for [agents](/wavefront/agents#request-fields). When the first node is a function, send JSON text, for example `"{}"` |
+| `variables` | Values every node can read (`<name>` placeholders in agents, and function inputs) |
+| `output_json_enabled` | Default **`false`** for workflows: `result` is a string holding the last node's output. Set `true` to receive it parsed as JSON |
+
+Add `?version=<n>` to run a specific version instead of the current one, which is useful for trying a new version before making it current.
+
+Long workflows can also run in the background; see [Running workflows](/wavefront/running-workflows).
+
+## Other routes
+
+| Action | Request |
+|---|---|
+| List | `GET /floware/v1/workflow-management/workflows` |
+| Get one, with its YAML | `GET /floware/v1/workflow-management/workflows/<id>` (optionally `?version=`) |
+| Update | `PUT /floware/v1/workflow-management/workflows/<id>`; see [Versions](/wavefront/versions) |
+| Delete | `DELETE /floware/v1/workflow-management/workflows/<id>` |
+
+## Rules worth knowing
+
+<CardGroup cols={2}>
+  <Card title="One node at a time" icon="list-ol" href="/wavefront/workflow-execution-model">
+    Workflows run sequentially; how memory and the output work.
+  </Card>
+  <Card title="Data between nodes" icon="arrow-right-arrow-left" href="/wavefront/workflow-data-flow">
+    `input_filter`, `node_outputs` and variables.
+  </Card>
+  <Card title="Sub-workflows" icon="layer-group" href="/wavefront/sub-workflows">
+    Keep each agent's context small.
+  </Card>
+  <Card title="Troubleshooting" icon="triangle-exclamation" href="/wavefront/troubleshooting">
+    Validation errors, orphan nodes, variables and other common surprises.
+  </Card>
+</CardGroup>

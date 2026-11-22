@@ -31,3 +31,14 @@ FILLER_PHRASES = {
         'ಒಂದು ಕ್ಷಣ ದಯವಿಟ್ಟು',
     ],
 }
+
+# Short backchannels while the LLM thinks (not tool waits). Keep brief so they
+# do not collide awkwardly with a fast first TTS token.
+THINKING_PHRASES = {
+    'en': ['Hmm', 'Okay', 'Right', 'Let me see'],
+    'hi': ['हम्म', 'अच्छा', 'ठीक है', 'देखती हूँ'],
+    'ta': ['ம்ம்', 'சரி', 'பார்க்கிறேன்'],
+    'te': ['హ్మ్', 'సరే', 'చూస్తాను'],
+    'ml': ['ഹ്മ്', 'ശരി', 'നോക്കട്ടെ'],
+    'kn': ['ಹ್ಮ್', 'ಸರಿ', 'ನೋಡುತ್ತೇನೆ'],
+}

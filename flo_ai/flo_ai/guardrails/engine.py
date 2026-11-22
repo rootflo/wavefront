@@ -159,7 +159,8 @@ class GuardrailsEngine:
         behaviour there was before warming existed. What it must not do is take
         the process down for a provider the policy may not even name.
         """
-        for adapter in self._adapters.values():
+
+        async def _warm_adapter(adapter: BaseAdapter) -> None:
             started = time.monotonic()
             try:
                 await adapter.warmup()
@@ -169,7 +170,7 @@ class GuardrailsEngine:
                     f'It will initialise on first use instead, which may time '
                     f'out that request.'
                 )
-                continue
+                return
             # INFO, and timed: this is how you tell a warm process from one
             # that skipped warming and is about to reject its first request.
             # If the number here is larger than the policy's timeout, that
@@ -177,6 +178,11 @@ class GuardrailsEngine:
             logger.info(
                 f'Guardrail adapter {adapter.name} warmed in '
                 f'{time.monotonic() - started:.1f}s'
+            )
+
+        if self._adapters:
+            await asyncio.gather(
+                *[_warm_adapter(adapter) for adapter in self._adapters.values()]
             )
 
     async def aclose(self) -> None:

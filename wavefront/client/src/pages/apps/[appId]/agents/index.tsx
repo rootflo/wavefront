@@ -1,34 +1,38 @@
-import AgentCard from '@app/components/AgentCard';
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
+import AgentCard from './AgentCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useDeleteAgent, useGetAgents, useGetNamespaces } from '@app/hooks';
-import { useDashboardStore } from '@app/store';
+import { copyToClipboard } from '@app/utils/clipboard';
+import { formatAppName } from '@app/utils/string-formatting';
+import { useDashboardStore, useNotifyStore } from '@app/store';
 import { AgentListItem } from '@app/types/agent';
+import dayjs from 'dayjs';
+import { Copy, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateAgentDialog from './CreateAgentDialog';
+import PageBreadcrumb from '@app/components/PageBreadcrumb';
+import { useDeleteConfirm } from '@app/hooks';
+import { matchesSearch } from '@app/utils/search';
 
 const AgentManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView('agents');
+  const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [namespace, setNamespace] = useState('');
-  const [deleteItem, setDeleteItem] = useState<AgentListItem | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { selectedApp } = useDashboardStore();
   const deleteAgentMutation = useDeleteAgent(appId);
+  const deletion = useDeleteConfirm<AgentListItem>((item) => deleteAgentMutation.mutateAsync(item.id));
 
   // Get the namespace value for the query (undefined if 'all' or empty)
   const namespaceForQuery = namespace === 'all' || !namespace ? undefined : namespace;
@@ -36,36 +40,22 @@ const AgentManagement: React.FC = () => {
   const { data: agents = [], isLoading: agentsLoading } = useGetAgents(appId, namespaceForQuery);
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
-  const filteredAgents = agents.filter(
-    (agent) =>
-      agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agent.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAgents = agents.filter((agent) => matchesSearch(searchTerm, agent.name, agent.id));
 
   const handleCreateAgent = () => {
     setCreateDialogOpen(true);
-  };
-
-  const handleCreateSuccess = () => {
-    setCreateDialogOpen(false);
   };
 
   const handleAgentClick = (agentId: string) => {
     navigate(`/apps/${appId}/agents/${agentId}`);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, agent: AgentListItem) => {
-    e.stopPropagation(); // Prevent triggering the click handler for the card
-    setDeleteItem(agent);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteItem) return;
-    deleteAgentMutation.mutate(deleteItem.id, {
-      onSuccess: () => {
-        setDeleteItem(null);
-      },
-    });
+  const handleCopyId = async (id: string) => {
+    if (await copyToClipboard(id)) {
+      notifySuccess('Copied ID to clipboard');
+    } else {
+      notifyError('Failed to copy ID');
+    }
   };
 
   const handleNamespaceChange = (value: string) => {
@@ -73,96 +63,108 @@ const AgentManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
-                Apps
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate(`/apps/${appId}/agents`)}
-                className="hover:text-foreground cursor-pointer"
-              >
-                Agents
-              </button>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <PageBreadcrumb items={[{ label: 'Agents', to: `/apps/${appId}/agents` }]} />
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Agents</h1>
-          <p className="frost-text-muted mt-2">Manage AI agents for {selectedApp?.app_name}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+      <ListHeader
+        title="Agents"
+        count={filteredAgents.length || undefined}
+        subtitle={<>Manage AI agents for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search agents' }}
+        filters={
+          <FilterSelect
+            label="Namespace"
+            value={namespace}
+            onValueChange={handleNamespaceChange}
+            allValue="all"
+            options={[
+              { value: 'all', label: 'All namespaces' },
+              ...namespaces.map((ns) => ({ value: ns.name, label: ns.name })),
+            ]}
           />
-
-          <Select value={namespace} onValueChange={handleNamespaceChange}>
-            <SelectTrigger className="w-48 cursor-pointer">
-              <SelectValue placeholder="Select namespace" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem className="cursor-pointer" value="all">
-                All Namespaces
-              </SelectItem>
-              {namespaces.map((ns) => (
-                <SelectItem className="cursor-pointer" key={ns.name} value={ns.name}>
-                  {ns.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleCreateAgent}>Create Agent</Button>
+        }
+        extras={<ListViewToggle view={view} onChange={setView} />}
+        primary={{ label: 'Create agent', onClick: handleCreateAgent }}
+      />
+      {agentsLoading || filteredAgents.length === 0 ? (
+        <div className="-mx-1 -mt-2 grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+          {agentsLoading ? (
+            Array.from({ length: 6 }).map((_, index) => <ResourceCardSkeleton key={index} metadataCount={2} />)
+          ) : (
+            <div className="col-span-full mt-10 flex justify-center">
+              <EmptyStateCard
+                title="No agents found"
+                description="Get started by creating your first agent"
+                actionText="Create Agent"
+                onActionClick={handleCreateAgent}
+              />
+            </div>
+          )}
         </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
-        {agentsLoading ? (
-          <>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <ResourceCardSkeleton key={index} metadataCount={2} />
-            ))}
-          </>
-        ) : filteredAgents.length === 0 ? (
-          <div className="col-span-full mt-10 flex justify-center">
-            <EmptyStateCard
-              title="No agents found"
-              description="Get started by creating your first agent"
-              actionText="Create Agent"
-              onActionClick={handleCreateAgent}
+      ) : (
+        <ResourceList
+          view={view}
+          cards={filteredAgents.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onClick={handleAgentClick}
+              onDeleteClick={(e, item) => deletion.ask(item, e)}
             />
-          </div>
-        ) : (
-          <>
-            {filteredAgents.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} onClick={handleAgentClick} onDeleteClick={handleDeleteClick} />
-            ))}
-          </>
-        )}
-      </div>
+          ))}
+          table={
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Namespace</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAgents.map((agent) => (
+                  <TableRow key={agent.id} className="cursor-pointer" onClick={() => handleAgentClick(agent.id)}>
+                    <TableCell className="max-w-[220px] truncate font-medium" title={agent.name}>
+                      {formatAppName(agent.name)}
+                    </TableCell>
+                    <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-mono text-xs" title={agent.id}>
+                          {agent.id}
+                        </span>
+                        <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(agent.id)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="frost-text-muted">{agent.namespace || '—'}</TableCell>
+                    <TableCell className="frost-text-muted">
+                      {agent.current_version !== undefined ? `v${agent.current_version}` : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      {agent.updated_at ? dayjs(agent.updated_at).format('DD MMM YYYY') : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" title="Delete" onClick={(e) => deletion.ask(agent, e)}>
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          }
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
+        {...deletion.dialogProps}
         title="Delete Agent"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleteAgentMutation.isPending}
+        message={`Are you sure you want to delete "${deletion.item?.name}"? This action cannot be undone.`}
       />
 
       {/* Create Agent Dialog */}
@@ -171,7 +173,6 @@ const AgentManagement: React.FC = () => {
           isOpen={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
           appId={appId}
-          onSuccess={handleCreateSuccess}
           namespaces={namespaces}
         />
       )}

@@ -11,6 +11,7 @@ import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]
 import EmailConnectionsPage from '@app/pages/apps/[appId]/email-connections';
 import OAuthAppsPage from '@app/pages/apps/[appId]/oauth-apps';
 import ScheduledJobsPage from '@app/pages/apps/[appId]/scheduled-jobs';
+import SecretsPage from '@app/pages/apps/[appId]/secrets';
 // import TriggersPage from '@app/pages/apps/[appId]/triggers';
 import ConfigurationsManagement from '@app/pages/apps/[appId]/configurations';
 import ConfigurationDetail from '@app/pages/apps/[appId]/configurations/[configKey]';
@@ -19,8 +20,8 @@ import FunctionDetail from '@app/pages/apps/[appId]/functions/[functionId]';
 import KnowledgeBaseDetailPage from '@app/pages/apps/[appId]/knowledge-bases/[kbId]';
 import KnowledgeBasesListPage from '@app/pages/apps/[appId]/knowledge-bases/index';
 import GuardrailsManagement from '@app/pages/apps/[appId]/guardrails';
-import LLMInferenceConfigsManagement from '@app/pages/apps/[appId]/llm-inference';
-import LLMInferenceConfigDetail from '@app/pages/apps/[appId]/llm-inference/[configId]';
+import ModelHub from '@app/pages/apps/[appId]/model-hub';
+import ModelDetail from '@app/pages/apps/[appId]/model-hub/[configId]';
 import VoiceAgentsPage from '@app/pages/apps/[appId]/voice-agents';
 import VoiceAgentsLayout from '@app/pages/apps/[appId]/voice-agents/layout';
 import SttConfigsPage from '@app/pages/apps/[appId]/voice-agents/stt-configs';
@@ -29,6 +30,8 @@ import ToolsPage from '@app/pages/apps/[appId]/voice-agents/tools';
 import TtsConfigsPage from '@app/pages/apps/[appId]/voice-agents/tts-configs';
 import WorkflowManagement from '@app/pages/apps/[appId]/workflows';
 import WorkflowDetail from '@app/pages/apps/[appId]/workflows/[id]';
+import WorkflowEditorPage from '@app/pages/apps/[appId]/workflows/editor';
+import { WORKFLOW_EDITOR_NEW_PATH, WORKFLOW_EDITOR_PATH } from './standalone-paths';
 import WorkflowsLayout from '@app/pages/apps/[appId]/workflows/layout';
 import UsersPage from '@app/pages/apps/users';
 import CreateApp from '@app/pages/apps/create';
@@ -93,6 +96,10 @@ const routes = {
           element: <ApiServiceDetail />,
         },
         {
+          path: 'secrets',
+          element: <SecretsPage />,
+        },
+        {
           path: 'datasources',
           element: <DatasourcesManagement />,
         },
@@ -125,12 +132,12 @@ const routes = {
           element: <KnowledgeBaseDetailPage />,
         },
         {
-          path: 'llm-repository',
-          element: <LLMInferenceConfigsManagement />,
+          path: 'model-hub',
+          element: <ModelHub />,
         },
         {
-          path: 'llm-repository/:llmId',
-          element: <LLMInferenceConfigDetail />,
+          path: 'model-hub/:modelId',
+          element: <ModelDetail />,
         },
         {
           path: 'guardrails',
@@ -213,6 +220,18 @@ const routes = {
     {
       path: '/apps/edit/:appId',
       element: <EditApp />,
+    },
+  ],
+  // Authenticated pages rendered without the dashboard chrome (top bar, scrolling main)
+  fullscreen: [
+    {
+      // The workflow editor always opens in its own browser tab
+      path: WORKFLOW_EDITOR_NEW_PATH,
+      element: <WorkflowEditorPage />,
+    },
+    {
+      path: WORKFLOW_EDITOR_PATH,
+      element: <WorkflowEditorPage />,
     },
   ],
   admin: [],

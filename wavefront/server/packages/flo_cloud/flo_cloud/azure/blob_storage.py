@@ -8,12 +8,14 @@ from urllib.parse import quote
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.storage.blob import (
+    BlobPrefix,
     BlobSasPermissions,
     BlobServiceClient,
     generate_blob_sas,
 )
 
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_asset_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 
 
@@ -26,6 +28,7 @@ class AzureBlobStorage(CloudStorageHandler):
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         tenant_id: Optional[str] = None,
+        asset_url: Optional[str] = None,
     ):
         """
         Initialize Azure Blob Storage client.
@@ -48,11 +51,15 @@ class AzureBlobStorage(CloudStorageHandler):
             client_id: Azure AD application (client) ID.
             client_secret: Azure AD application client secret.
             tenant_id: Azure AD tenant (directory) ID.
+            asset_url: Base URL for SAS URLs (custom domain in front of the
+                        account); the proxy must strip any path prefix. SAS
+                        signatures don't cover the host.
         """
         if not account_url:
             raise ValueError('account_url must be provided')
-        self._account_url = account_url
+        self._account_url = account_url.rstrip('/')
         self._account_name = self._parse_account_name(account_url)
+        self._asset_url = normalize_asset_url(asset_url)
 
         creds_provided = [client_id, client_secret, tenant_id]
         if all(creds_provided):
@@ -91,25 +98,32 @@ class AzureBlobStorage(CloudStorageHandler):
     # ------------------------------------------------------------------
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Download a blob from an Azure container.
+        """Download a blob from an Azure container."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name: Name of the Azure container (equivalent to S3 bucket).
-            file_path: Path / name of the blob inside the container.
+    def download_to_file(self, bucket_name: str, file_path: str, dest: str) -> None:
+        blob_client = self.client.get_blob_client(container=bucket_name, blob=file_path)
+        with open(dest, 'wb') as f:
+            blob_client.download_blob().readinto(f)
 
-        Returns:
-            File content as bytes.
-
-        Raises:
-            CloudStorageFileNotFoundError: If the blob or container does not exist.
-            Exception: For other errors.
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get blob bytes and the stored content type, if any."""
         try:
             blob_client = self.client.get_blob_client(
                 container=bucket_name, blob=file_path
             )
-            return blob_client.download_blob().readall()
+            downloader = blob_client.download_blob()
+            content = downloader.readall()
+            content_settings = getattr(downloader, 'properties', None)
+            content_type = None
+            if content_settings is not None:
+                settings = getattr(content_settings, 'content_settings', None)
+                if settings is not None:
+                    content_type = settings.content_type
+            return content, content_type
         except ResourceNotFoundError:
             raise CloudStorageFileNotFoundError(bucket_name, file_path)
         except Exception as e:
@@ -263,7 +277,7 @@ class AzureBlobStorage(CloudStorageHandler):
 
             encoded_key = quote(key, safe='/')
             blob_url = f'{self._account_url}/{bucket_name}/{encoded_key}?{sas_token}'
-            return blob_url
+            return rebase_url(blob_url, self._asset_url)
         except Exception as e:
             raise Exception(
                 f'Error generating SAS URL for Azure Blob Storage: {str(e)}'
@@ -319,6 +333,55 @@ class AzureBlobStorage(CloudStorageHandler):
             raise Exception(f'Container {bucket_name} not found')
         except Exception as e:
             raise Exception(f'Error listing files from Azure Blob Storage: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using ``walk_blobs`` and Azure's continuation token."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            container_client = self.client.get_container_client(bucket_name)
+            pages = container_client.walk_blobs(
+                name_starts_with=prefix or None,
+                delimiter=delimiter,
+                results_per_page=page_size,
+            ).by_page(continuation_token=page_token or None)
+            page = next(pages, None)
+            if page is None:
+                return FolderListing()
+
+            folders: List[str] = []
+            files: List[StorageObject] = []
+            for item in page:
+                # walk_blobs yields a BlobPrefix for each sub-folder and BlobProperties for each blob.
+                if isinstance(item, BlobPrefix):
+                    folders.append(item.name)
+                else:
+                    settings = getattr(item, 'content_settings', None)
+                    files.append(
+                        StorageObject(
+                            key=item.name,
+                            size=getattr(item, 'size', None),
+                            content_type=getattr(settings, 'content_type', None),
+                            updated_at=getattr(item, 'last_modified', None),
+                        )
+                    )
+            return FolderListing(
+                folders=sorted(folders),
+                files=files,
+                next_page_token=pages.continuation_token or None,
+            )
+        except ResourceNotFoundError:
+            raise Exception(f'Container {bucket_name} not found')
+        except Exception as e:
+            raise Exception(f'Error listing folder from Azure Blob Storage: {str(e)}')
 
     def open_text_writer(
         self, bucket_name: str, key: str, content_type: Optional[str] = None

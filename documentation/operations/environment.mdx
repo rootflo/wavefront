@@ -1,0 +1,92 @@
+---
+title: "Environment and configuration"
+description: "The settings that matter for the API server and the background worker, and the feature flags"
+icon: "gear"
+---
+
+floware and the Celery worker read their settings from `config.ini`, where every value can be overridden by an environment variable (`${NAME:default}`). This page lists the settings people most often need to set or change. The full list is in each service's `config.ini`.
+
+## Both the API server and the worker
+
+The worker builds and runs the same workflows as the API, so it needs most of the same settings. **When a background run never leaves `pending`, compare these between the two.**
+
+| Variable | |
+|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | floware's own database |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PROTOCOL` | Redis (cache, sessions, streams) |
+| `CELERY_BROKER_URL` | The Celery broker (Redis) |
+| `CELERY_QUEUE_NAME` | The queue this app's background runs use. Default `celery`; **must be unique per app** when apps share a Redis (see [Running several apps](/operations/multi-app)) |
+| `APP_NAME` | Prefix for this app's cache and stream keys; unique per app on a shared Redis |
+| `CLOUD_PROVIDER`, `CLOUD_REGION`, `CLOUD_PROJECT_ID` | Where object storage lives |
+| `APPLICATION_BUCKET` | The bucket (or container) for definitions and execution files |
+| `STORAGE_ACCOUNT_URL` | For Azure Blob Storage: the storage account URL |
+| `APPLICATION_STORAGE_URL` | Optional. Your own domain for presigned/SAS links in place of the provider's; see [Custom storage domain](#custom-storage-domain) |
+| `HERMES_URL` | The function sandbox |
+| `ASYNC_AGENTIC_EXEC_RESULTS_STREAM` | The stream the worker publishes results on; floware consumes the same name |
+
+## Worker only
+
+| Variable | |
+|---|---|
+| `FLOWARE_BASE_URL` | How the worker reaches the floware API; workflow steps such as queries, inserts, file downloads and functions are calls to it |
+| `ROOTFLO_BASE_URL` | Base URL agents use to reach the app's model proxy when they use `provider: rootflo` models. Usually the same app URL |
+| `CELERY_RESULT_BACKEND` | Celery result backend |
+| `CELERY_TASK_MAX_RETRIES`, `CELERY_TASK_RETRY_DELAY_SECONDS` | Retries for failed tasks (default: none) |
+
+<Warning>
+Missing **`APPLICATION_BUCKET`**, **`STORAGE_ACCOUNT_URL`** (Azure) or **`ROOTFLO_BASE_URL`** on the worker are the classic causes of background runs that stay `pending` forever ([#451](https://github.com/rootflo/wavefront/issues/451)). Check the worker's log right after starting a run.
+</Warning>
+
+## API server only
+
+| Variable | Default | |
+|---|---|---|
+| `FLOWARE_SERVER_PORT` | 8001 | |
+| `FLOWARE_WORKER_COUNT` | 4 | Server processes per replica |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | Browser origins allowed by CORS, comma-separated |
+| `TOKEN_EXPIRY` | 3600 | Session lifetime in seconds |
+| `MAX_FAILED_ATTEMPTS`, `LOCKOUT_DURATION_HOURS` | 3, 24 | Account lockout |
+| `RECAPTCHA_ENABLED` | false | reCAPTCHA on sign-in |
+| `LOG_LEVEL` | INFO | |
+| `PASSTHROUGH_SECRET` | | A shared secret for internal service-to-service calls, mainly for local development; keep it unset or strong in production |
+| `KMS_*` | | Keys used to encrypt stored secrets and sign tokens |
+
+## Custom storage domain
+
+Set `APPLICATION_STORAGE_URL` when users' networks allow your own domain but not the storage provider's. Presigned and SAS links then use it in place of the provider's host. Server-to-storage traffic doesn't change, so keep `STORAGE_ACCOUNT_URL` pointed at the real storage account. Set it on floware and the worker. Setting it on the client is optional: the client adds it to its Content-Security-Policy, which only matters if pages load storage files as images or media from a domain other than the app's own.
+
+The value is an `http(s)://` URL, optionally with a path prefix, such as `https://app.example.com/storage`. A prefix on the app's own domain needs no extra whitelist entry or CORS rule. The route behind it must:
+
+- strip the path prefix, then forward the rest of the path and the query string unchanged (no decoding or normalising)
+- set `Host` to the storage endpoint: `<account>.blob.core.windows.net`, `storage.googleapis.com`, or for S3 `s3.<region>.amazonaws.com` (in us-east-1, `s3.amazonaws.com` by default, or `s3.us-east-1.amazonaws.com` when `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT=regional` is set), with `CLOUD_REGION` set to the bucket's region
+- not cache responses
+- allow GET, HEAD, PUT and OPTIONS
+- not add its own authentication to requests sent to storage (on AWS, turn off CloudFront OAC/OAI for this route; on Azure and GCP, leave origin authentication off). The link is already signed, and storage rejects a request that carries two credentials
+
+Presigned URLs that are already cached, such as the voice agent welcome audio (up to about 2 hours), keep the old host until they expire.
+
+## Workflow engine
+
+| Variable | Default | |
+|---|---|---|
+| `FLO_AI_MAX_ITERATIONS` | 35 | Node executions allowed per run (5–60) |
+
+## Feature flags
+
+Set to `true` to enable.
+
+| Flag | Default | Enables |
+|---|---|---|
+| `DATASOURCE_AUDIT_ENABLED_FLAG` | false | The [audit trail](/wavefront/audit-trail) |
+| `DATASOURCE_CHANGE_NOTIFICATION_FLAG` | false | Notifications for recorded data changes |
+| `ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG` | false | Every signed-in user reads all data, the audit trail and the user directory; turns off [data permissions](/wavefront/users-and-access#data-permissions) |
+| `INACTIVE_ACCOUNT_DISABLE_FLAG` | false | Disables accounts unused for `INACTIVE_DAYS_THRESHOLD` days (default 60) |
+| `GUARDRAILS_ENABLED` | false | Guardrails on model input and output |
+
+## Telemetry
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` send traces and metrics to an OpenTelemetry collector. When the endpoint is set but unreachable, the services keep working and log export errors. Set it correctly or leave it empty to keep the logs readable.
+
+## Logs and personal data
+
+At `INFO` level, the logs include tool inputs and outputs, so data an agent reads may appear in them. Treat logs as containing personal data: restrict access and set retention accordingly, or raise the log level in production.

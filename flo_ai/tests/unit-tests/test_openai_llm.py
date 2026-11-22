@@ -130,10 +130,20 @@ class TestOpenAI:
         call_args = llm.client.chat.completions.create.call_args[1]
 
         assert call_args['response_format'] == {'type': 'json_object'}
-        assert call_args['functions'] == [
-            {'name': 'test_response', 'parameters': output_schema['schema']}
+        assert call_args['tools'] == [
+            {
+                'type': 'function',
+                'function': {
+                    'name': 'test_response',
+                    'parameters': output_schema['schema'],
+                },
+            }
         ]
-        assert call_args['function_call'] == {'name': 'test_response'}
+        assert call_args['tool_choice'] == {
+            'type': 'function',
+            'function': {'name': 'test_response'},
+        }
+        assert 'functions' not in call_args
 
         # Verify system message was modified
         assert len(call_args['messages']) == 2
@@ -227,12 +237,12 @@ class TestOpenAI:
 
         formatted = llm.format_tool_for_llm(tool)
 
-        assert formatted['name'] == 'test_tool'
-        assert formatted['description'] == 'A test tool'
-        assert formatted['parameters']['type'] == 'object'
-        assert 'param1' in formatted['parameters']['properties']
-        assert 'param2' in formatted['parameters']['properties']
-        assert formatted['parameters']['required'] == ['param1', 'param2']
+        assert formatted['function']['name'] == 'test_tool'
+        assert formatted['function']['description'] == 'A test tool'
+        assert formatted['function']['parameters']['type'] == 'object'
+        assert 'param1' in formatted['function']['parameters']['properties']
+        assert 'param2' in formatted['function']['parameters']['properties']
+        assert formatted['function']['parameters']['required'] == ['param1', 'param2']
 
     def test_openai_format_tools_for_llm(self):
         """Test format_tools_for_llm method."""
@@ -256,8 +266,8 @@ class TestOpenAI:
         formatted = llm.format_tools_for_llm([tool1, tool2])
 
         assert len(formatted) == 2
-        assert formatted[0]['name'] == 'tool1'
-        assert formatted[1]['name'] == 'tool2'
+        assert formatted[0]['function']['name'] == 'tool1'
+        assert formatted[1]['function']['name'] == 'tool2'
 
     def test_openai_format_image_in_message(self):
         """Test format_image_in_message method."""
@@ -466,9 +476,12 @@ class TestOpenAI:
         async for chunk in llm.stream(messages, functions=functions):
             results.append(chunk)
 
-        # Verify functions were passed correctly
+        # Verify functions were passed as tools
         call_args = llm.client.chat.completions.create.call_args
-        assert call_args[1]['functions'] == functions
+        assert 'functions' not in call_args[1]
+        assert call_args[1]['tools'] == [
+            {'type': 'function', 'function': f} for f in functions
+        ]
 
         # Verify the streaming results
         assert len(results) == 1

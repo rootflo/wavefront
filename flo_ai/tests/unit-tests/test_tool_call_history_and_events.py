@@ -23,7 +23,7 @@ from test_plan_execute import ScriptedLLM, call, plan, text
 class CallAwareLLM(ScriptedLLM):
     """A provider whose message format has a place for the tool call."""
 
-    def format_tool_call_message(self, content, tool_calls):
+    def format_stored_tool_call_message(self, content, tool_calls):
         return {
             'role': 'assistant',
             'content': content or None,
@@ -207,7 +207,7 @@ class TestProviderFormats:
     def test_openai(self):
         llm = OpenAI(model='gpt-4o-mini', api_key='x')
 
-        assert llm.format_tool_call_message('', self.calls) == {
+        assert llm.format_stored_tool_call_message('', self.calls) == {
             'role': 'assistant',
             'content': None,
             'tool_calls': [
@@ -344,7 +344,7 @@ class TestProviderFormats:
     def test_anthropic(self):
         llm = Anthropic(model='claude-sonnet-5-5', api_key='x')
 
-        assert llm.format_tool_call_message('On it.', self.calls) == {
+        assert llm.format_stored_tool_call_message('On it.', self.calls) == {
             'role': 'assistant',
             'content': [
                 {'type': 'text', 'text': 'On it.'},
@@ -367,14 +367,14 @@ class TestProviderFormats:
         assert messages[2]['tool_use_id'] == 'toolu_1'
 
     def test_a_provider_without_a_format_leaves_the_call_out(self):
-        assert ScriptedLLM([]).format_tool_call_message('', self.calls) is None
+        assert ScriptedLLM([]).format_stored_tool_call_message('', self.calls) is None
 
     def test_guarded_llm_uses_the_wrapped_providers_tool_handling(self):
         inner = Anthropic(model='claude-sonnet-5-5', api_key='x')
         guarded = GuardedLLM(inner, MagicMock())
 
-        assert guarded.format_tool_call_message('', self.calls) == (
-            inner.format_tool_call_message('', self.calls)
+        assert guarded.format_stored_tool_call_message('', self.calls) == (
+            inner.format_stored_tool_call_message('', self.calls)
         )
         response = {'content': '', 'raw_content': ['blocks']}
         assert guarded.get_assistant_message_for_tool_call(response) == ['blocks']

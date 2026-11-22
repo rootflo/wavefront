@@ -23,17 +23,26 @@ COPY wavefront/client/ ./
 
 RUN pnpm build
 
+# Runtime server deps, installed in their own stage so the final image needs no package manager
+FROM node:22-alpine AS runtime-deps
+WORKDIR /app
+RUN npm install --omit=dev --no-audit --no-fund express@^5.1.0 compression@^1.8.1
+
 FROM node:22-alpine
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION}
-RUN chown node:node /app
+# Patch Alpine packages, and drop npm/corepack (and their bundled dependencies)
+# plus Node's C headers, none of which are used at runtime
+RUN apk upgrade --no-cache && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/include/node && \
+    chown node:node /app
 
+COPY --from=runtime-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/server.cjs ./
 
 USER node
-RUN pnpm install express@4.21.2 compression@^1.8.0
 
 EXPOSE 3000
 

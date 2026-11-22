@@ -50,7 +50,7 @@ agent:
 
 
 def stored_config(**overrides) -> dict:
-    """A LlmInferenceConfig row as llm_inference_config_service.get_config returns it."""
+    """A LlmInferenceConfig row as get_runtime_config returns it."""
     config = {
         'llm_model': 'gpt-4.1-mini',
         'display_name': 'Configured in DB',
@@ -75,7 +75,7 @@ def agent_service() -> AgentInferenceService:
     service.cloud_storage_manager = Mock()
     service.message_processor_bucket_name = 'test-bucket'
     service.llm_inference_config_service = AsyncMock(
-        get_config=AsyncMock(return_value=stored_config())
+        get_runtime_config=AsyncMock(return_value=stored_config())
     )
     service.guardrails_engine = None
     return service
@@ -102,11 +102,11 @@ class TestCreateAgentFromYamlResolvesConfig:
         """This is what workflow agents were missing entirely."""
         await agent_service.create_agent_from_yaml(ROOTFLO_YAML, 'test-agent')
 
-        agent_service.llm_inference_config_service.get_config.assert_awaited_once()
-        assert (
-            str(agent_service.llm_inference_config_service.get_config.await_args[0][0])
-            == CONFIG_ID
+        get_runtime_config = (
+            agent_service.llm_inference_config_service.get_runtime_config
         )
+        get_runtime_config.assert_awaited_once()
+        assert str(get_runtime_config.await_args[0][0]) == CONFIG_ID
 
         # The resolved row's parameters must reach the LLM that overrides the YAML one
         builder.with_llm.assert_called_once()
@@ -120,14 +120,14 @@ class TestCreateAgentFromYamlResolvesConfig:
 
         await agent_service.create_agent_from_yaml(ROOTFLO_YAML, 'test-agent', explicit)
 
-        agent_service.llm_inference_config_service.get_config.assert_not_awaited()
+        agent_service.llm_inference_config_service.get_runtime_config.assert_not_awaited()
         assert builder.with_llm.call_args[0][0].temperature == 0.9
 
     async def test_non_rootflo_yaml_is_left_alone(self, agent_service, builder):
         """A plain provider block stays owned by AgentBuilder.from_yaml."""
         await agent_service.create_agent_from_yaml(OPENAI_YAML, 'test-agent')
 
-        agent_service.llm_inference_config_service.get_config.assert_not_awaited()
+        agent_service.llm_inference_config_service.get_runtime_config.assert_not_awaited()
         builder.with_llm.assert_not_called()
 
     async def test_missing_config_service_is_reported(self, agent_service, builder):
