@@ -1,6 +1,7 @@
 import string
 import logging
 import asyncio
+import time
 from google.oauth2 import service_account
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
@@ -29,10 +30,16 @@ from google.cloud.bigquery.job import (
     ExtractJobConfig,
 )
 from google.cloud.bigquery.table import TableListItem
+from google.api_core.exceptions import RetryError
+from google.cloud.bigquery.retry import DEFAULT_RETRY
 from google.cloud.exceptions import GoogleCloudError
 
 
 logger = logging.getLogger(__name__)
+
+# How long cancelling a timed-out job may hold the thread: a best-effort request
+# that must not delay the timeout error reaching the caller.
+_CANCEL_TIMEOUT_SECONDS = 5
 
 
 class BigQueryClient:
@@ -167,6 +174,70 @@ class BigQueryClient:
             logger.error(f'Unexpected error executing BigQuery query: {e}')
             raise
 
+    def query_rows(
+        self, query: str, params: Optional[dict] = None, **kwargs
+    ) -> List[Dict[str, Any]]:
+        """Run a query and return every row as a dict.
+
+        Blocking, unlike ``execute_query``: callers run it on a thread of their
+        choosing (the datasource plugin uses its own bounded pool).
+        """
+        try:
+            job_config = QueryJobConfig(**kwargs)
+            if params:
+                job_config.query_parameters = self._get_query_params(params)
+            return [dict(row.items()) for row in self._run_bounded(query, job_config)]
+        except GoogleCloudError as e:
+            logger.error(f'BigQuery query execution error: {e}')
+            raise
+
+    def _run_bounded(self, query: str, job_config: QueryJobConfig):
+        """Run a query and return its rows, all within ``self.timeout`` seconds.
+
+        One deadline covers the whole call: the job gets the same limit on the
+        server, and every HTTP attempt and retry sequence gets only the time
+        left (the library's default retries run for up to 10 minutes and may
+        resubmit the job, so both are bounded and resubmission is off). A job
+        still running when the client gives up is cancelled, so it stops using
+        slots and billing instead of running on unobserved.
+        """
+        deadline = time.monotonic() + self.timeout
+
+        def time_left() -> float:
+            return max(0.1, deadline - time.monotonic())
+
+        job_config.job_timeout_ms = int(self.timeout * 1000)
+        query_job = None
+        try:
+            query_job = self.client.query(
+                query,
+                job_config=job_config,
+                retry=DEFAULT_RETRY.with_timeout(time_left()),
+                timeout=time_left(),
+                job_retry=None,
+            )
+            return query_job.result(
+                retry=DEFAULT_RETRY.with_timeout(time_left()),
+                timeout=time_left(),
+                job_retry=None,
+            )
+        except (TimeoutError, RetryError):
+            # concurrent.futures.TimeoutError is TimeoutError from Python 3.11,
+            # and is raised with no message.
+            if query_job is not None:
+                self._cancel_quietly(query_job)
+            raise TimeoutError(
+                f'BigQuery query did not finish within {self.timeout}s'
+            ) from None
+
+    @staticmethod
+    def _cancel_quietly(query_job) -> None:
+        """Ask the server to stop the job, without holding the thread long."""
+        try:
+            query_job.cancel(retry=None, timeout=_CANCEL_TIMEOUT_SECONDS)
+        except Exception as e:
+            logger.warning(f'Could not cancel BigQuery job {query_job.job_id}: {e}')
+
     def execute_query_to_dataframe(
         self, query: str, use_legacy_sql: bool = False, **kwargs
     ):
@@ -258,8 +329,7 @@ class BigQueryClient:
                 job_config.query_parameters = self._get_query_params(params)
 
             logger.debug(f'Executing query: {query}')
-            query_job = self.client.query(query, job_config=job_config)
-            results = query_job.result(timeout=self.timeout)
+            results = self._run_bounded(query, job_config)
 
             return [dict(row.items()) for row in results]
 

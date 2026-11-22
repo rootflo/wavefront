@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from ..executor import current_statement_timeout, run_blocking, run_blocking_batch
 from ..types import DataSourceABC
 from ..validation import InvalidResourceError
 from .config import BigQueryConfig
 from flo_cloud.gcp.bigquery import BigQueryClient
-import asyncio
+import logging
 import re
 
 # BigQuery table IDs may contain hyphens, which plain SQL identifiers may not.
@@ -12,6 +13,8 @@ import re
 # No dots: the name is appended to `project.dataset.`, so it is pinned there.
 _BQ_TABLE_NAME_RE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_-]*')
 _BQ_TABLE_NAME_MAX_LEN = 1024
+
+logger = logging.getLogger(__name__)
 
 
 class BigQueryPlugin(DataSourceABC):
@@ -22,11 +25,20 @@ class BigQueryPlugin(DataSourceABC):
             location=config.location,
             credentials_path=config.credentials_path,
             credentials_json=config.credentials_json,
+            timeout=current_statement_timeout(),
         )
         self.table_prefix = f'{config.project_id}.{config.dataset_id}.'
 
+    def _can_query(self) -> bool:
+        try:
+            self.client.query_rows('SELECT 1 AS test')
+            return True
+        except Exception as e:
+            logger.error(f'BigQuery connection test failed: {e}')
+            return False
+
     async def test_connection(self) -> bool:
-        return await self.client.test_connection()
+        return await run_blocking(self._can_query)
 
     def validate_table_name(self, table_name: str) -> None:
         if (
@@ -50,7 +62,7 @@ class BigQueryPlugin(DataSourceABC):
 
     def get_table_names(self, **kwargs) -> list[str]:
         dataset_id = kwargs.get('dataset_id', self.config.dataset_id)
-        tables = self.client.list_tables(dataset_id)
+        tables = self.client.list_tables(dataset_id, timeout=self.client.timeout)
         return [table.table_id for table in tables]
 
     def fetch_data(
@@ -112,7 +124,7 @@ class BigQueryPlugin(DataSourceABC):
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         results = {}
-        tasks = []
+        prepared = []
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
@@ -166,32 +178,31 @@ class BigQueryPlugin(DataSourceABC):
             # adding limit and offset to the query
             query_to_execute += f' LIMIT {limit} OFFSET {offset}'
 
-            # Create async task for query execution
-            task = asyncio.create_task(
-                self.client.execute_query(query_to_execute, params=params_to_execute)
-            )
-            tasks.append((query_obj['id'], task))
+            prepared.append((query_id, query_to_execute, params_to_execute))
 
-        for query_id, task in tasks:
-            try:
-                # Await the async task to get the QueryJob
-                query_job = await task
+        # Every query is validated above before any of them starts, so a bad
+        # query further down cannot leave earlier ones running unobserved.
+        outcomes = await run_blocking_batch(
+            [
+                (self.client.query_rows, (sql, sql_params))
+                for _, sql, sql_params in prepared
+            ]
+        )
 
-                query_result = list(query_job.result())
-                formatted_result = [dict(row.items()) for row in query_result]
-
+        for (query_id, _, _), outcome in zip(prepared, outcomes):
+            if isinstance(outcome, BaseException):
+                results[query_id] = {
+                    'status': 'error',
+                    'error': str(outcome),
+                    'description': f'Error executing query {query_id}',
+                    'result': [],
+                }
+            else:
                 results[query_id] = {
                     'status': 'success',
                     'error': None,
                     'description': f'Query {query_id} executed successfully',
-                    'result': formatted_result,
-                }
-            except Exception as e:
-                results[query_id] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'description': f'Error executing query {query_id}',
-                    'result': [],
+                    'result': outcome,
                 }
 
         return results

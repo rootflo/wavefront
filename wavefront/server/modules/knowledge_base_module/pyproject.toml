@@ -24,6 +24,7 @@ dependencies = [
     "flo-cloud",
     "flo-lib",
     "python-multipart",
+    "pillow>=13.0.0,<14",
 ]
 
 [tool.uv.sources]

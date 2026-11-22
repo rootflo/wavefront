@@ -24,7 +24,10 @@ class MSSQLClient:
         encrypt: bool = True,
         trust_server_certificate: bool = False,
         timeout: int = 60,
+        statement_timeout: Optional[int] = None,
     ):
+        """``timeout`` bounds logging in, in seconds. ``statement_timeout``, in
+        seconds, cancels any statement that runs longer; None means no limit."""
         self.host = host
         self.port = port
         self.database = database
@@ -34,6 +37,7 @@ class MSSQLClient:
         self.encrypt = encrypt
         self.trust_server_certificate = trust_server_certificate
         self.timeout = timeout
+        self.statement_timeout = statement_timeout
 
     def _build_connection_string(self) -> str:
         parts = [
@@ -59,7 +63,13 @@ class MSSQLClient:
     def get_connection(self):
         connection = None
         try:
-            connection = mssql_python.connect(self._build_connection_string())
+            # mssql-python takes the login timeout as a pre-connect attribute;
+            # its `timeout` argument is the query timeout every cursor applies.
+            connection = mssql_python.connect(
+                self._build_connection_string(),
+                attrs_before={mssql_python.SQL_ATTR_LOGIN_TIMEOUT: self.timeout},
+                timeout=self.statement_timeout or 0,
+            )
             yield connection
         except Exception as e:
             logger.error(f'MSSQL connection error: {e}')

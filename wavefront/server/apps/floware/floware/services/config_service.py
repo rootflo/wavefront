@@ -6,6 +6,26 @@ from floware.repositories.config_repository import AppConfigRepository
 from floware.repositories.datasource_repository import AppDatasourceRepository
 from floware.repositories.knowledge_base_repository import AppKnowledgeBaseRepository
 
+# /settings/config is served without authentication, so each resource list is
+# reduced to an allowlist of fields. Backend details such as a datasource's
+# engine (postgres, mssql, ...) or a knowledge base's vector sizes stay out,
+# and a column added to a model later is not exposed until listed here.
+PUBLIC_DATASOURCE_FIELDS = ('id', 'name', 'description', 'created_at', 'updated_at')
+PUBLIC_KNOWLEDGE_BASE_FIELDS = (
+    'id',
+    'name',
+    'description',
+    'type',
+    'created_at',
+    'updated_at',
+)
+
+
+def _project(
+    records: list[dict[str, Any]], fields: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    return [{field: record.get(field) for field in fields} for record in records]
+
 
 class ConfigService:
     def __init__(
@@ -92,6 +112,6 @@ class ConfigService:
         return {
             'app_icon': url,
             'app_config': app_config,
-            'datasources': datasources,
-            'knowledgebases': knowledge_bases,
+            'datasources': _project(datasources, PUBLIC_DATASOURCE_FIELDS),
+            'knowledgebases': _project(knowledge_bases, PUBLIC_KNOWLEDGE_BASE_FIELDS),
         }

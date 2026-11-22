@@ -3,8 +3,10 @@ import boto3
 import io
 from typing import Optional, List, Tuple, IO, ContextManager
 from contextlib import contextmanager
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_asset_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 
@@ -17,6 +19,7 @@ class S3Storage(CloudStorageHandler):
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
         region_name: Optional[str] = None,
+        asset_url: Optional[str] = None,
     ):
         """
         Initialize AWS client
@@ -25,6 +28,9 @@ class S3Storage(CloudStorageHandler):
             aws_access_key_id: AWS access key ID (optional)
             aws_secret_access_key: AWS secret access key (optional)
             region_name: AWS region name (optional)
+            asset_url: Base URL for presigned URLs (optional). They are signed
+                path-style for s3.<region>.amazonaws.com (s3.amazonaws.com in
+                us-east-1); the proxy must strip any path prefix and send that Host.
         """
         client_kwargs = {}
         if aws_access_key_id is not None:
@@ -34,6 +40,19 @@ class S3Storage(CloudStorageHandler):
         if region_name is not None:
             client_kwargs['region_name'] = region_name
         self.s3_client = boto3.client('s3', **client_kwargs)
+        self._asset_url = normalize_asset_url(asset_url)
+        # Path-style keeps the bucket in the path, so one asset_url fronts every bucket.
+        self._presign_client = (
+            boto3.client(
+                's3',
+                config=Config(
+                    signature_version='s3v4', s3={'addressing_style': 'path'}
+                ),
+                **client_kwargs,
+            )
+            if self._asset_url
+            else self.s3_client
+        )
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
         """Get file from S3 bucket and return as buffer."""
@@ -132,12 +151,12 @@ class S3Storage(CloudStorageHandler):
             Exception: If URL generation fails
         """
         try:
-            presigned_url = self.s3_client.generate_presigned_url(
+            presigned_url = self._presign_client.generate_presigned_url(
                 type,
                 Params={'Bucket': bucket_name, 'Key': key},
                 ExpiresIn=expiresIn,
             )
-            return presigned_url
+            return rebase_url(presigned_url, self._asset_url)
         except Exception as e:
             raise Exception(f'Error generating presigned URL for S3: {str(e)}')
 
