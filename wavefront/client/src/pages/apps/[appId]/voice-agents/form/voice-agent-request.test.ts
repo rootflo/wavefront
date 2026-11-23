@@ -1,5 +1,6 @@
 import { VoiceAgent } from '@app/types/voice-agent';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONVERSATION_CONFIG } from '../conversation-config';
 import { toFormValues } from './voice-agent-form';
 import {
   buildVoiceAgentFields,
@@ -80,6 +81,21 @@ describe('buildVoiceAgentFields', () => {
 
   it('needs the default language to be a supported one', () => {
     expect(build({ supported_languages: ['en'], default_language: 'fr' })).toMatchObject({ ok: false });
+  });
+
+  it('drops the instructions of unchecked languages on save, keeping the rest', () => {
+    const text = JSON.stringify({ filler_speech: { enabled: true }, language_prompts: { hi: 'Hindi', ta: 'Tamil' } });
+    const result = build({ supported_languages: ['en', 'ta'], conversation_config: text });
+    expect(result.ok && result.fields.conversation_config).toEqual({
+      filler_speech: { enabled: true },
+      language_prompts: { ta: 'Tamil' },
+    });
+  });
+
+  it('stores null when only defaults and an unchecked language were left', () => {
+    const text = JSON.stringify({ ...DEFAULT_CONVERSATION_CONFIG, language_prompts: { hi: 'Hindi' } });
+    const result = build({ supported_languages: ['en'], conversation_config: text });
+    expect(result.ok && result.fields.conversation_config).toBeNull();
   });
 
   it('trims text and turns a blank description into null', () => {

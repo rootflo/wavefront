@@ -6,10 +6,92 @@ from typing import List, Dict, Any, Optional, Sequence, Tuple
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
+
+
+class UnstorableValueError(ValueError):
+    """A written value holds a NUL character, which text and jsonb cannot store."""
+
+
+_MAX_NUL_CANDIDATES = 5
+
+
+def _nul_paths(value: Any, path: str):
+    """Every path in ``value`` holding a NUL character.
+
+    Iterative, visiting each container once: rows after the failing one were
+    never serialised, so they may be too deep to recurse or self-referencing.
+    """
+    stack = [(value, path)]
+    seen = set()
+    while stack:
+        value, path = stack.pop()
+        if isinstance(value, str):
+            if '\x00' in value:
+                yield path
+            continue
+        if not isinstance(value, (dict, list, tuple)) or id(value) in seen:
+            continue
+        seen.add(id(value))
+        if isinstance(value, dict):
+            # A NUL in a key is reported at the dict's own path.
+            children = [
+                child
+                for key, item in value.items()
+                for child in ((key, path), (item, f'{path}.{key}'))
+            ]
+        else:
+            children = [(item, f'{path}[{i}]') for i, item in enumerate(value)]
+        stack.extend(reversed(children))
+
+
+@contextmanager
+def _locating_nul(table_name: str, rows: List[Dict[str, Any]]):
+    """Re-raise a write refused over a NUL as an error saying where it is.
+
+    Detected from the failure, not checked up front: json and text columns
+    store an escaped NUL fine, so only the write knows.
+    """
+    # Only the first row's keys are bound (see _build_insert), in this order;
+    # anything else a later row carries is never sent.
+    bound = list(rows[0]) if rows else []
+    try:
+        yield
+    except psycopg2.errors.UntranslatableCharacter as e:
+        # jsonb refused an escaped NUL but does not say which value, and json
+        # columns accept one, so these are candidates, not the culprit.
+        candidates = [
+            f'row {index} {path}'
+            for index, row in enumerate(rows)
+            for column in bound
+            if isinstance(row.get(column), (dict, list))
+            for path in _nul_paths(row[column], column)
+        ]
+        if not candidates:
+            raise
+        listed = ', '.join(candidates[:_MAX_NUL_CANDIDATES])
+        if len(candidates) > _MAX_NUL_CANDIDATES:
+            listed += f' and {len(candidates) - _MAX_NUL_CANDIDATES} more'
+        raise UnstorableValueError(
+            f"Table '{table_name}' refused a NUL character (\\u0000) in a JSON "
+            f'value; JSON values containing one: {listed}'
+        ) from e
+    except ValueError as e:
+        # psycopg2 refuses a NUL in a plain string before sending anything, so
+        # the first such value is the rejected one.
+        for index, row in enumerate(rows):
+            for column in bound:
+                value = row.get(column)
+                if isinstance(value, str) and '\x00' in value:
+                    raise UnstorableValueError(
+                        f"Row {index} of table '{table_name}': {column} contains a "
+                        'NUL character (\\u0000), which Postgres cannot store'
+                    ) from e
+        raise
 
 
 class NoRowsMatchedError(Exception):
@@ -634,7 +716,7 @@ class PostgresClient:
         if not data:
             return
         query, serialized = self._build_insert(table_name, data)
-        with self._write_cursor('Insert') as cursor:
+        with self._write_cursor('Insert') as cursor, _locating_nul(table_name, data):
             cursor.executemany(query, serialized)
 
     @staticmethod
@@ -770,7 +852,8 @@ class PostgresClient:
                 returning_columns=returning_columns,
             )
 
-            cursor.execute(query, merged_params)
+            with _locating_nul(table_name, [data]):
+                cursor.execute(query, merged_params)
             rows_affected = cursor.rowcount
             if not capture:
                 return RowMutationResult(rows_affected=rows_affected)
@@ -912,7 +995,8 @@ class PostgresClient:
                         returning_columns=returning_columns,
                     )
 
-                    cursor.execute(query, merged_params)
+                    with _locating_nul(table_name, [data]):
+                        cursor.execute(query, merged_params)
                     rows_affected = cursor.rowcount
                     if not capture:
                         results.append(
@@ -950,7 +1034,7 @@ class PostgresClient:
 
                 conn.commit()
                 return results
-            except psycopg2.Error as e:
+            except (psycopg2.Error, UnstorableValueError) as e:
                 conn.rollback()
                 logger.error(f'Multi-update error: {e}')
                 raise
@@ -965,7 +1049,7 @@ class PostgresClient:
         back every table (all-or-nothing). Entries with empty ``data`` are skipped.
         """
         prepared = [
-            self._build_insert(spec['table_name'], spec['data'])
+            (spec, *self._build_insert(spec['table_name'], spec['data']))
             for spec in inserts
             if spec.get('data')
         ]
@@ -974,5 +1058,6 @@ class PostgresClient:
         # One cursor for every table, so the commit at the end of the block is
         # what makes this all-or-nothing.
         with self._write_cursor('Multi-insert') as cursor:
-            for query, serialized in prepared:
-                cursor.executemany(query, serialized)
+            for spec, query, serialized in prepared:
+                with _locating_nul(spec['table_name'], spec['data']):
+                    cursor.executemany(query, serialized)

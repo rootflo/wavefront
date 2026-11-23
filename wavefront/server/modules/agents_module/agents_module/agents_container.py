@@ -117,6 +117,7 @@ class AgentsContainer(containers.DeclarativeContainer):
             config.celery.backpressure_retry_after_seconds
         ),
         broker_socket_timeout_seconds=config.celery.broker_socket_timeout_seconds,
+        max_execution_attempts=config.celery.max_execution_attempts,
     )
 
     celery_client = providers.Singleton(

@@ -166,17 +166,20 @@ _AWS_CREDENTIAL_KEYS = (
     'aws_access_key_id',
     'aws_secret_access_key',
     'region_name',
+    'asset_url',
 )
 _GCP_CREDENTIAL_KEYS = (
     'credentials_path',
     'credentials_info',
     'project_id',
+    'asset_url',
 )
 _AZURE_CREDENTIAL_KEYS = (
     'account_url',
     'client_id',
     'client_secret',
     'tenant_id',
+    'asset_url',
 )
 
 _FILE_PROTOCOLS: Mapping[CloudProvider, str] = {
