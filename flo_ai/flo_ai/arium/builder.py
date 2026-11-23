@@ -1050,6 +1050,8 @@ class AriumBuilder:
             builder.with_temperature(temperature)
         if settings is not None:
             builder.with_generation_params(**settings.generation_params())
+            if settings.rate_limit_max_wait is not None:
+                builder.with_rate_limit_wait(settings.rate_limit_max_wait)
 
         if act_as is not None:
             builder.with_actas(act_as)

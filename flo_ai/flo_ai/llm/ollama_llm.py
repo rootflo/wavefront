@@ -7,6 +7,7 @@ from .base_llm import BaseLLM
 from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import trace_llm_call, trace_llm_stream
+from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
 
 
 class OllamaLLM(BaseLLM):
@@ -73,6 +74,7 @@ class OllamaLLM(BaseLLM):
         payload.update(overrides)
         return payload
 
+    @rate_limited(provider='ollama')
     @trace_llm_call(provider='ollama')
     async def generate(
         self,
@@ -108,7 +110,14 @@ class OllamaLLM(BaseLLM):
                 f'{self.base_url}/api/generate', json=payload
             ) as response:
                 if response.status != 200:
-                    raise Exception(f'Ollama API error: {await response.text()}')
+                    # Typed so the status is classified; the body says why.
+                    raise aiohttp.ClientResponseError(
+                        response.request_info,
+                        response.history,
+                        status=response.status,
+                        message=await response.text(),
+                        headers=response.headers,
+                    )
 
                 result = await response.json()
                 return {
@@ -116,6 +125,7 @@ class OllamaLLM(BaseLLM):
                     'function_call': result.get('function_call'),
                 }
 
+    @rate_limited_stream(provider='ollama')
     @trace_llm_stream(provider='ollama')
     async def stream(
         self,
@@ -150,7 +160,14 @@ class OllamaLLM(BaseLLM):
                 f'{self.base_url}/api/generate', json=payload
             ) as response:
                 if response.status != 200:
-                    raise Exception(f'Ollama API error: {await response.text()}')
+                    # Typed so the status is classified; the body says why.
+                    raise aiohttp.ClientResponseError(
+                        response.request_info,
+                        response.history,
+                        status=response.status,
+                        message=await response.text(),
+                        headers=response.headers,
+                    )
 
                 async for raw_line in response.content:
                     line = raw_line.decode('utf-8').strip()

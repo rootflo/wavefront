@@ -75,6 +75,19 @@ class LLMMetrics:
                 unit='ms',
             )
 
+            # Rate-limit stalls
+            self.rate_limited_counter = self.meter.create_counter(
+                name='llm.rate_limited.total',
+                description='Number of rate-limited LLM responses',
+                unit='responses',
+            )
+
+            self.rate_limit_wait_histogram = self.meter.create_histogram(
+                name='llm.rate_limit.wait_ms',
+                description='Time spent stalled on a rate-limit cooldown',
+                unit='ms',
+            )
+
     def record_tokens(
         self,
         total_tokens: int = 0,
@@ -121,6 +134,24 @@ class LLMMetrics:
 
         attributes = {'model': model, 'provider': provider}
         self.latency_histogram.record(duration_ms, attributes)
+
+    def record_rate_limited(self, model: str = '', provider: str = ''):
+        """Record a rate-limited LLM response"""
+        if not self.meter:
+            return
+
+        attributes = {'model': model, 'provider': provider}
+        self.rate_limited_counter.add(1, attributes)
+
+    def record_rate_limit_wait(
+        self, duration_ms: float, model: str = '', provider: str = ''
+    ):
+        """Record time spent stalled on a rate-limit cooldown"""
+        if not self.meter:
+            return
+
+        attributes = {'model': model, 'provider': provider}
+        self.rate_limit_wait_histogram.record(duration_ms, attributes)
 
     def record_stream(
         self, model: str = '', provider: str = '', status: str = 'success'

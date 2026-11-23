@@ -17,6 +17,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
+from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
@@ -34,6 +35,7 @@ class Gemini(BaseLLM):
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
+        self.base_url = base_url
         # Configure http_options for proxy or custom base_url
         http_options: types.HttpOptionsDict = {'base_url': base_url} if base_url else {}
         # The key travels as `x-goog-api-key`, which the SDK sets from the key
@@ -114,6 +116,7 @@ class Gemini(BaseLLM):
             config_kwargs['system_instruction'] = system_prompt
         return types.GenerateContentConfig(**config_kwargs)
 
+    @rate_limited(provider='gemini')
     @trace_llm_call(provider='gemini')
     async def generate(
         self,
@@ -209,8 +212,9 @@ class Gemini(BaseLLM):
             return {'content': response_text}
 
         except Exception as e:
-            raise Exception(f'Error in Gemini API call: {str(e)}')
+            raise Exception(f'Error in Gemini API call: {str(e)}') from e
 
+    @rate_limited_stream(provider='gemini')
     @trace_llm_stream(provider='gemini')
     async def stream(
         self,

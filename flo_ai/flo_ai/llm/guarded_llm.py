@@ -125,6 +125,8 @@ class GuardedLLM(BaseLLM):
             temperature=getattr(inner_llm, 'temperature', 0.7),
             **getattr(inner_llm, 'kwargs', {}),
         )
+        # Before _inner_llm is set, so this reads the inner value, not mirrors one.
+        self.rate_limit_max_wait = inner_llm.rate_limit_max_wait
         object.__setattr__(self, '_inner_llm', inner_llm)
         self._engine = engine
         self._principal = principal or Principal()
@@ -155,7 +157,7 @@ class GuardedLLM(BaseLLM):
         real client would keep its default.
         """
         super().__setattr__(key, value)
-        if key in ('model', 'api_key', 'temperature'):
+        if key in ('model', 'api_key', 'temperature', 'rate_limit_max_wait'):
             inner = self.__dict__.get('_inner_llm')
             if inner is not None:
                 setattr(inner, key, value)

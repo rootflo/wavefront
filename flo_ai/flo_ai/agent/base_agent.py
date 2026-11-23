@@ -3,6 +3,7 @@ from typing import Awaitable, Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm.rate_limit import LLMProviderError
 from flo_ai.models.chat_message import (
     BaseMessage,
     MediaMessageContent,
@@ -64,6 +65,11 @@ class BaseAgent(ABC):
         if getattr(error, 'retryable', True) is False:
             return False, str(error)
 
+        # The model can't fix its provider's failure, and the prompt below
+        # would re-send the whole conversation to a provider already failing.
+        if isinstance(error, LLMProviderError):
+            return error.transient, str(error)
+
         error_prompt = (
             f'An error occurred while processing the request: {str(error)}\n'
             f'Context: {context}\n'
@@ -86,6 +92,8 @@ class BaseAgent(ABC):
             should_retry = 'not recoverable' not in analysis.lower()
             return should_retry, analysis
 
+        except LLMProviderError:
+            raise
         except Exception as e:
             return False, f'Error during error handling: {str(e)}'
 

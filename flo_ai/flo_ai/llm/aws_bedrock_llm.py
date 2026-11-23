@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, Any, List, AsyncIterator, Optional
+from typing import Dict, Any, List, AsyncIterator, Optional, Tuple
 import boto3
 import asyncio
 from .base_llm import BaseLLM
@@ -12,6 +12,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
+from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from flo_ai.utils.logger import logger
 from opentelemetry import trace
@@ -28,6 +29,10 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         self.boto_client = boto3.client('bedrock-runtime')
         self.model = model
         self.kwargs = kwargs
+
+    def rate_limit_scope(self) -> Tuple[Any, ...]:
+        # Authenticated by boto credentials rather than a key; quotas are per region.
+        return ('bedrock', self.boto_client.meta.region_name, self.model)
 
     @staticmethod
     def _strip_reasoning(text: str) -> str:
@@ -61,6 +66,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
 
         return result
 
+    @rate_limited(provider='bedrock')
     @trace_llm_call(provider='bedrock')
     async def generate(
         self,
@@ -136,6 +142,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
             }
         return {'content': text_content, 'raw_message': message}
 
+    @rate_limited_stream(provider='bedrock')
     @trace_llm_stream(provider='bedrock')
     async def stream(
         self,

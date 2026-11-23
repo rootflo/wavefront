@@ -1,5 +1,6 @@
 import asyncio
 import base64 as _base64
+import hashlib
 import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -15,6 +16,7 @@ from typing import (
     Tuple,
 )
 from flo_ai.helpers.generation_params import merge_generation_params
+from flo_ai.llm.rate_limit import DEFAULT_RATE_LIMIT_MAX_WAIT
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
@@ -172,6 +174,10 @@ class BaseLLM(ABC):
     # translating canonical generation params; see llm.generation_params.
     provider_name: str = ''
 
+    # Seconds one call may stall on rate limits; see llm.rate_limit. Set as an
+    # attribute, never a kwarg, which would be sent to the provider.
+    rate_limit_max_wait: float = DEFAULT_RATE_LIMIT_MAX_WAIT
+
     def __init__(
         self,
         model: str,
@@ -184,6 +190,28 @@ class BaseLLM(ABC):
         self.temperature = temperature
         self.kwargs = kwargs
         self._supports_retract = False
+
+    def rate_limit_scope(self) -> Tuple[Any, ...]:
+        """Key of the rate-limit gate this LLM's calls share."""
+        pinned = self.__dict__.get('_rate_limit_scope')
+        if pinned:
+            return pinned
+        key = str(self.api_key or '')
+        digest = hashlib.sha256(key.encode()).hexdigest()[:12] if key else ''
+        return (
+            type(self).__name__,
+            self._rate_limit_base_url(),
+            self.model or '',
+            digest,
+        )
+
+    def _rate_limit_base_url(self) -> str:
+        # SDK clients that take a base_url expose it; a proxy and the direct
+        # API must not share a gate.
+        base_url = getattr(self, 'base_url', None) or getattr(
+            getattr(self, 'client', None), 'base_url', None
+        )
+        return str(base_url or '')
 
     def __copy__(self) -> 'BaseLLM':
         """A copy whose per-agent settings are independent of this instance's.

@@ -16,6 +16,7 @@ from flo_ai.arium.memory import (
     MessageMemoryItem,
 )
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm.rate_limit import LLMProviderError, provider_retry_sleep
 from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
 
@@ -153,8 +154,10 @@ class BaseLLMRouter(ABC):
             str: The name of the route to take
         """
         options = self.get_routing_options()
+        provider_error: Optional[LLMProviderError] = None
 
         for attempt in range(self.max_retries):
+            provider_error = None
             try:
                 prompt = self.get_routing_prompt(memory, options, execution_context)
 
@@ -186,8 +189,19 @@ class BaseLLMRouter(ABC):
                     f"LLM router attempt {attempt + 1}: Invalid decision '{decision}', retrying..."
                 )
 
+            except LLMProviderError as e:
+                # A fallback route would be one the model never chose.
+                if not e.transient:
+                    raise
+                provider_error = e
+                logger.error(f'LLM router attempt {attempt + 1} failed: {e}')
+                if attempt + 1 < self.max_retries:
+                    await provider_retry_sleep(attempt + 1)
             except Exception as e:
                 logger.error(f'LLM router attempt {attempt + 1} failed: {e}')
+
+        if provider_error is not None:
+            raise provider_error
 
         # Fallback strategy
         fallback = self.get_fallback_route(options)

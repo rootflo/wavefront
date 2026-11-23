@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 from google import genai
 from google.genai import types
 from flo_ai.llm.gemini_llm import Gemini
@@ -39,3 +39,7 @@ class VertexAI(Gemini):
 
         # Create VertexAI-specific client
         self.client = genai.Client(**client_kwargs)
+
+    def rate_limit_scope(self) -> Tuple[Any, ...]:
+        # Authenticated by ADC rather than a key; quotas are per project.
+        return ('vertex', self.project, self.location, self.base_url, self.model)
