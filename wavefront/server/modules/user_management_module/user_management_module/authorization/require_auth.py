@@ -47,7 +47,6 @@ optional_auth_apis = [
     '/floware/v1/oauth/microsoft/callback',
     '/floware/v1/oauth/adfs/callback',
     '/floware/v1/plugin-auth/oauth/init',
-    '/floware/v1/settings/config',
     # The user arrives here from the provider's consent screen, so there is no
     # session to check; the OAuth state binds the callback to its connection.
     '/floware/v1/email-connections/oauth/callback',

@@ -13,7 +13,7 @@ from floware.controllers.config_controller import config_router
 from floware.controllers.health_controller import health_router
 from floware.controllers.notification_controller import notification_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
-from gold_module.controllers.router import gold_router
+from deprecated_api_module.controllers.router import deprecated_api_router
 from knowledge_base_module.controllers.knowledge_base_controller import (
     knowledge_base_router,
 )
@@ -74,9 +74,9 @@ FLOWARE_ROUTERS = [
     configuration_router,
     datasource_audit_router,
     datasource_router,
+    deprecated_api_router,
     email_connection_router,
     oauth_app_router,
-    gold_router,
     hmac_router,
     inference_proxy_router,
     kb_document_router,
