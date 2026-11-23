@@ -112,7 +112,9 @@ def test_native_mode_keeps_language_rules_prefix_and_tool():
     stack = _build()
 
     assert RULES in _system(stack)
-    assert _system(stack).startswith('Respond in English.')
+    # The agent's prompt first (a cached prefix), the language line last
+    assert _system(stack).startswith(BASE_PROMPT)
+    assert _system(stack).endswith('Respond in English. Current language: English.')
     assert TOOL in _tool_names(stack)
     assert TOOL in stack.llm.functions
     assert RULES in stack.language_state['original_system_prompt']
@@ -158,8 +160,9 @@ def test_telephony_multi_language_keeps_call_context_after_the_rules():
     stack = _build(provider='twilio', customer_number='+911234567890')
 
     prompt = _system(stack)
-    assert prompt.startswith('Respond in English.')
+    assert prompt.startswith(BASE_PROMPT)
     assert prompt.index(RULES) < prompt.index('Customer phone number')
+    assert prompt.index('Customer phone number') < prompt.index('Current language:')
     original = stack.language_state['original_system_prompt']
     assert original.startswith(BASE_PROMPT)
     assert 'Customer phone number: +911234567890' in original
