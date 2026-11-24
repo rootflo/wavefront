@@ -196,11 +196,6 @@ class SettingsModel(BaseModel):
     max_retries: Optional[int] = Field(
         None, ge=0, description='Maximum number of retries'
     )
-    rate_limit_max_wait: Optional[float] = Field(
-        None,
-        ge=0,
-        description='Seconds one LLM call may stall on rate limits before failing',
-    )
     reasoning_pattern: Optional[Literal['DIRECT', 'REACT', 'COT']] = Field(
         None, description='Reasoning pattern'
     )

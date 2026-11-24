@@ -67,8 +67,9 @@ class BaseAgent(ABC):
 
         # The model can't fix its provider's failure, and the prompt below
         # would re-send the whole conversation to a provider already failing.
+        # The LLM layer has already retried it, so it is final here.
         if isinstance(error, LLMProviderError):
-            return error.transient, str(error)
+            return False, str(error)
 
         error_prompt = (
             f'An error occurred while processing the request: {str(error)}\n'

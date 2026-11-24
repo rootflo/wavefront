@@ -2,6 +2,7 @@ import json
 import re
 from typing import Dict, Any, List, AsyncIterator, Optional, Tuple
 import boto3
+from botocore.config import Config
 import asyncio
 from .base_llm import BaseLLM
 from flo_ai.models.chat_message import ImageMessageContent
@@ -25,8 +26,15 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         temperature: float = 0.7,
         **kwargs,
     ):
+        # llm.rate_limit owns retries; boto's own would hide throttling from it.
+        max_retries = kwargs.pop('max_retries', 0)
         super().__init__(model=model, temperature=temperature, **kwargs)
-        self.boto_client = boto3.client('bedrock-runtime')
+        self.boto_client = boto3.client(
+            'bedrock-runtime',
+            config=Config(
+                retries={'total_max_attempts': max_retries + 1, 'mode': 'standard'}
+            ),
+        )
         self.model = model
         self.kwargs = kwargs
 

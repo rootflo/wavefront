@@ -406,8 +406,6 @@ class AgentBuilder:
                 builder.with_temperature(settings.temperature)
             if settings.max_retries is not None:
                 builder.with_retries(settings.max_retries)
-            if settings.rate_limit_max_wait is not None:
-                builder.with_rate_limit_wait(settings.rate_limit_max_wait)
             if settings.reasoning_pattern is not None:
                 builder.with_reasoning(ReasoningPattern[settings.reasoning_pattern])
             builder.with_generation_params(**settings.generation_params())

@@ -16,7 +16,6 @@ from typing import (
     Tuple,
 )
 from flo_ai.helpers.generation_params import merge_generation_params
-from flo_ai.llm.rate_limit import DEFAULT_RATE_LIMIT_MAX_WAIT
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
@@ -174,9 +173,12 @@ class BaseLLM(ABC):
     # translating canonical generation params; see llm.generation_params.
     provider_name: str = ''
 
-    # Seconds one call may stall on rate limits; see llm.rate_limit. Set as an
-    # attribute, never a kwarg, which would be sent to the provider.
-    rate_limit_max_wait: float = DEFAULT_RATE_LIMIT_MAX_WAIT
+    # How long one call may stall on rate limits, and how many times it may
+    # retry one; see llm.rate_limit. None falls back to the FLO_AI_RATE_LIMIT_*
+    # env vars, then the defaults. Set as attributes, never kwargs, which would
+    # be sent to the provider.
+    rate_limit_max_wait: Optional[float] = None
+    rate_limit_retries: Optional[int] = None
 
     def __init__(
         self,

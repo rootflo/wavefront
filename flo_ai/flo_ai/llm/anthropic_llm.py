@@ -33,6 +33,8 @@ class Anthropic(BaseLLM):
         client_kwargs, request_kwargs = split_client_kwargs(
             AsyncAnthropic, kwargs, reserved=('default_headers',)
         )
+        # llm.rate_limit owns retries; the SDK's own would hide 429s from it.
+        client_kwargs.setdefault('max_retries', 0)
 
         super().__init__(
             model=model,

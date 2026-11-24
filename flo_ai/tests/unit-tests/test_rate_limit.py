@@ -6,8 +6,8 @@ conversation back to the same rate-limited LLM for "analysis", wrote the reply
 into the conversation history, and retried at once.
 """
 
+import copy
 import json
-import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -27,6 +27,9 @@ from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.llm import rate_limit
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardedLLM
+from flo_ai.llm.anthropic_llm import Anthropic
+from flo_ai.llm.aws_bedrock_llm import AWSBedrock
+from flo_ai.llm.azure_openai_llm import AzureOpenAI
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.rate_limit import (
     LLMProviderError,
@@ -39,8 +42,6 @@ from flo_ai.llm.rate_limit import (
 from flo_ai.llm.rootflo_llm import RootFloLLM
 from flo_ai.models.chat_message import FunctionMessage, UserMessage
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
-
-router_module = sys.modules[SmartRouter.__module__]
 
 REQUEST = httpx.Request('POST', 'https://api.example.invalid/v1/chat')
 
@@ -145,6 +146,8 @@ class ScriptedLLM(BaseLLM):
 @pytest.fixture(autouse=True)
 def fresh_gates(monkeypatch):
     monkeypatch.setattr(rate_limit, '_gates', {})
+    monkeypatch.delenv(rate_limit.MAX_WAIT_ENV, raising=False)
+    monkeypatch.delenv(rate_limit.RETRIES_ENV, raising=False)
 
 
 @pytest.fixture
@@ -273,6 +276,21 @@ class TestRateLimitedGenerate:
         assert fake_time.sleeps == [40.0]
         assert isinstance(caught.value.__cause__, openai.RateLimitError)
 
+    async def test_rate_limit_retries_are_capped(self, fake_time):
+        llm = ScriptedLLM([openai_429(1)] * 12 + ['ok'])
+        gate = install_gate(llm, fake_time)
+
+        with pytest.raises(LLMRateLimited) as caught:
+            await llm.generate([])
+
+        # The first request plus the default retries, well inside the 60s budget.
+        assert llm.calls == rate_limit.DEFAULT_RATE_LIMIT_RETRIES + 1
+        assert f'{rate_limit.DEFAULT_RATE_LIMIT_RETRIES + 1} attempts' in str(
+            caught.value
+        )
+        # The last 429 still pauses other callers.
+        assert gate.remaining() > 0
+
     async def test_zero_budget_never_retries(self, fake_time):
         llm = ScriptedLLM([openai_429(1), 'ok'])
         llm.rate_limit_max_wait = 0
@@ -285,7 +303,7 @@ class TestRateLimitedGenerate:
         assert fake_time.sleeps == []
 
     async def test_other_errors_are_typed(self, fake_time):
-        llm = ScriptedLLM([openai_500(), openai_401()])
+        llm = ScriptedLLM([openai_500()] * 4 + [openai_401()])
         install_gate(llm, fake_time)
 
         with pytest.raises(LLMProviderError) as transient:
@@ -296,6 +314,43 @@ class TestRateLimitedGenerate:
         assert transient.value.transient and transient.value.status == 500
         assert not fatal.value.transient
         assert not isinstance(fatal.value, LLMRateLimited)
+
+    async def test_transient_error_is_retried_with_backoff(self, fake_time):
+        llm = ScriptedLLM([openai_500(), openai.APIConnectionError(request=REQUEST), 'ok'])
+        install_gate(llm, fake_time)
+
+        assert await llm.generate([]) == {'content': 'ok'}
+        assert llm.calls == 3
+        assert fake_time.sleeps == [0.5, 1.0]
+
+    async def test_transient_retries_are_capped(self, fake_time):
+        llm = ScriptedLLM([openai_500()] * 5)
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMProviderError) as caught:
+            await llm.generate([])
+
+        assert caught.value.transient
+        assert llm.calls == 4
+        assert fake_time.sleeps == [0.5, 1.0, 2.0]
+
+    async def test_transient_error_does_not_pause_other_callers(self, fake_time):
+        llm = ScriptedLLM([openai_500(), 'ok'])
+        gate = install_gate(llm, fake_time)
+
+        await llm.generate([])
+
+        assert gate.remaining() == 0
+
+    async def test_zero_budget_does_not_retry_transient(self, fake_time):
+        llm = ScriptedLLM([openai_500(), 'ok'])
+        llm.rate_limit_max_wait = 0
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMProviderError):
+            await llm.generate([])
+
+        assert llm.calls == 1
 
     async def test_unrelated_error_propagates_untouched(self, fake_time):
         llm = ScriptedLLM([ValueError('bug')])
@@ -321,6 +376,52 @@ class TestSharedGate:
 
         await second.generate([])
         assert fake_time.sleeps == [5.0]
+
+    async def test_waiting_on_another_calls_cooldown_is_logged(
+        self, fake_time, monkeypatch
+    ):
+        log = Mock()
+        monkeypatch.setattr(rate_limit, 'logger', log)
+        llm = ScriptedLLM(['ok'])
+        gate = install_gate(llm, fake_time)
+        gate.extend(5)
+
+        await llm.generate([])
+
+        assert fake_time.sleeps == [5.0]
+        log.warning.assert_called_once()
+        assert 'waiting 5s before calling' in log.warning.call_args[0][0]
+
+    async def test_each_retry_logs_its_actual_wait(self, fake_time, monkeypatch):
+        log = Mock()
+        monkeypatch.setattr(rate_limit, 'logger', log)
+        llm = ScriptedLLM([openai_429(2), openai_429(3), 'ok'])
+        install_gate(llm, fake_time)
+
+        await llm.generate([])
+
+        # The first retry warns; later ones are info.
+        log.warning.assert_called_once()
+        assert 'retrying in 2.0s (attempt 2 of 5, 60s of 60s budget left)' in (
+            log.warning.call_args[0][0]
+        )
+        log.info.assert_called_once()
+        assert 'retrying in 3.0s (attempt 3 of 5, 58s of 60s budget left)' in (
+            log.info.call_args[0][0]
+        )
+
+    async def test_429_that_cannot_be_retried_is_not_announced(
+        self, fake_time, monkeypatch
+    ):
+        log = Mock()
+        monkeypatch.setattr(rate_limit, 'logger', log)
+        llm = ScriptedLLM([openai_429(90)])
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMRateLimited):
+            await llm.generate([])
+
+        log.warning.assert_not_called()
 
     async def test_cooldown_beyond_budget_fails_without_sleeping(self, fake_time):
         llm = ScriptedLLM(['ok'])
@@ -367,6 +468,153 @@ class TestRateLimitedStream:
         assert rate_limit._gates[llm.rate_limit_scope()].remaining() > 0
 
 
+    async def test_transient_after_first_chunk_is_not_retried(self, fake_time):
+        llm = ScriptedLLM([(['a'], openai_500()), (['b'], None)])
+        install_gate(llm, fake_time)
+
+        chunks = []
+        with pytest.raises(LLMProviderError) as caught:
+            async for chunk in llm.stream([]):
+                chunks.append(chunk['content'])
+
+        assert caught.value.transient
+        assert chunks == ['a']
+        assert llm.calls == 1
+
+
+class TestSdkRetriesAreOff:
+    """SDK retries happen inside one call, hiding 429s from the gate."""
+
+    def test_openai_family_and_anthropic_default_to_zero(self):
+        assert OpenAI(model='m', api_key='k').client.max_retries == 0
+        assert Anthropic(api_key='k').client.max_retries == 0
+        assert (
+            AzureOpenAI(
+                model='m', api_key='k', azure_endpoint='https://x.openai.azure.com'
+            ).client.max_retries
+            == 0
+        )
+
+    def test_explicit_max_retries_wins(self):
+        assert OpenAI(model='m', api_key='k', max_retries=2).client.max_retries == 2
+
+    def test_bedrock_client_does_not_retry(self, monkeypatch):
+        captured = {}
+
+        def fake_client(service, config=None):
+            captured['config'] = config
+            return Mock()
+
+        monkeypatch.setattr('flo_ai.llm.aws_bedrock_llm.boto3.client', fake_client)
+
+        llm = AWSBedrock(max_retries=0)
+
+        assert captured['config'].retries['total_max_attempts'] == 1
+        assert 'max_retries' not in llm.kwargs
+
+
+class TestOptionPrecedence:
+    """An LLM's own value, then the env var, then the default."""
+
+    async def test_env_var_applies_when_unset(self, fake_time, monkeypatch):
+        monkeypatch.setenv(rate_limit.RETRIES_ENV, '1')
+        llm = ScriptedLLM([openai_429(1)] * 5)
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMRateLimited):
+            await llm.generate([])
+
+        assert llm.calls == 2
+
+    async def test_llm_value_beats_env_var(self, fake_time, monkeypatch):
+        monkeypatch.setenv(rate_limit.RETRIES_ENV, '1')
+        monkeypatch.setenv(rate_limit.MAX_WAIT_ENV, '0')
+        llm = ScriptedLLM([openai_429(1)] * 5)
+        llm.rate_limit_retries = 2
+        llm.rate_limit_max_wait = 60
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMRateLimited):
+            await llm.generate([])
+
+        assert llm.calls == 3
+
+    async def test_zero_budget_from_env_var(self, fake_time, monkeypatch):
+        monkeypatch.setenv(rate_limit.MAX_WAIT_ENV, '0')
+        llm = ScriptedLLM([openai_429(1), 'ok'])
+        install_gate(llm, fake_time)
+
+        with pytest.raises(LLMRateLimited):
+            await llm.generate([])
+
+        assert llm.calls == 1
+
+    @pytest.mark.parametrize('env', ['MAX_WAIT_ENV', 'RETRIES_ENV'])
+    async def test_invalid_env_var_raises(self, fake_time, monkeypatch, env):
+        name = getattr(rate_limit, env)
+        monkeypatch.setenv(name, 'soon')
+        llm = ScriptedLLM(['ok'])
+        install_gate(llm, fake_time)
+
+        with pytest.raises(ValueError, match=name):
+            await llm.generate([])
+
+
+class TestApplyRateLimitOptions:
+    def test_sets_given_options_only(self):
+        llm = ScriptedLLM([])
+
+        rate_limit.apply_rate_limit_options(
+            llm, {'rate_limit_retries': '2', 'rate_limit_max_wait': None}
+        )
+
+        assert llm.rate_limit_retries == 2
+        assert llm.rate_limit_max_wait is None
+
+    @pytest.mark.parametrize(
+        'parameters',
+        [
+            {'rate_limit_max_wait': -1},
+            {'rate_limit_max_wait': 'soon'},
+            {'rate_limit_retries': 2.5},
+            {'rate_limit_retries': True},
+        ],
+    )
+    def test_rejects_invalid_values(self, parameters):
+        with pytest.raises(ValueError, match=next(iter(parameters))):
+            rate_limit.apply_rate_limit_options(ScriptedLLM([]), parameters)
+
+    async def test_rootflo_config_sets_options_without_sending_them(self):
+        llm = RootFloLLM(base_url='https://example.invalid', model_id='model-1')
+        # Set on the instance, so it outranks the configuration's value.
+        llm.rate_limit_retries = 1
+        llm._fetch_llm_config_async = AsyncMock(
+            return_value={
+                'llm_model': 'gpt-4.1-mini',
+                'type': 'openai',
+                'parameters': {
+                    'rate_limit_max_wait': 15,
+                    'rate_limit_retries': 3,
+                    'top_p': 0.5,
+                },
+            }
+        )
+
+        await llm._ensure_initialized()
+
+        assert llm._llm.rate_limit_max_wait == 15
+        assert llm._llm.rate_limit_retries == 1
+        assert llm._llm.kwargs == {'top_p': 0.5}
+
+    def test_rootflo_copy_does_not_share_options(self):
+        original = RootFloLLM(base_url='https://example.invalid', model_id='m')
+        clone = copy.copy(original)
+
+        clone.rate_limit_retries = 2
+
+        assert original.rate_limit_retries is None
+
+
 class TestSettingReachesTheProvider:
     def test_builder_does_not_leak_into_request_params(self):
         llm = OpenAI(model='gpt-4o', api_key='sk-test')
@@ -384,7 +632,7 @@ class TestSettingReachesTheProvider:
 
         assert agent.llm is not shared
         assert agent.llm.rate_limit_max_wait == 5
-        assert shared.rate_limit_max_wait == rate_limit.DEFAULT_RATE_LIMIT_MAX_WAIT
+        assert shared.rate_limit_max_wait is None
 
     def test_guarded_llm_mirrors_both_ways(self):
         inner = ScriptedLLM([])
@@ -394,6 +642,8 @@ class TestSettingReachesTheProvider:
         assert guarded.rate_limit_max_wait == 30
         guarded.rate_limit_max_wait = 12
         assert inner.rate_limit_max_wait == 12
+        guarded.rate_limit_retries = 2
+        assert inner.rate_limit_retries == 2
 
     async def test_rootflo_hands_value_and_scope_to_wrapper(self):
         llm = RootFloLLM(base_url='https://example.invalid', model_id='model-1')
@@ -414,11 +664,6 @@ class TestSettingReachesTheProvider:
         assert llm._llm.rate_limit_max_wait == 3
 
 
-@pytest.fixture
-def no_retry_sleep(monkeypatch):
-    monkeypatch.setattr('flo_ai.agent.agent.provider_retry_sleep', AsyncMock())
-
-
 class TestAgent:
     async def test_rate_limit_skips_analysis_and_rolls_back(self, fake_time):
         llm = ScriptedLLM([openai_429(1), 'analysis that must not be requested'])
@@ -432,9 +677,7 @@ class TestAgent:
         assert llm.calls == 1
         assert agent.conversation_history == []
 
-    async def test_transient_error_retries_without_analysis(
-        self, fake_time, no_retry_sleep
-    ):
+    async def test_transient_error_retries_without_analysis(self, fake_time):
         llm = ScriptedLLM([openai_500(), 'answer'])
         install_gate(llm, fake_time)
         agent = Agent(name='a', system_prompt='be helpful', llm=llm, max_retries=3)
@@ -445,18 +688,17 @@ class TestAgent:
         assert history[-1].content == 'answer'
         assert not any('Error occurred' in str(m.content) for m in history)
 
-    async def test_transient_retries_exhausted_raise_and_roll_back(
-        self, fake_time, no_retry_sleep
-    ):
-        llm = ScriptedLLM([openai_500(), openai_500()])
+    async def test_transient_retries_exhausted_raise_and_roll_back(self, fake_time):
+        llm = ScriptedLLM([openai_500()] * 8)
         install_gate(llm, fake_time)
-        agent = Agent(name='a', system_prompt='be helpful', llm=llm, max_retries=1)
+        agent = Agent(name='a', system_prompt='be helpful', llm=llm, max_retries=3)
 
         with pytest.raises(LLMProviderError) as caught:
             await agent.run('hello')
 
         assert caught.value.transient
-        assert llm.calls == 2
+        # The LLM layer's retries only; the agent does not multiply them.
+        assert llm.calls == 4
         assert agent.conversation_history == []
 
     async def test_tool_http_error_still_gets_analysis(self):
@@ -551,9 +793,8 @@ class TestRouter:
         with pytest.raises(LLMProviderError):
             await router.route(memory)
 
-    async def test_exhausted_transient_errors_raise(self, fake_time, monkeypatch):
-        monkeypatch.setattr(router_module, 'provider_retry_sleep', AsyncMock())
-        llm = ScriptedLLM([openai_500(), openai_500(), openai_500()])
+    async def test_exhausted_transient_errors_raise(self, fake_time):
+        llm = ScriptedLLM([openai_500()] * 8)
         install_gate(llm, fake_time)
         router = SmartRouter({'researcher': 'r', 'analyst': 'a'}, llm=llm)
         memory = MessageMemory()
@@ -563,7 +804,8 @@ class TestRouter:
             await router.route(memory)
 
         assert caught.value.transient
-        assert llm.calls == 3
+        # The LLM layer's retries only; the router does not multiply them.
+        assert llm.calls == 4
 
 
 class TestRootFloConfigFetch:

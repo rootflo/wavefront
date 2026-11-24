@@ -15,7 +15,11 @@ from .gemini_llm import Gemini
 from .anthropic_llm import Anthropic
 from .openai_vllm import OpenAIVLLM
 from flo_ai.helpers.generation_params import merge_generation_params
-from flo_ai.llm.rate_limit import DEFAULT_RATE_LIMIT_MAX_WAIT, LLMProviderError
+from flo_ai.llm.rate_limit import (
+    RATE_LIMIT_OPTIONS,
+    LLMProviderError,
+    apply_rate_limit_options,
+)
 from flo_ai.tool.base_tool import Tool
 
 
@@ -45,7 +49,8 @@ RESERVED_CONFIG_PARAMETERS = frozenset(
         'temperature',
         'custom_headers',
     }
-)
+) | RATE_LIMIT_OPTIONS  # flo_ai's own, applied to the wrapper instead
+
 
 
 class RootFloLLM(BaseLLM):
@@ -125,19 +130,32 @@ class RootFloLLM(BaseLLM):
         # setter below and would otherwise mark the default as explicit. A
         # caller-supplied temperature outranks the fetched configuration's.
         self._temperature_explicit = temperature is not None
-        self._rate_limit_max_wait = DEFAULT_RATE_LIMIT_MAX_WAIT
+        self._rate_limit_options: Dict[str, Any] = {}
 
     @property
-    def rate_limit_max_wait(self) -> float:
-        """Seconds one call may stall on rate limits."""
-        return self._rate_limit_max_wait
+    def rate_limit_max_wait(self) -> Optional[float]:
+        """Seconds one call may stall on rate limits; see llm.rate_limit."""
+        return self._rate_limit_options.get('rate_limit_max_wait')
 
     @rate_limit_max_wait.setter
-    def rate_limit_max_wait(self, seconds: float) -> None:
-        # The wrapper is built lazily; _ensure_initialized() hands this over.
-        self._rate_limit_max_wait = seconds
+    def rate_limit_max_wait(self, seconds: Optional[float]) -> None:
+        self._set_rate_limit_option('rate_limit_max_wait', seconds)
+
+    @property
+    def rate_limit_retries(self) -> Optional[int]:
+        """Retries one call may make on rate limits; see llm.rate_limit."""
+        return self._rate_limit_options.get('rate_limit_retries')
+
+    @rate_limit_retries.setter
+    def rate_limit_retries(self, retries: Optional[int]) -> None:
+        self._set_rate_limit_option('rate_limit_retries', retries)
+
+    def _set_rate_limit_option(self, name: str, value: Any) -> None:
+        # The wrapper is built lazily; _ensure_initialized() hands these over,
+        # and they outrank the fetched configuration's.
+        self._rate_limit_options[name] = value
         if getattr(self, '_llm', None) is not None:
-            self._llm.rate_limit_max_wait = seconds
+            setattr(self._llm, name, value)
 
     @property
     def temperature(self) -> float:
@@ -169,6 +187,7 @@ class RootFloLLM(BaseLLM):
         """
         clone = super().__copy__()
         clone._kwargs = dict(self._kwargs)
+        clone._rate_limit_options = dict(self._rate_limit_options)
         clone._llm = None
         clone._initialized = False
         clone._init_lock = asyncio.Lock()
@@ -421,9 +440,13 @@ class RootFloLLM(BaseLLM):
             else:
                 raise ValueError(f'Unsupported LLM provider: {llm_provider}')
 
+            # The configuration's first, so values set on this instance win.
+            apply_rate_limit_options(self._llm, config_parameters)
+            for name, value in self._rate_limit_options.items():
+                if value is not None:
+                    setattr(self._llm, name, value)
             # Pinned: the api_token is a fresh JWT per instance, so a key hash
             # would give every instance its own gate.
-            self._llm.rate_limit_max_wait = self._rate_limit_max_wait
             self._llm._rate_limit_scope = ('rootflo', self._base_url, self._model_id)
 
             # Mark as initialized

@@ -3,11 +3,7 @@ from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardrailBlocked
-from flo_ai.llm.rate_limit import (
-    LLMProviderError,
-    LLMRateLimited,
-    provider_retry_sleep,
-)
+from flo_ai.llm.rate_limit import LLMProviderError
 from flo_ai.models.chat_message import (
     AssistantMessage,
     BaseMessage,
@@ -236,13 +232,8 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except (GuardrailBlocked, LLMRateLimited):
-                raise
-            except LLMProviderError as e:
-                retry_count += 1
-                if e.transient and retry_count <= self.max_retries:
-                    await provider_retry_sleep(retry_count)
-                    continue
+            # A provider error was already retried at the LLM boundary.
+            except (GuardrailBlocked, LLMProviderError):
                 raise
             except Exception as e:
                 retry_count += 1
@@ -534,14 +525,8 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except (GuardrailBlocked, LLMRateLimited):
-                raise
-            except LLMProviderError as e:
-                retry_count += 1
-                if e.transient and retry_count <= self.max_retries:
-                    agent_metrics.record_retry(self.name, 'provider_error')
-                    await provider_retry_sleep(retry_count)
-                    continue
+            # A provider error was already retried at the LLM boundary.
+            except (GuardrailBlocked, LLMProviderError):
                 raise
             except Exception as e:
                 retry_count += 1

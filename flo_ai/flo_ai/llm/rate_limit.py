@@ -5,11 +5,23 @@
 tool's own httpx failure is never mistaken for a provider failure upstream:
 
 - a 429 (or Anthropic 529) stalls the call, honouring Retry-After, and retries
-  until ``llm.rate_limit_max_wait`` seconds have passed; then
-  ``LLMRateLimited`` is raised
-- any other recognised provider failure becomes ``LLMProviderError`` with
-  ``transient`` set for 5xx / 408 / timeout / connection errors
+  until ``rate_limit_max_wait`` seconds have passed or ``rate_limit_retries``
+  retries are spent; then ``LLMRateLimited`` is raised
+- a 5xx / 408 / timeout / connection error is retried up to
+  ``TRANSIENT_RETRIES`` times with a short backoff, inside the same budget
+- what is left becomes ``LLMProviderError``, with ``transient`` set for the
+  kinds above
 - anything unrecognised propagates untouched
+
+This is the only place a provider call is retried. The SDK clients are built
+with ``max_retries=0``: their own retries happen inside one call, so they hid
+each 429 from the gate and ran past the budget. Callers above (agents, the
+router) let ``LLMProviderError`` propagate rather than retrying again.
+
+``rate_limit_max_wait`` and ``rate_limit_retries`` are LLM attributes. Unset
+(None), each falls back to its ``FLO_AI_RATE_LIMIT_*`` env var, read when a call
+starts, then to the default here. An LLM inference config can set them through
+its ``parameters``; see ``apply_rate_limit_options``.
 
 Every caller sharing a provider, endpoint, model and key shares one
 ``RateLimitGate``, so a 429 seen by one call pauses all of them. The gate is
@@ -17,18 +29,19 @@ per process: each worker and pod has its own.
 
 Known costs:
 
-- SDK retries stay on (OpenAI/Anthropic 2x, boto3 default), so up to three
-  requests hit the provider before the gate learns of a 429, and calls
-  already in flight don't consult it.
-- For a 5xx, retries stack: 3 SDK attempts x (1 + agent ``max_retries``) is
-  up to ~12 requests at the default of 3.
+- Calls already in flight when a 429 arrives don't consult the gate.
+- The budget is checked between attempts, so a call can overrun it by one
+  request's duration.
 - The budget is per LLM call. An agent run makes several calls, so its worst
   case stall is a multiple of it.
-- ``rate_limit_max_wait=0`` never retries a 429, and fails immediately while
-  another caller has the gate cooling down.
+- ``rate_limit_max_wait=0`` disables retries: a 429 or transient failure is
+  raised at once, and a call fails immediately while another caller has the
+  gate cooling down.
 """
 
 import asyncio
+import math
+import os
 import random
 import time
 from dataclasses import dataclass
@@ -49,8 +62,18 @@ from flo_ai.telemetry.instrumentation import llm_metrics
 from flo_ai.utils.logger import logger
 
 DEFAULT_RATE_LIMIT_MAX_WAIT = 60.0
+# A short Retry-After would otherwise allow dozens of requests per budget.
+DEFAULT_RATE_LIMIT_RETRIES = 4
+MAX_WAIT_ENV = 'FLO_AI_RATE_LIMIT_MAX_WAIT'
+RETRIES_ENV = 'FLO_AI_RATE_LIMIT_RETRIES'
+# Keys an LLM inference config's parameters may carry for this layer, and
+# whether each must be whole. Never request params: providers reject them.
+_OPTION_IS_WHOLE = {'rate_limit_max_wait': False, 'rate_limit_retries': True}
+RATE_LIMIT_OPTIONS = frozenset(_OPTION_IS_WHOLE)
 MAX_BACKOFF = 30.0
 WAKE_JITTER = 1.0
+TRANSIENT_RETRIES = 3
+TRANSIENT_BASE_DELAY = 0.5
 
 _BOTO_THROTTLE_CODES = frozenset(
     {'ThrottlingException', 'TooManyRequestsException', 'Throttling'}
@@ -257,6 +280,45 @@ def _gemini_daily_quota(details: Any) -> bool:
     return False
 
 
+def _parse_option(name: str, value: Any, whole: bool) -> float:
+    """``value`` as a non-negative number, whole when ``whole``."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = math.nan
+    if (
+        isinstance(value, bool)
+        or not math.isfinite(number)
+        or number < 0
+        or (whole and not number.is_integer())
+    ):
+        kind = 'whole number' if whole else 'number'
+        raise ValueError(f'{name} must be a non-negative {kind}, got {value!r}')
+    return int(number) if whole else number
+
+
+def _resolve(value: Any, env_name: str, default: float, whole: bool) -> float:
+    if value is not None:
+        return value
+    raw = os.environ.get(env_name, '').strip()
+    return _parse_option(env_name, raw, whole) if raw else default
+
+
+def apply_rate_limit_options(
+    llm: Any, parameters: Optional[Mapping[str, Any]]
+) -> None:
+    """Set ``llm``'s rate-limit options from an LLM inference config's parameters.
+
+    Only keys present and non-null are applied; the rest keep falling back to
+    the env vars and defaults. The caller must also keep ``RATE_LIMIT_OPTIONS``
+    out of the provider's request params.
+    """
+    for name, whole in _OPTION_IS_WHOLE.items():
+        value = (parameters or {}).get(name)
+        if value is not None:
+            setattr(llm, name, _parse_option(name, value, whole))
+
+
 class RateLimitGate:
     """A cooldown shared by every call on one provider scope."""
 
@@ -288,11 +350,6 @@ def get_gate(scope: Tuple[Any, ...]) -> RateLimitGate:
     return gate
 
 
-async def provider_retry_sleep(attempt: int) -> None:
-    """The agent's pause before re-trying a transient provider error."""
-    await asyncio.sleep(min(MAX_BACKOFF, 2 ** (attempt - 1)))
-
-
 class _Stall:
     """One call's progress through the gate and its stall budget."""
 
@@ -300,9 +357,27 @@ class _Stall:
         self.provider = provider
         self.model = getattr(llm, 'model', '') or ''
         self.gate = get_gate(llm.rate_limit_scope())
-        self.budget = max(0.0, float(llm.rate_limit_max_wait))
+        self.budget = float(
+            _resolve(
+                llm.rate_limit_max_wait,
+                MAX_WAIT_ENV,
+                DEFAULT_RATE_LIMIT_MAX_WAIT,
+                whole=False,
+            )
+        )
+        self.retries = int(
+            _resolve(
+                llm.rate_limit_retries,
+                RETRIES_ENV,
+                DEFAULT_RATE_LIMIT_RETRIES,
+                whole=True,
+            )
+        )
         self.started = self.gate.clock()
         self.attempt = 0
+        self.transient_retries = 0
+        # The attempt whose wait was last logged, so a split wait logs once.
+        self.announced: Optional[int] = None
         self.last: Optional[Tuple[Exception, Classification]] = None
 
     def _left(self) -> float:
@@ -317,9 +392,11 @@ class _Stall:
                 f'than the {self.budget:.0f}s budget'
             )
         else:
+            attempts = f'{self.attempt} attempt' + ('s' if self.attempt != 1 else '')
             message = (
-                f'{self.provider} rate limit persisted for {waited:.0f}s '
-                f'(budget {self.budget:.0f}s): {error}'
+                f'{self.provider} rate limit persisted for {waited:.0f}s over '
+                f'{attempts} (budget {self.budget:.0f}s, '
+                f'{self.retries} retries): {error}'
             )
         return LLMRateLimited(
             message,
@@ -337,12 +414,43 @@ class _Stall:
                 error = self.last[0] if self.last else None
                 raise self._exhausted() from error
             wait = min(remaining + self.gate.rand(0, WAKE_JITTER), left)
+            self._announce(wait)
             await self.gate.sleep(wait)
             llm_metrics.record_rate_limit_wait(wait * 1000, self.model, self.provider)
 
-    def absorb(self, error: Exception, info: Classification) -> None:
-        """Take a rate limit onto the gate, or raise the typed error."""
+    def _announce(self, wait: float) -> None:
+        if self.announced == self.attempt:
+            return
+        self.announced = self.attempt
+        if self.attempt == 0:
+            # No 429 of this call's own yet: another call set the cooldown.
+            logger.warning(
+                f'{self.provider} cooling down on {self.model} after a rate '
+                f'limit; waiting {wait:.0f}s before calling'
+            )
+            return
+        status = self.last[1].status if self.last else 429
+        # Warn once per call; later retries are routine.
+        log = logger.warning if self.attempt == 1 else logger.info
+        log(
+            f'{self.provider} rate-limited ({status}) on {self.model}; retrying '
+            f'in {wait:.1f}s (attempt {self.attempt + 1} of '
+            f'{self.retries + 1}, {max(0.0, self._left()):.0f}s of '
+            f'{self.budget:.0f}s budget left)'
+        )
+
+    async def absorb(
+        self, error: Exception, info: Classification, retry: bool = True
+    ) -> None:
+        """Get ready to retry ``error``, or raise it typed.
+
+        A rate limit goes onto the shared gate and wait_turn() does the waiting.
+        A transient failure is this call's alone, so it backs off here without
+        pausing anyone else.
+        """
         if info.kind != 'rate_limit':
+            if retry and await self._back_off_transient(error, info):
+                return
             raise LLMProviderError(
                 f'{self.provider} request failed: {error}',
                 provider=self.provider,
@@ -359,13 +467,30 @@ class _Stall:
             delay = ceiling / 2 + self.gate.rand(0, ceiling / 2)
         self.gate.extend(delay)
         llm_metrics.record_rate_limited(self.model, self.provider)
-        if self.attempt == 0:
-            logger.warning(
-                f'{self.provider} rate-limited ({info.status}) on {self.model}; '
-                f'stalling up to {self.budget:.0f}s'
-            )
         self.attempt += 1
         self.last = (error, info)
+        if self.attempt > self.retries:
+            raise self._exhausted() from error
+
+    async def _back_off_transient(
+        self, error: Exception, info: Classification
+    ) -> bool:
+        if info.kind != 'transient' or self.transient_retries >= TRANSIENT_RETRIES:
+            return False
+        delay = (
+            TRANSIENT_BASE_DELAY
+            * 2**self.transient_retries
+            * (1 - self.gate.rand(0, 0.25))
+        )
+        if delay > self._left():
+            return False
+        self.transient_retries += 1
+        logger.info(
+            f'{self.provider} request failed on {self.model}; retrying in '
+            f'{delay:.1f}s: {error}'
+        )
+        await self.gate.sleep(delay)
+        return True
 
 
 def rate_limited(provider: str) -> Callable:
@@ -383,7 +508,7 @@ def rate_limited(provider: str) -> Callable:
                     info = classify(e)
                     if info is None:
                         raise
-                    stall.absorb(e, info)
+                    await stall.absorb(e, info)
 
         return wrapper
 
@@ -409,10 +534,10 @@ def rate_limited_stream(provider: str) -> Callable:
                     info = classify(e)
                     if info is None:
                         raise
-                    if started and info.kind == 'rate_limit':
-                        # Chunks already reached the consumer; a retry would
-                        # repeat them. Still extend the gate for other callers.
-                        stall.absorb(e, info)
+                    # Once chunks reached the consumer a retry would repeat
+                    # them; a rate limit still extends the gate for others.
+                    await stall.absorb(e, info, retry=not started)
+                    if started:
                         raise LLMRateLimited(
                             f'{provider} rate-limited after streaming began: {e}',
                             provider=provider,
@@ -420,7 +545,6 @@ def rate_limited_stream(provider: str) -> Callable:
                             retry_after=info.retry_after,
                             original_error=e,
                         ) from e
-                    stall.absorb(e, info)
 
         return wrapper
 
