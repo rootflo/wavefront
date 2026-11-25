@@ -31,7 +31,7 @@ COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 COPY wavefront/server/modules/auth_module /app/modules/auth_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
-COPY wavefront/server/modules/gold_module /app/modules/gold_module
+COPY wavefront/server/modules/deprecated_api_module /app/modules/deprecated_api_module
 COPY wavefront/server/modules/guardrails_module /app/modules/guardrails_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module

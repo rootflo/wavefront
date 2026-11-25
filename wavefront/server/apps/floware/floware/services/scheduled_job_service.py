@@ -41,6 +41,11 @@ from sqlalchemy.exc import IntegrityError
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.user_service import UserService
 
+JOB_TYPE_EMAIL_DYNAMIC_QUERY = 'email_dynamic_query'
+# Runs the queries on schedule and discards the results (no email).
+JOB_TYPE_SCHEDULED_QUERY = 'scheduled_query'
+JOB_TYPES = (JOB_TYPE_EMAIL_DYNAMIC_QUERY, JOB_TYPE_SCHEDULED_QUERY)
+
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
 # Microsoft Graph write requests (including sendMail JSON with base64 attachments)
@@ -170,7 +175,7 @@ class ScheduledJobService:
         max_retries: int,
     ) -> ScheduledJob:
         next_run_at = self._compute_next_run_at(cron_expr, timezone_name)
-        await self._validate_email_connection(payload)
+        await self._validate_payload(job_type, payload)
         return await self.scheduled_job_repository.create(
             job_type=job_type,
             cron_expr=cron_expr,
@@ -247,7 +252,7 @@ class ScheduledJobService:
             updates['timezone'] = effective_tz
 
         if payload is not None:
-            await self._validate_email_connection(payload)
+            await self._validate_payload(job.job_type, payload)
             updates['payload'] = payload
         if max_retries is not None:
             updates['max_retries'] = max_retries
@@ -503,6 +508,14 @@ class ScheduledJobService:
             ),
             'params': merged_params,
         }
+
+    async def _validate_payload(self, job_type: str, payload: dict) -> None:
+        """Save-time checks: every job needs runnable queries; email jobs a sender."""
+        if job_type not in JOB_TYPES:
+            raise ValueError(f'Unsupported job_type: {job_type}')
+        self._merged_query_specs(payload)
+        if job_type == JOB_TYPE_EMAIL_DYNAMIC_QUERY:
+            await self._validate_email_connection(payload)
 
     async def _validate_email_connection(self, payload: dict) -> None:
         """Reject a sender that cannot actually send, at save time.
@@ -1163,8 +1176,103 @@ class ScheduledJobService:
             datasource_id,
         )
 
+    @classmethod
+    def _merged_query_specs(cls, payload: dict) -> list[dict]:
+        """Normalize payload.queries, merge job-level defaults, require datasources."""
+        query_specs = cls._normalize_query_specs(payload)
+        merged_specs = [cls._merge_query_spec(payload, spec) for spec in query_specs]
+        for spec in merged_specs:
+            if not spec.get('datasource_id'):
+                raise ValueError(
+                    f'datasource_id required for query_id={spec["query_id"]} '
+                    '(set at job level or on the query entry)'
+                )
+        return merged_specs
+
+    async def _prepare_query_specs(
+        self, payload: dict
+    ) -> tuple[
+        list[dict],
+        dict[str, DatasourcePlugin],
+        dict[str, tuple[list, str | None]],
+    ]:
+        """Resolve merged specs, datasource plugins and query YAMLs for a job.
+
+        All-or-nothing: the first query that cannot be resolved raises.
+        """
+        merged_specs = self._merged_query_specs(payload)
+        datasource_plugins: dict[str, DatasourcePlugin] = {}
+        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
+
+        for spec in merged_specs:
+            await self._resolve_query(spec, datasource_plugins, yaml_by_query_id)
+
+        return merged_specs, datasource_plugins, yaml_by_query_id
+
+    async def _resolve_query(
+        self,
+        spec: dict,
+        datasource_plugins: dict[str, DatasourcePlugin],
+        yaml_by_query_id: dict[str, tuple[list, str | None]],
+    ) -> tuple[DatasourcePlugin, list]:
+        """A query's datasource plugin and YAML, cached in the dicts on success."""
+        query_id = spec['query_id']
+        datasource_id = spec['datasource_id']
+        if datasource_id not in datasource_plugins:
+            plugin, _, _ = await self._get_datasource_plugin(datasource_id)
+            datasource_plugins[datasource_id] = plugin
+        if query_id not in yaml_by_query_id:
+            (
+                yaml_query,
+                yaml_name,
+            ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
+            if not yaml_query:
+                raise ValueError(f'Dynamic query not found: {query_id}')
+            yaml_by_query_id[query_id] = (yaml_query, yaml_name)
+        return datasource_plugins[datasource_id], yaml_by_query_id[query_id][0]
+
+    async def _execute_scheduled_query_job(self, payload: dict, job_timezone: str):
+        """Run each query on schedule and discard the rows (no email).
+
+        A query that cannot be resolved or run is recorded and skipped; the rest
+        still run, and the failures are raised together at the end.
+        """
+        merged_specs = self._merged_query_specs(payload)
+        datasource_plugins: dict[str, DatasourcePlugin] = {}
+        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
+
+        failed_query_ids: list[str] = []
+        for spec in merged_specs:
+            query_id = spec['query_id']
+            try:
+                datasource_plugin, yaml_query = await self._resolve_query(
+                    spec, datasource_plugins, yaml_by_query_id
+                )
+                rows = await self._fetch_dynamic_query_rows(
+                    datasource_plugin,
+                    yaml_query,
+                    query_id,
+                    None,  # No user context: scheduled queries run without RLS.
+                    spec.get('filter'),
+                    spec.get('offset', 0),
+                    spec.get('limit', 100),
+                    self._resolve_runtime_params(spec, job_timezone),
+                )
+            except Exception as exc:
+                logger.error(f'Scheduled query failed for query_id={query_id}: {exc}')
+                failed_query_ids.append(query_id)
+                continue
+            logger.info(
+                f'Scheduled query ran for query_id={query_id}: {len(rows)} row(s)'
+            )
+
+        if failed_query_ids:
+            raise ValueError(
+                f'Scheduled query failed for {len(failed_query_ids)}/'
+                f'{len(merged_specs)} queries: {", ".join(failed_query_ids)}'
+            )
+
     async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
-        query_specs = self._normalize_query_specs(payload)
         recipient_user_ids = self._normalize_recipient_user_ids(payload)
         email_connection_id = self._email_connection_id(payload)
         if email_connection_id is None:
@@ -1183,14 +1291,11 @@ class ScheduledJobService:
         if not recipient_user_ids:
             raise ValueError('payload must include recipient_user_ids')
 
-        merged_specs = [self._merge_query_spec(payload, spec) for spec in query_specs]
-        default_datasource_id = payload.get('datasource_id')
-        if not default_datasource_id and not all(
-            spec.get('datasource_id') for spec in merged_specs
-        ):
-            raise ValueError(
-                'payload must include datasource_id (job-level or on each query)'
-            )
+        (
+            merged_specs,
+            datasource_plugins,
+            yaml_by_query_id,
+        ) = await self._prepare_query_specs(payload)
 
         query_ids = [spec['query_id'] for spec in merged_specs]
         default_subject = payload.get('subject')
@@ -1200,29 +1305,6 @@ class ScheduledJobService:
             else:
                 default_subject = 'Scheduled Dynamic Query Reports'
         subject = default_subject
-
-        datasource_plugins: dict[str, DatasourcePlugin] = {}
-        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
-
-        for spec in merged_specs:
-            query_id = spec['query_id']
-            datasource_id = spec.get('datasource_id')
-            if not datasource_id:
-                raise ValueError(
-                    f'datasource_id required for query_id={query_id} '
-                    '(set at job level or on the query entry)'
-                )
-            if datasource_id not in datasource_plugins:
-                plugin, _, _ = await self._get_datasource_plugin(datasource_id)
-                datasource_plugins[datasource_id] = plugin
-            if query_id not in yaml_by_query_id:
-                (
-                    yaml_query,
-                    yaml_name,
-                ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
-                if not yaml_query:
-                    raise ValueError(f'Dynamic query not found: {query_id}')
-                yaml_by_query_id[query_id] = (yaml_query, yaml_name)
 
         failed_recipient_user_ids: list[str] = []
         delivered_count = 0
@@ -1447,11 +1529,14 @@ class ScheduledJobService:
 
         job_exc: Exception | None = None
         try:
-            if job_row['job_type'] != 'email_dynamic_query':
+            executors = {
+                JOB_TYPE_EMAIL_DYNAMIC_QUERY: self._execute_email_dynamic_query_job,
+                JOB_TYPE_SCHEDULED_QUERY: self._execute_scheduled_query_job,
+            }
+            executor = executors.get(job_row['job_type'])
+            if executor is None:
                 raise ValueError(f"Unsupported job_type: {job_row['job_type']}")
-            await self._execute_email_dynamic_query_job(
-                job_row['payload'], job_row['timezone']
-            )
+            await executor(job_row['payload'], job_row['timezone'])
         except Exception as exc:
             job_exc = exc
             logger.error(f'Failed scheduled job {job_id}: {exc}')

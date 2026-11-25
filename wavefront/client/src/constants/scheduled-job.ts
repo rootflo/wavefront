@@ -1,4 +1,4 @@
-import type { DateRangeOption, FormTab, PayloadDateRange } from '@app/types/scheduled-job';
+import type { DateRangeOption, FormTab, PayloadDateRange, ScheduledJobType } from '@app/types/scheduled-job';
 
 export const DEFAULT_CRON_EXPR = '0 9 * * *';
 export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
@@ -9,6 +9,16 @@ export const DEFAULT_QUERY_LIMIT = '100';
 export const DEFAULT_QUERY_OFFSET = '0';
 export const MAX_RETRIES_LIMIT = 10;
 export const JOB_TYPE_EMAIL_DYNAMIC_QUERY = 'email_dynamic_query' as const;
+/** Runs the queries on schedule and discards the results (no email). */
+export const JOB_TYPE_SCHEDULED_QUERY = 'scheduled_query' as const;
+
+export const JOB_TYPE_LABELS: Record<ScheduledJobType, string> = {
+  [JOB_TYPE_EMAIL_DYNAMIC_QUERY]: 'Email report',
+  [JOB_TYPE_SCHEDULED_QUERY]: 'Scheduled query',
+};
+
+export const isScheduledJobType = (value: string): value is ScheduledJobType =>
+  value === JOB_TYPE_EMAIL_DYNAMIC_QUERY || value === JOB_TYPE_SCHEDULED_QUERY;
 
 export const FORM_TAB = {
   SCHEDULE: 'schedule',
