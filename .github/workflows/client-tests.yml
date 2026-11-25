@@ -1,0 +1,109 @@
+name: Client Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: client-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      client: ${{ steps.filter.outputs.client }}
+    steps:
+      - name: Check whether the PR touches the client
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # A manual run has no PR to diff against, so test everything.
+          if [ -z "$PR" ]; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          echo "$files"
+
+          # Changes to this workflow count, so CI edits still get exercised.
+          if grep -qE '^(wavefront/client/|\.github/workflows/client-tests\.yml$)' <<<"$files"; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "client=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: typecheck, lint, vitest
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: wavefront/client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Node 22 matches the client Dockerfile.
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      # Corepack installs the exact pnpm pinned (with its hash) in package.json's packageManager.
+      - name: Enable pnpm
+        run: corepack enable
+
+      # --frozen-lockfile fails the build on a stale pnpm-lock.yaml rather than
+      # resolving something the PR never tested against.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Run tests
+        run: pnpm test
+
+  # Always runs, so there is always a status to require.
+  required:
+    name: required
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report client test status
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "Could not determine whether the client changed."
+            exit 1
+          fi
+
+          case "$TEST_RESULT" in
+            success) echo "client tests: passed" ;;
+            skipped) echo "client tests: no client changes, nothing to run" ;;
+            *)       echo "client tests: reported '$TEST_RESULT'"; exit 1 ;;
+          esac
