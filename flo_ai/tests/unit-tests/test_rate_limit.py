@@ -215,7 +215,10 @@ class TestClassify:
         ],
     )
     def test_gemini_malformed_details_still_classify(self, body):
-        info = classify(genai_errors.ClientError(429, body))
+        # Set after construction: older google-genai fails to build some of these.
+        error = gemini_429([])
+        error.details = body
+        info = classify(error)
         assert (info.kind, info.retry_after) == ('rate_limit', None)
 
     def test_gemini_non_finite_retry_delay_is_no_delay(self):
