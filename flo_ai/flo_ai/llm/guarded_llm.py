@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import copy
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from flo_ai.guardrails.contracts import (
@@ -168,6 +169,17 @@ class GuardedLLM(BaseLLM):
             inner = self.__dict__.get('_inner_llm')
             if inner is not None:
                 setattr(inner, key, value)
+
+    def __copy__(self) -> 'GuardedLLM':
+        """A copy over its own copy of the wrapped LLM.
+
+        Writes are mirrored inward, so sharing the inner LLM would hand one
+        agent's settings to every agent on it. The inner copy still shares the
+        SDK client.
+        """
+        clone = super().__copy__()
+        object.__setattr__(clone, '_inner_llm', copy.copy(self._inner_llm))
+        return clone
 
     def declare_retract_support(self) -> None:
         """Tell the wrapper that its consumer can withdraw text it has already displayed."""

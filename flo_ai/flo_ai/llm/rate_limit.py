@@ -304,9 +304,7 @@ def _resolve(value: Any, env_name: str, default: float, whole: bool) -> float:
     return _parse_option(env_name, raw, whole) if raw else default
 
 
-def apply_rate_limit_options(
-    llm: Any, parameters: Optional[Mapping[str, Any]]
-) -> None:
+def apply_rate_limit_options(llm: Any, parameters: Optional[Mapping[str, Any]]) -> None:
     """Set ``llm``'s rate-limit options from an LLM inference config's parameters.
 
     Only keys present and non-null are applied; the rest keep falling back to
@@ -332,6 +330,10 @@ class RateLimitGate:
         self.sleep = sleep
         self.rand = rand
         self._cooldown_until = 0.0
+
+    @property
+    def cooldown_until(self) -> float:
+        return self._cooldown_until
 
     def remaining(self) -> float:
         return max(0.0, self._cooldown_until - self.clock())
@@ -409,11 +411,11 @@ class _Stall:
 
     async def wait_turn(self) -> None:
         while (remaining := self.gate.remaining()) > 0:
-            left = self._left()
-            if remaining > left:
+            # End times, not durations: two clock reads drift apart.
+            if self.gate.cooldown_until > self.started + self.budget:
                 error = self.last[0] if self.last else None
                 raise self._exhausted() from error
-            wait = min(remaining + self.gate.rand(0, WAKE_JITTER), left)
+            wait = min(remaining + self.gate.rand(0, WAKE_JITTER), self._left())
             self._announce(wait)
             await self.gate.sleep(wait)
             llm_metrics.record_rate_limit_wait(wait * 1000, self.model, self.provider)
@@ -472,9 +474,7 @@ class _Stall:
         if self.attempt > self.retries:
             raise self._exhausted() from error
 
-    async def _back_off_transient(
-        self, error: Exception, info: Classification
-    ) -> bool:
+    async def _back_off_transient(self, error: Exception, info: Classification) -> bool:
         if info.kind != 'transient' or self.transient_retries >= TRANSIENT_RETRIES:
             return False
         delay = (

@@ -95,10 +95,14 @@ class FakeTime:
 
     def __init__(self):
         self.now = 1000.0
+        # Added after every read, as time passes between real clock reads.
+        self.tick = 0.0
         self.sleeps = []
 
     def clock(self):
-        return self.now
+        now = self.now
+        self.now += self.tick
+        return now
 
     async def sleep(self, seconds):
         self.sleeps.append(seconds)
@@ -316,7 +320,9 @@ class TestRateLimitedGenerate:
         assert not isinstance(fatal.value, LLMRateLimited)
 
     async def test_transient_error_is_retried_with_backoff(self, fake_time):
-        llm = ScriptedLLM([openai_500(), openai.APIConnectionError(request=REQUEST), 'ok'])
+        llm = ScriptedLLM(
+            [openai_500(), openai.APIConnectionError(request=REQUEST), 'ok']
+        )
         install_gate(llm, fake_time)
 
         assert await llm.generate([]) == {'content': 'ok'}
@@ -402,12 +408,14 @@ class TestSharedGate:
 
         # The first retry warns; later ones are info.
         log.warning.assert_called_once()
-        assert 'retrying in 2.0s (attempt 2 of 5, 60s of 60s budget left)' in (
-            log.warning.call_args[0][0]
+        assert (
+            'retrying in 2.0s (attempt 2 of 5, 60s of 60s budget left)'
+            in (log.warning.call_args[0][0])
         )
         log.info.assert_called_once()
-        assert 'retrying in 3.0s (attempt 3 of 5, 58s of 60s budget left)' in (
-            log.info.call_args[0][0]
+        assert (
+            'retrying in 3.0s (attempt 3 of 5, 58s of 60s budget left)'
+            in (log.info.call_args[0][0])
         )
 
     async def test_429_that_cannot_be_retried_is_not_announced(
@@ -434,6 +442,18 @@ class TestSharedGate:
 
         assert llm.calls == 0
         assert fake_time.sleeps == []
+
+    async def test_cooldown_ending_inside_budget_waits_as_the_clock_moves(
+        self, fake_time
+    ):
+        llm = ScriptedLLM(['ok'])
+        llm.rate_limit_max_wait = 10
+        gate = install_gate(llm, fake_time)
+        gate.extend(9.8)
+        fake_time.tick = 0.5
+
+        assert await llm.generate([]) == {'content': 'ok'}
+        assert llm.calls == 1
 
     def test_proxy_and_direct_api_do_not_share_a_gate(self):
         direct = OpenAI(model='gpt-4o', api_key='sk-same')
@@ -466,7 +486,6 @@ class TestRateLimitedStream:
         assert llm.calls == 1
         # Other callers on the scope still back off.
         assert rate_limit._gates[llm.rate_limit_scope()].remaining() > 0
-
 
     async def test_transient_after_first_chunk_is_not_retried(self, fake_time):
         llm = ScriptedLLM([(['a'], openai_500()), (['b'], None)])
@@ -634,6 +653,19 @@ class TestSettingReachesTheProvider:
         assert agent.llm.rate_limit_max_wait == 5
         assert shared.rate_limit_max_wait is None
 
+    def test_builder_copies_through_a_shared_guarded_llm(self):
+        inner = OpenAI(model='gpt-4o', api_key='key')
+        shared = GuardedLLM(inner, engine=None)
+
+        first = AgentBuilder().with_llm(shared).with_rate_limit_wait(5).build()
+        second = AgentBuilder().with_llm(shared).with_rate_limit_wait(9).build()
+
+        assert inner.rate_limit_max_wait is None
+        assert shared.rate_limit_max_wait is None
+        assert first.llm._inner_llm.rate_limit_max_wait == 5
+        assert second.llm._inner_llm.rate_limit_max_wait == 9
+        assert first.llm._inner_llm.client is inner.client
+
     def test_guarded_llm_mirrors_both_ways(self):
         inner = ScriptedLLM([])
         inner.rate_limit_max_wait = 30
@@ -763,6 +795,66 @@ class TestAgent:
 
         assert sent_emails == ['a@b.c']
         assert any(isinstance(m, FunctionMessage) for m in agent.conversation_history)
+
+    async def test_tool_result_in_the_input_does_not_block_rollback(self, fake_time):
+        llm = ScriptedLLM([openai_429(1)])
+        llm.rate_limit_max_wait = 0
+        install_gate(llm, fake_time)
+        agent = Agent(name='a', system_prompt='x', llm=llm)
+
+        with pytest.raises(LLMRateLimited):
+            await agent.run(
+                [
+                    FunctionMessage(content='earlier result', name='lookup'),
+                    UserMessage(content='go on'),
+                ]
+            )
+
+        assert agent.conversation_history == []
+
+    async def test_failed_tool_is_kept_when_its_analysis_hits_a_provider_error(self):
+        attempts = []
+
+        async def charge_card(amount: str) -> str:
+            attempts.append(amount)
+            raise RuntimeError('gateway timed out after capture')
+
+        tool = Tool(
+            name='charge_card',
+            description='Charge the card',
+            function=charge_card,
+            parameters={'amount': {'type': 'string', 'description': 'Amount'}},
+        )
+        call = SimpleNamespace(
+            id='call_1',
+            type='function',
+            function=SimpleNamespace(
+                name='charge_card', arguments=json.dumps({'amount': '10'})
+            ),
+        )
+        # The tool call, then the error analysis request fails.
+        replies = [completion(tool_calls=[call]), openai_400()]
+
+        async def create(**_):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        llm = OpenAI(model='gpt-4o', api_key='key')
+        llm.client = Mock()
+        llm.client.chat.completions.create = AsyncMock(side_effect=create)
+        agent = Agent(name='a', system_prompt='x', llm=llm, tools=[tool])
+
+        with pytest.raises(LLMProviderError):
+            await agent.run('charge 10')
+
+        assert attempts == ['10']
+        results = [
+            m for m in agent.conversation_history if isinstance(m, FunctionMessage)
+        ]
+        assert len(results) == 1
+        assert 'gateway timed out after capture' in results[0].content
 
 
 class TestSchemaInstruction:

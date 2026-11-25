@@ -136,6 +136,8 @@ class Agent(BaseAgent):
                     raise ValueError(f'Invalid input type: {type(input)}')
 
         retry_count = 0
+        # Set when a tool is invoked; the inputs may carry results of their own.
+        self._tool_executed = False
 
         try:
             # If no tools, act as conversational agent
@@ -163,21 +165,12 @@ class Agent(BaseAgent):
             # A provider failure is undone too, so the caller can resend the
             # same input without duplicating the user turn - unless a tool
             # already ran, whose result must stay so a resend doesn't repeat it.
-            if isinstance(error, LLMProviderError) and self._tool_ran_since(
-                history_before_turn
-            ):
+            if isinstance(error, LLMProviderError) and self._tool_executed:
                 raise
             self.conversation_history = history_before_turn
             self.system_prompt = system_prompt_before_turn
             self.resolved_variables = resolved_variables_before_turn
             raise
-
-    def _tool_ran_since(self, history_before_turn: List[BaseMessage]) -> bool:
-        before = {id(message) for message in history_before_turn}
-        return any(
-            isinstance(message, FunctionMessage) and id(message) not in before
-            for message in self.conversation_history
-        )
 
     async def _handle_response_with_parser(
         self, assistant_message: Optional[str], role: str, response: Dict[str, Any]
@@ -379,6 +372,7 @@ class Agent(BaseAgent):
                         # Track tool execution with telemetry
                         tracer = get_tracer()
 
+                        self._tool_executed = True
                         try:
                             if tracer:
                                 with tracer.start_as_current_span(
@@ -471,7 +465,20 @@ class Agent(BaseAgent):
                             'function_call': function_call,
                             'attempt': retry_count,
                         }
-                        should_retry, analysis = await self.handle_error(e, context)
+                        try:
+                            should_retry, analysis = await self.handle_error(e, context)
+                        except LLMProviderError:
+                            if isinstance(e, ToolExecutionError):
+                                # The tool ran, so the turn is kept: record how
+                                # it failed for the next one.
+                                self.add_to_history(
+                                    FunctionMessage(
+                                        content='Here is the result of the tool call: \n'
+                                        + str(e),
+                                        name=error_function_name,
+                                    )
+                                )
+                            raise
                         if should_retry and retry_count <= self.max_retries:
                             # Record retry
                             agent_metrics.record_retry(
