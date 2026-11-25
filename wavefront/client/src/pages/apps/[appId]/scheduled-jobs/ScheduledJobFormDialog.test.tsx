@@ -4,7 +4,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScheduledJobFormDialog from './ScheduledJobFormDialog';
-import { buildEmailPayload, buildQueryPayload } from './scheduled-job-utils';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -24,18 +23,18 @@ vi.mock('@app/hooks', async (importOriginal) => ({
   useUpdateScheduledJob: () => ({ mutate: updateMutate, isPending: false }),
 }));
 
-const payload = buildEmailPayload({
-  datasourceId: 'ds-1',
-  queryIds: ['sales'],
-  recipientUserIds: ['user-1'],
-  emailConnectionId: 'conn-1',
+const payload = {
+  datasource_id: 'ds-1',
+  queries: [{ query_id: 'sales' }],
+  recipient_user_ids: ['user-1'],
+  email_connection_id: 'conn-1',
   subject: 'Daily sales',
-  emailContent: 'Attached are yesterday’s numbers.',
+  email_content: 'Attached are yesterday’s numbers.',
   params: { region: 'eu' },
   filter: "status eq 'paid'",
   limit: 500,
   offset: 0,
-});
+};
 
 const job: ScheduledJob = {
   id: 'job-1',
@@ -53,7 +52,7 @@ const job: ScheduledJob = {
   updated_at: null,
 };
 
-const queryOnlyPayload = buildQueryPayload({ datasourceId: 'ds-1', queryIds: ['sales'], limit: 500, offset: 0 });
+const queryOnlyPayload = { datasource_id: 'ds-1', queries: [{ query_id: 'sales' }], limit: 500, offset: 0 };
 
 const queryOnlyJob: ScheduledJob = {
   ...job,
@@ -151,5 +150,14 @@ describe('ScheduledJobFormDialog', () => {
 
     expect(screen.getByRole('tab', { name: 'Email' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Job type' })).toBeDisabled();
+  });
+
+  it('switches to the tab holding the first error on an invalid save', async () => {
+    renderDialog({ job: { ...job, payload: { ...payload, recipient_user_ids: [] } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    expect(await screen.findByText('At least one recipient user is required')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Email' })).toHaveAttribute('data-state', 'active');
+    expect(updateMutate).not.toHaveBeenCalled();
   });
 });

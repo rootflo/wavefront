@@ -1,6 +1,4 @@
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
+import { FormInputField, FormSelectField, FormTextareaField } from '@app/components/FormFields';
 import {
   COLUMN_STYLES_PLACEHOLDER,
   DEFAULT_CRON_EXPR,
@@ -12,122 +10,87 @@ import {
   JOB_TYPE_EMAIL_DYNAMIC_QUERY,
   JOB_TYPE_LABELS,
   JOB_TYPE_SCHEDULED_QUERY,
-  isScheduledJobType,
   QUERY_PARAMS_PLACEHOLDER,
 } from '@app/constants/scheduled-job';
 import { ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { useWatch } from 'react-hook-form';
+import DateRangeFields from './DateRangeFields';
+import { FIELD_STYLE } from './scheduled-job-form';
 import { getDatasourceIdFromPayload } from './scheduled-job-utils';
 import { ScheduledJobFormState } from './useScheduledJobForm';
-import DateRangeFields from './DateRangeFields';
+
+const JOB_TYPE_OPTIONS = [JOB_TYPE_EMAIL_DYNAMIC_QUERY, JOB_TYPE_SCHEDULED_QUERY].map((value) => ({
+  value,
+  label: JOB_TYPE_LABELS[value],
+}));
 
 /** What the job does, how often it runs, from which datasource, and the defaults its queries share. */
-const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
-  const {
-    job,
-    isEditing,
-    jobType,
-    setJobType,
-    isEmailJob,
-    datasources,
-    datasourceId,
-    setDatasourceId,
-    setQueryConfigs,
-    setExpandedQueryKeys,
-    jobDefaultsExpanded,
-    setJobDefaultsExpanded,
-    cronExpr,
-    setCronExpr,
-    timezone,
-    setTimezone,
-    queryParamsJson,
-    setQueryParamsJson,
-    columnStylesJson,
-    setColumnStylesJson,
-    filterExpr,
-    setFilterExpr,
-    queryLimit,
-    setQueryLimit,
-    queryOffset,
-    setQueryOffset,
-    dateRange,
-    setDateRange,
-    startDateParamKey,
-    setStartDateParamKey,
-    endDateParamKey,
-    setEndDateParamKey,
-    maxRetries,
-    setMaxRetries,
-    selectedQueryIds,
-  } = form;
+const JobSetupTab = ({ state }: { state: ScheduledJobFormState }) => {
+  const { form, queryFields, job, isEditing, isEmailJob, datasources } = state;
+  const { control } = form;
+  const queries = useWatch({ control, name: 'queries' });
+  const selectedQueryIds = queries.map((query) => query.queryId).filter(Boolean);
+  const [defaultsExpanded, setDefaultsExpanded] = useState(false);
+  // Keep the section open while it holds an error, so the message is visible.
+  const showDefaults = defaultsExpanded || Boolean(form.formState.errors.defaults);
+
   return (
     <>
-      <div>
-        <p className="frost-text-muted mb-1 text-xs">Job type</p>
-        <Select
-          value={jobType}
+      <FormSelectField
+        {...FIELD_STYLE}
+        control={control}
+        name="jobType"
+        label="Job type"
+        options={JOB_TYPE_OPTIONS}
+        disabled={isEditing}
+        description={
+          <>
+            {isEmailJob
+              ? 'Runs the queries and emails the results to the recipients.'
+              : 'Runs the queries on schedule and discards the results. Nothing is emailed.'}
+            {isEditing ? ' The job type cannot be changed after creation.' : ''}
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormInputField
+          {...FIELD_STYLE}
+          control={control}
+          name="cronExpr"
+          label="Cron expression"
+          placeholder={DEFAULT_CRON_EXPR}
+        />
+        <FormInputField
+          {...FIELD_STYLE}
+          control={control}
+          name="timezone"
+          label="Timezone"
+          placeholder={DEFAULT_TIMEZONE}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormSelectField
+          {...FIELD_STYLE}
+          control={control}
+          name="datasourceId"
+          label="Datasource"
+          placeholder="Select datasource"
+          options={datasources.map((ds) => ({ value: ds.id, label: ds.name || ds.id }))}
           onValueChange={(value) => {
-            if (isScheduledJobType(value)) setJobType(value);
+            // The queries belong to the old datasource; keep them only when switching back to the saved one.
+            if (!job || getDatasourceIdFromPayload(job.payload || {}) !== value) queryFields.replace([]);
           }}
-          disabled={isEditing}
-        >
-          <SelectTrigger aria-label="Job type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={JOB_TYPE_EMAIL_DYNAMIC_QUERY}>
-              {JOB_TYPE_LABELS[JOB_TYPE_EMAIL_DYNAMIC_QUERY]}
-            </SelectItem>
-            <SelectItem value={JOB_TYPE_SCHEDULED_QUERY}>{JOB_TYPE_LABELS[JOB_TYPE_SCHEDULED_QUERY]}</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="frost-text-muted mt-1 text-xs">
-          {isEmailJob
-            ? 'Runs the queries and emails the results to the recipients.'
-            : 'Runs the queries on schedule and discards the results. Nothing is emailed.'}
-          {isEditing ? ' The job type cannot be changed after creation.' : ''}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <p className="frost-text-muted mb-1 text-xs">Cron expression</p>
-          <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder={DEFAULT_CRON_EXPR} />
-        </div>
-        <div>
-          <p className="frost-text-muted mb-1 text-xs">Timezone</p>
-          <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder={DEFAULT_TIMEZONE} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <p className="frost-text-muted mb-1 text-xs">Datasource</p>
-          <Select
-            value={datasourceId}
-            onValueChange={(value) => {
-              setDatasourceId(value);
-              if (!job || getDatasourceIdFromPayload(job.payload || {}) !== value) {
-                setQueryConfigs([]);
-                setExpandedQueryKeys(new Set());
-              }
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select datasource" />
-            </SelectTrigger>
-            <SelectContent>
-              {datasources.map((ds) => (
-                <SelectItem key={ds.id} value={ds.id}>
-                  {ds.name || ds.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <p className="frost-text-muted mb-1 text-xs">Max retries</p>
-          <Input value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} placeholder={DEFAULT_MAX_RETRIES} />
-        </div>
+        />
+        <FormInputField
+          {...FIELD_STYLE}
+          control={control}
+          name="maxRetries"
+          label="Max retries"
+          placeholder={DEFAULT_MAX_RETRIES}
+        />
       </div>
 
       <div>
@@ -152,11 +115,11 @@ const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
         <button
           type="button"
           className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left"
-          onClick={() => setJobDefaultsExpanded((prev) => !prev)}
-          aria-expanded={jobDefaultsExpanded}
+          onClick={() => setDefaultsExpanded((prev) => !prev)}
+          aria-expanded={showDefaults}
         >
           <ChevronDown
-            className={`frost-text-muted h-4 w-4 shrink-0 transition-transform ${jobDefaultsExpanded ? 'rotate-0' : '-rotate-90'}`}
+            className={`frost-text-muted h-4 w-4 shrink-0 transition-transform ${showDefaults ? 'rotate-0' : '-rotate-90'}`}
           />
           <div className="min-w-0">
             <p className="frost-text truncate text-sm font-medium">Job-level query defaults</p>
@@ -166,65 +129,53 @@ const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
           </div>
         </button>
 
-        {jobDefaultsExpanded ? (
+        {showDefaults ? (
           <div className="border-frost-border space-y-4 border-t px-4 py-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <p className="frost-text-muted mb-1 text-xs">Row limit</p>
-                <Input
-                  value={queryLimit}
-                  onChange={(e) => setQueryLimit(e.target.value)}
-                  placeholder={DEFAULT_QUERY_LIMIT}
-                />
-              </div>
-              <div>
-                <p className="frost-text-muted mb-1 text-xs">Offset</p>
-                <Input
-                  value={queryOffset}
-                  onChange={(e) => setQueryOffset(e.target.value)}
-                  placeholder={DEFAULT_QUERY_OFFSET}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="frost-text-muted mb-1 text-xs">Filter expression (optional)</p>
-              <Input
-                value={filterExpr}
-                onChange={(e) => setFilterExpr(e.target.value)}
-                placeholder={FILTER_PLACEHOLDER}
+              <FormInputField
+                {...FIELD_STYLE}
+                control={control}
+                name="defaults.limit"
+                label="Row limit"
+                placeholder={DEFAULT_QUERY_LIMIT}
+              />
+              <FormInputField
+                {...FIELD_STYLE}
+                control={control}
+                name="defaults.offset"
+                label="Offset"
+                placeholder={DEFAULT_QUERY_OFFSET}
               />
             </div>
 
-            <DateRangeFields
-              value={dateRange}
-              onDateRangeChange={setDateRange}
-              startKey={startDateParamKey}
-              onStartKeyChange={setStartDateParamKey}
-              endKey={endDateParamKey}
-              onEndKeyChange={setEndDateParamKey}
+            <FormInputField
+              {...FIELD_STYLE}
+              control={control}
+              name="defaults.filter"
+              label="Filter expression (optional)"
+              placeholder={FILTER_PLACEHOLDER}
             />
 
+            <DateRangeFields control={control} prefix="defaults" />
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <p className="frost-text-muted mb-1 text-xs">Query params (optional JSON)</p>
-                <Textarea
-                  value={queryParamsJson}
-                  onChange={(e) => setQueryParamsJson(e.target.value)}
-                  placeholder={QUERY_PARAMS_PLACEHOLDER}
-                  className="min-h-[90px] font-mono"
-                />
-              </div>
+              <FormTextareaField
+                {...FIELD_STYLE}
+                control={control}
+                name="defaults.paramsJson"
+                label="Query params (optional JSON)"
+                placeholder={QUERY_PARAMS_PLACEHOLDER}
+                className="space-y-1 [&_textarea]:min-h-[90px] [&_textarea]:font-mono"
+              />
               {isEmailJob ? (
-                <div>
-                  <p className="frost-text-muted mb-1 text-xs">Column styles (optional JSON)</p>
-                  <Textarea
-                    value={columnStylesJson}
-                    onChange={(e) => setColumnStylesJson(e.target.value)}
-                    placeholder={COLUMN_STYLES_PLACEHOLDER}
-                    className="min-h-[90px] font-mono text-xs"
-                  />
-                </div>
+                <FormTextareaField
+                  {...FIELD_STYLE}
+                  control={control}
+                  name="defaults.columnStylesJson"
+                  label="Column styles (optional JSON)"
+                  placeholder={COLUMN_STYLES_PLACEHOLDER}
+                  className="space-y-1 [&_textarea]:min-h-[90px] [&_textarea]:font-mono [&_textarea]:text-xs"
+                />
               ) : null}
             </div>
           </div>

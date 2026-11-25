@@ -82,19 +82,6 @@ export type FormTab = 'schedule' | 'query' | 'email';
 export type PayloadDateRange = NonNullable<ScheduledJobQueryPayload['date_range']>;
 export type DateRangeOption = PayloadDateRange | 'none';
 
-/** Optional per-query overrides; empty fields inherit job-level defaults. */
-export interface QuerySpecFormOverrides {
-  datasource_id?: string;
-  filter?: string;
-  offset?: string;
-  limit?: string;
-  paramsJson?: string;
-  columnStylesJson?: string;
-  date_range?: DateRangeOption;
-  start_date_param?: string;
-  end_date_param?: string;
-}
-
 export interface CreateScheduledJobRequest {
   job_type: ScheduledJobType;
   cron_expr: string;
