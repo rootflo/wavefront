@@ -24,7 +24,7 @@ interface ScheduledJobFormDialogProps {
 
 const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen, appId, job, onOpenChange }) => {
   const form = useScheduledJobForm({ isOpen, appId, job, onOpenChange });
-  const { isEditing, activeTab, setActiveTab, saving, error, handleOpenChange, handleSave } = form;
+  const { isEditing, isEmailJob, activeTab, setActiveTab, saving, error, handleOpenChange, handleSave } = form;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -32,7 +32,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen,
         <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</DialogTitle>
           <DialogDescription>
-            Schedule one or more dynamic query reports to be emailed on a cron schedule.
+            {isEmailJob
+              ? 'Schedule one or more dynamic query reports to be emailed on a cron schedule.'
+              : 'Run one or more dynamic queries on a cron schedule. Results are not emailed.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -43,10 +45,10 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen,
           }}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <TabsList className="grid w-full shrink-0 grid-cols-3">
+          <TabsList className={`grid w-full shrink-0 ${isEmailJob ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <TabsTrigger value={FORM_TAB.SCHEDULE}>Job setup</TabsTrigger>
             <TabsTrigger value={FORM_TAB.QUERY}>Queries</TabsTrigger>
-            <TabsTrigger value={FORM_TAB.EMAIL}>Email</TabsTrigger>
+            {isEmailJob ? <TabsTrigger value={FORM_TAB.EMAIL}>Email</TabsTrigger> : null}
           </TabsList>
 
           <TabsContent value={FORM_TAB.SCHEDULE} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
@@ -57,9 +59,11 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen,
             <QueriesTab form={form} />
           </TabsContent>
 
-          <TabsContent value={FORM_TAB.EMAIL} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
-            <EmailTab form={form} />
-          </TabsContent>
+          {isEmailJob ? (
+            <TabsContent value={FORM_TAB.EMAIL} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
+              <EmailTab form={form} />
+            </TabsContent>
+          ) : null}
         </Tabs>
 
         {error ? <p className="shrink-0 text-sm text-red-500">{error}</p> : null}

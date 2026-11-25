@@ -9,6 +9,10 @@ import {
   DEFAULT_QUERY_OFFSET,
   DEFAULT_TIMEZONE,
   FILTER_PLACEHOLDER,
+  JOB_TYPE_EMAIL_DYNAMIC_QUERY,
+  JOB_TYPE_LABELS,
+  JOB_TYPE_SCHEDULED_QUERY,
+  isScheduledJobType,
   QUERY_PARAMS_PLACEHOLDER,
 } from '@app/constants/scheduled-job';
 import { ChevronDown } from 'lucide-react';
@@ -16,10 +20,14 @@ import { getDatasourceIdFromPayload } from './scheduled-job-utils';
 import { ScheduledJobFormState } from './useScheduledJobForm';
 import DateRangeFields from './DateRangeFields';
 
-/** How often the job runs, from which datasource, and the defaults its queries share. */
+/** What the job does, how often it runs, from which datasource, and the defaults its queries share. */
 const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
   const {
     job,
+    isEditing,
+    jobType,
+    setJobType,
+    isEmailJob,
     datasources,
     datasourceId,
     setDatasourceId,
@@ -53,6 +61,33 @@ const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
   } = form;
   return (
     <>
+      <div>
+        <p className="frost-text-muted mb-1 text-xs">Job type</p>
+        <Select
+          value={jobType}
+          onValueChange={(value) => {
+            if (isScheduledJobType(value)) setJobType(value);
+          }}
+          disabled={isEditing}
+        >
+          <SelectTrigger aria-label="Job type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={JOB_TYPE_EMAIL_DYNAMIC_QUERY}>
+              {JOB_TYPE_LABELS[JOB_TYPE_EMAIL_DYNAMIC_QUERY]}
+            </SelectItem>
+            <SelectItem value={JOB_TYPE_SCHEDULED_QUERY}>{JOB_TYPE_LABELS[JOB_TYPE_SCHEDULED_QUERY]}</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="frost-text-muted mt-1 text-xs">
+          {isEmailJob
+            ? 'Runs the queries and emails the results to the recipients.'
+            : 'Runs the queries on schedule and discards the results. Nothing is emailed.'}
+          {isEditing ? ' The job type cannot be changed after creation.' : ''}
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <p className="frost-text-muted mb-1 text-xs">Cron expression</p>
@@ -180,15 +215,17 @@ const JobSetupTab = ({ form }: { form: ScheduledJobFormState }) => {
                   className="min-h-[90px] font-mono"
                 />
               </div>
-              <div>
-                <p className="frost-text-muted mb-1 text-xs">Column styles (optional JSON)</p>
-                <Textarea
-                  value={columnStylesJson}
-                  onChange={(e) => setColumnStylesJson(e.target.value)}
-                  placeholder={COLUMN_STYLES_PLACEHOLDER}
-                  className="min-h-[90px] font-mono text-xs"
-                />
-              </div>
+              {isEmailJob ? (
+                <div>
+                  <p className="frost-text-muted mb-1 text-xs">Column styles (optional JSON)</p>
+                  <Textarea
+                    value={columnStylesJson}
+                    onChange={(e) => setColumnStylesJson(e.target.value)}
+                    placeholder={COLUMN_STYLES_PLACEHOLDER}
+                    className="min-h-[90px] font-mono text-xs"
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScheduledJobFormDialog from './ScheduledJobFormDialog';
-import { buildEmailPayload } from './scheduled-job-utils';
+import { buildEmailPayload, buildQueryPayload } from './scheduled-job-utils';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -51,6 +51,15 @@ const job: ScheduledJob = {
   max_retries: 2,
   created_at: null,
   updated_at: null,
+};
+
+const queryOnlyPayload = buildQueryPayload({ datasourceId: 'ds-1', queryIds: ['sales'], limit: 500, offset: 0 });
+
+const queryOnlyJob: ScheduledJob = {
+  ...job,
+  id: 'job-2',
+  job_type: 'scheduled_query',
+  payload: queryOnlyPayload as unknown as Record<string, unknown>,
 };
 
 const renderDialog = (props: Partial<React.ComponentProps<typeof ScheduledJobFormDialog>> = {}) => {
@@ -119,5 +128,28 @@ describe('ScheduledJobFormDialog', () => {
       await screen.findByText('Unable to save scheduled job. Please verify the details and try again.')
     ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('edits a scheduled query job without an Email tab or recipients', async () => {
+    renderDialog({ job: queryOnlyJob });
+
+    expect(screen.queryByRole('tab', { name: 'Email' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Job type' })).toBeDisabled();
+    expect(screen.getByText(/Results are not emailed/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(1));
+    const sent = updateMutate.mock.calls[0][0].request.payload;
+    expect(sent).toEqual(queryOnlyPayload);
+    expect(sent).not.toHaveProperty('recipient_user_ids');
+    expect(sent).not.toHaveProperty('email_connection_id');
+  });
+
+  it('shows the Email tab and a disabled type picker for an email job', async () => {
+    renderDialog({ job });
+
+    expect(screen.getByRole('tab', { name: 'Email' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Job type' })).toBeDisabled();
   });
 });

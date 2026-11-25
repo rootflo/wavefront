@@ -10,6 +10,7 @@ import {
   FORM_TAB,
   JOB_TYPE_EMAIL_DYNAMIC_QUERY,
   MAX_RETRIES_LIMIT,
+  isScheduledJobType,
 } from '@app/constants/scheduled-job';
 import {
   useCreateScheduledJob,
@@ -25,10 +26,12 @@ import {
   FormTab,
   QuerySpecFormOverrides,
   ScheduledJob,
+  ScheduledJobType,
 } from '@app/types/scheduled-job';
 import { useEffect, useMemo, useState } from 'react';
 import {
   buildEmailPayload,
+  buildQueryPayload,
   extractQueryOverridesFromPayload,
   extractRecipientUserIdsFromPayload,
   getDatasourceIdFromPayload,
@@ -56,7 +59,7 @@ interface UseScheduledJobFormArgs {
 
 /**
  * Every field of the scheduled job form, the data its pickers list, and saving: validates each tab in turn
- * (switching to the tab with the first problem) and builds the job's email payload.
+ * (switching to the tab with the first problem) and builds the job's payload for its job type.
  */
 export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseScheduledJobFormArgs) => {
   const isEditing = Boolean(job?.id);
@@ -64,6 +67,8 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
   const { data: appUsers = [], isLoading: appUsersLoading } = useGetAppUsers(appId);
   const { data: emailConnections = [] } = useGetEmailConnections(appId);
 
+  const [jobType, setJobType] = useState<ScheduledJobType>(JOB_TYPE_EMAIL_DYNAMIC_QUERY);
+  const isEmailJob = jobType === JOB_TYPE_EMAIL_DYNAMIC_QUERY;
   const [datasourceId, setDatasourceId] = useState('');
   const [queryConfigs, setQueryConfigs] = useState<QueryConfigEntry[]>([]);
   const [expandedQueryKeys, setExpandedQueryKeys] = useState<Set<string>>(new Set());
@@ -155,6 +160,7 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
   };
 
   const resetForm = () => {
+    setJobType(JOB_TYPE_EMAIL_DYNAMIC_QUERY);
     setDatasourceId('');
     setQueryConfigs([]);
     setExpandedQueryKeys(new Set());
@@ -181,6 +187,7 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
   const applyJobToForm = (existingJob: ScheduledJob) => {
     const payload = (existingJob.payload || {}) as Record<string, unknown>;
     const { queryIds, overrides } = extractQueryOverridesFromPayload(payload);
+    setJobType(isScheduledJobType(existingJob.job_type) ? existingJob.job_type : JOB_TYPE_EMAIL_DYNAMIC_QUERY);
     setDatasourceId(getDatasourceIdFromPayload(payload));
     setQueryConfigs(
       queryIds.map((queryId) => ({
@@ -234,6 +241,11 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
       resetForm();
     }
   }, [isOpen, job]);
+
+  // Scheduled query jobs have no Email tab; don't leave the dialog showing it.
+  useEffect(() => {
+    if (!isEmailJob && activeTab === FORM_TAB.EMAIL) setActiveTab(FORM_TAB.SCHEDULE);
+  }, [isEmailJob, activeTab]);
 
   const handleOpenChange = (open: boolean) => {
     if (!open && !saving) {
@@ -346,27 +358,23 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
       queryOverrideColumnStyles[queryId] = queryStylesResult.value;
     }
 
-    if (selectedRecipientUserIds.length === 0) {
+    if (isEmailJob && selectedRecipientUserIds.length === 0) {
       setError('At least one recipient user is required');
       setActiveTab(FORM_TAB.EMAIL);
       return;
     }
-    if (!emailConnectionId) {
+    if (isEmailJob && !emailConnectionId) {
       setError('Select an email connection to send from');
       setActiveTab(FORM_TAB.EMAIL);
       return;
     }
 
-    const emailPayload = buildEmailPayload({
+    const queryPayloadArgs = {
       datasourceId: datasourceId.trim(),
       queryIds: selectedQueryIds,
       queryOverrides,
       queryOverrideParams,
       queryOverrideColumnStyles,
-      recipientUserIds: selectedRecipientUserIds,
-      emailConnectionId,
-      subject: subject.trim() || undefined,
-      emailContent: emailContent.trim() || undefined,
       columnStyles: columnStylesResult.value,
       dateRange: dateRange === DATE_RANGE.NONE ? undefined : dateRange,
       startDateParam: dateRange === DATE_RANGE.NONE ? undefined : startDateParamKey.trim() || DEFAULT_START_DATE_PARAM,
@@ -375,7 +383,16 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
       filter: filterExpr.trim() || undefined,
       offset: offsetResult.value,
       limit: limitResult.value,
-    });
+    };
+    const payload = isEmailJob
+      ? buildEmailPayload({
+          ...queryPayloadArgs,
+          recipientUserIds: selectedRecipientUserIds,
+          emailConnectionId,
+          subject: subject.trim() || undefined,
+          emailContent: emailContent.trim() || undefined,
+        })
+      : buildQueryPayload(queryPayloadArgs);
 
     setError('');
     const callbacks = {
@@ -386,18 +403,21 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
       cron_expr: cronExpr.trim(),
       timezone: timezone.trim(),
       max_retries: retries,
-      payload: emailPayload,
+      payload,
     };
     if (isEditing && job) {
       updateScheduledJob.mutate({ jobId: job.id, request: fields }, callbacks);
     } else {
-      createScheduledJob.mutate({ job_type: JOB_TYPE_EMAIL_DYNAMIC_QUERY, ...fields }, callbacks);
+      createScheduledJob.mutate({ job_type: jobType, ...fields }, callbacks);
     }
   };
 
   return {
     job,
     isEditing,
+    jobType,
+    setJobType,
+    isEmailJob,
     datasources,
     appUsers,
     appUsersLoading,

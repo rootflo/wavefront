@@ -10,6 +10,7 @@ import {
   QuerySpecFormOverrides,
   ScheduledJob,
   ScheduledJobEmailPayload,
+  ScheduledJobQueryPayload,
   ScheduledJobQuerySpec,
 } from '@app/types/scheduled-job';
 import { IUser } from '@app/types/user';
@@ -117,25 +118,24 @@ const buildQuerySpecFromOverrides = (
   return spec;
 };
 
-export const buildEmailPayload = (args: {
+type QueryPayloadArgs = {
   datasourceId: string;
   queryIds: string[];
   queryOverrides?: Record<string, QuerySpecFormOverrides>;
   queryOverrideParams?: Record<string, Record<string, unknown> | undefined>;
   queryOverrideColumnStyles?: Record<string, ColumnStyleConfig[] | undefined>;
-  recipientUserIds: string[];
-  emailConnectionId: string;
-  subject?: string;
-  emailContent?: string;
   columnStyles?: ColumnStyleConfig[];
-  dateRange?: ScheduledJobEmailPayload['date_range'];
+  dateRange?: ScheduledJobQueryPayload['date_range'];
   startDateParam?: string;
   endDateParam?: string;
   params?: Record<string, unknown>;
   filter?: string;
   offset?: number;
   limit?: number;
-}): ScheduledJobEmailPayload => ({
+};
+
+/** The part of the payload every job type shares: queries and job-level defaults. */
+export const buildQueryPayload = (args: QueryPayloadArgs): ScheduledJobQueryPayload => ({
   datasource_id: args.datasourceId,
   queries: args.queryIds.map((queryId) =>
     buildQuerySpecFromOverrides(
@@ -145,10 +145,6 @@ export const buildEmailPayload = (args: {
       args.queryOverrideColumnStyles?.[queryId]
     )
   ),
-  recipient_user_ids: args.recipientUserIds,
-  email_connection_id: args.emailConnectionId,
-  subject: args.subject,
-  email_content: args.emailContent,
   column_styles: args.columnStyles,
   date_range: args.dateRange,
   start_date_param: args.startDateParam,
@@ -157,6 +153,21 @@ export const buildEmailPayload = (args: {
   filter: args.filter,
   offset: args.offset,
   limit: args.limit,
+});
+
+export const buildEmailPayload = (
+  args: QueryPayloadArgs & {
+    recipientUserIds: string[];
+    emailConnectionId: string;
+    subject?: string;
+    emailContent?: string;
+  }
+): ScheduledJobEmailPayload => ({
+  ...buildQueryPayload(args),
+  recipient_user_ids: args.recipientUserIds,
+  email_connection_id: args.emailConnectionId,
+  subject: args.subject,
+  email_content: args.emailContent,
 });
 
 export const extractQueryOverridesFromPayload = (

@@ -16,6 +16,7 @@ import DateRangeFields from './DateRangeFields';
 /** The dynamic queries the job runs, each with optional overrides of the job's defaults. */
 const QueriesTab = ({ form }: { form: ScheduledJobFormState }) => {
   const {
+    isEmailJob,
     datasources,
     datasourceId,
     queryConfigs,
@@ -195,15 +196,19 @@ const QueriesTab = ({ form }: { form: ScheduledJobFormState }) => {
                           className="min-h-20 font-mono text-xs"
                         />
                       </div>
-                      <div>
-                        <p className="frost-text-muted mb-1 text-xs">Column styles override (optional JSON)</p>
-                        <Textarea
-                          value={overrides.columnStylesJson ?? ''}
-                          onChange={(e) => updateQueryConfigOverrides(config.key, { columnStylesJson: e.target.value })}
-                          placeholder={COLUMN_STYLES_PLACEHOLDER}
-                          className="min-h-20 font-mono text-xs"
-                        />
-                      </div>
+                      {isEmailJob ? (
+                        <div>
+                          <p className="frost-text-muted mb-1 text-xs">Column styles override (optional JSON)</p>
+                          <Textarea
+                            value={overrides.columnStylesJson ?? ''}
+                            onChange={(e) =>
+                              updateQueryConfigOverrides(config.key, { columnStylesJson: e.target.value })
+                            }
+                            placeholder={COLUMN_STYLES_PLACEHOLDER}
+                            className="min-h-20 font-mono text-xs"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
