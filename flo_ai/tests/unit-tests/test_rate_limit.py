@@ -24,17 +24,23 @@ from flo_ai.agent.agent import Agent
 from flo_ai.agent.builder import AgentBuilder
 from flo_ai.arium.llm_router import SmartRouter
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
-from flo_ai.llm import rate_limit
+from flo_ai.llm.rate_limits import gate as rate_limit_gate
+from flo_ai.llm.rate_limits import stall as rate_limit_stall
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardedLLM
 from flo_ai.llm.anthropic_llm import Anthropic
 from flo_ai.llm.aws_bedrock_llm import AWSBedrock
 from flo_ai.llm.azure_openai_llm import AzureOpenAI
 from flo_ai.llm.openai_llm import OpenAI
-from flo_ai.llm.rate_limit import (
+from flo_ai.llm.rate_limits import (
+    DEFAULT_RATE_LIMIT_RETRIES,
+    MAX_WAIT_ENV,
+    RETRIES_ENV,
     LLMProviderError,
     LLMRateLimited,
     RateLimitGate,
+    RateLimitScope,
+    apply_rate_limit_options,
     classify,
     rate_limited,
     rate_limited_stream,
@@ -149,9 +155,9 @@ class ScriptedLLM(BaseLLM):
 
 @pytest.fixture(autouse=True)
 def fresh_gates(monkeypatch):
-    monkeypatch.setattr(rate_limit, '_gates', {})
-    monkeypatch.delenv(rate_limit.MAX_WAIT_ENV, raising=False)
-    monkeypatch.delenv(rate_limit.RETRIES_ENV, raising=False)
+    monkeypatch.setattr(rate_limit_gate, '_gates', {})
+    monkeypatch.delenv(MAX_WAIT_ENV, raising=False)
+    monkeypatch.delenv(RETRIES_ENV, raising=False)
 
 
 @pytest.fixture
@@ -163,7 +169,7 @@ def install_gate(llm, fake_time):
     gate = RateLimitGate(
         clock=fake_time.clock, sleep=fake_time.sleep, rand=lambda a, b: 0.0
     )
-    rate_limit._gates[llm.rate_limit_scope()] = gate
+    rate_limit_gate._gates[llm.rate_limit_scope()] = gate
     return gate
 
 
@@ -288,8 +294,8 @@ class TestRateLimitedGenerate:
             await llm.generate([])
 
         # The first request plus the default retries, well inside the 60s budget.
-        assert llm.calls == rate_limit.DEFAULT_RATE_LIMIT_RETRIES + 1
-        assert f'{rate_limit.DEFAULT_RATE_LIMIT_RETRIES + 1} attempts' in str(
+        assert llm.calls == DEFAULT_RATE_LIMIT_RETRIES + 1
+        assert f'{DEFAULT_RATE_LIMIT_RETRIES + 1} attempts' in str(
             caught.value
         )
         # The last 429 still pauses other callers.
@@ -387,7 +393,7 @@ class TestSharedGate:
         self, fake_time, monkeypatch
     ):
         log = Mock()
-        monkeypatch.setattr(rate_limit, 'logger', log)
+        monkeypatch.setattr(rate_limit_stall, 'logger', log)
         llm = ScriptedLLM(['ok'])
         gate = install_gate(llm, fake_time)
         gate.extend(5)
@@ -400,7 +406,7 @@ class TestSharedGate:
 
     async def test_each_retry_logs_its_actual_wait(self, fake_time, monkeypatch):
         log = Mock()
-        monkeypatch.setattr(rate_limit, 'logger', log)
+        monkeypatch.setattr(rate_limit_stall, 'logger', log)
         llm = ScriptedLLM([openai_429(2), openai_429(3), 'ok'])
         install_gate(llm, fake_time)
 
@@ -422,7 +428,7 @@ class TestSharedGate:
         self, fake_time, monkeypatch
     ):
         log = Mock()
-        monkeypatch.setattr(rate_limit, 'logger', log)
+        monkeypatch.setattr(rate_limit_stall, 'logger', log)
         llm = ScriptedLLM([openai_429(90)])
         install_gate(llm, fake_time)
 
@@ -485,7 +491,7 @@ class TestRateLimitedStream:
         assert chunks == ['a']
         assert llm.calls == 1
         # Other callers on the scope still back off.
-        assert rate_limit._gates[llm.rate_limit_scope()].remaining() > 0
+        assert rate_limit_gate._gates[llm.rate_limit_scope()].remaining() > 0
 
     async def test_transient_after_first_chunk_is_not_retried(self, fake_time):
         llm = ScriptedLLM([(['a'], openai_500()), (['b'], None)])
@@ -536,7 +542,7 @@ class TestOptionPrecedence:
     """An LLM's own value, then the env var, then the default."""
 
     async def test_env_var_applies_when_unset(self, fake_time, monkeypatch):
-        monkeypatch.setenv(rate_limit.RETRIES_ENV, '1')
+        monkeypatch.setenv(RETRIES_ENV, '1')
         llm = ScriptedLLM([openai_429(1)] * 5)
         install_gate(llm, fake_time)
 
@@ -546,8 +552,8 @@ class TestOptionPrecedence:
         assert llm.calls == 2
 
     async def test_llm_value_beats_env_var(self, fake_time, monkeypatch):
-        monkeypatch.setenv(rate_limit.RETRIES_ENV, '1')
-        monkeypatch.setenv(rate_limit.MAX_WAIT_ENV, '0')
+        monkeypatch.setenv(RETRIES_ENV, '1')
+        monkeypatch.setenv(MAX_WAIT_ENV, '0')
         llm = ScriptedLLM([openai_429(1)] * 5)
         llm.rate_limit_retries = 2
         llm.rate_limit_max_wait = 60
@@ -559,7 +565,7 @@ class TestOptionPrecedence:
         assert llm.calls == 3
 
     async def test_zero_budget_from_env_var(self, fake_time, monkeypatch):
-        monkeypatch.setenv(rate_limit.MAX_WAIT_ENV, '0')
+        monkeypatch.setenv(MAX_WAIT_ENV, '0')
         llm = ScriptedLLM([openai_429(1), 'ok'])
         install_gate(llm, fake_time)
 
@@ -568,9 +574,8 @@ class TestOptionPrecedence:
 
         assert llm.calls == 1
 
-    @pytest.mark.parametrize('env', ['MAX_WAIT_ENV', 'RETRIES_ENV'])
-    async def test_invalid_env_var_raises(self, fake_time, monkeypatch, env):
-        name = getattr(rate_limit, env)
+    @pytest.mark.parametrize('name', [MAX_WAIT_ENV, RETRIES_ENV])
+    async def test_invalid_env_var_raises(self, fake_time, monkeypatch, name):
         monkeypatch.setenv(name, 'soon')
         llm = ScriptedLLM(['ok'])
         install_gate(llm, fake_time)
@@ -583,7 +588,7 @@ class TestApplyRateLimitOptions:
     def test_sets_given_options_only(self):
         llm = ScriptedLLM([])
 
-        rate_limit.apply_rate_limit_options(
+        apply_rate_limit_options(
             llm, {'rate_limit_retries': '2', 'rate_limit_max_wait': None}
         )
 
@@ -601,7 +606,7 @@ class TestApplyRateLimitOptions:
     )
     def test_rejects_invalid_values(self, parameters):
         with pytest.raises(ValueError, match=next(iter(parameters))):
-            rate_limit.apply_rate_limit_options(ScriptedLLM([]), parameters)
+            apply_rate_limit_options(ScriptedLLM([]), parameters)
 
     async def test_rootflo_config_sets_options_without_sending_them(self):
         llm = RootFloLLM(base_url='https://example.invalid', model_id='model-1')
@@ -687,10 +692,8 @@ class TestSettingReachesTheProvider:
         await llm._ensure_initialized()
 
         assert llm._llm.rate_limit_max_wait == 7
-        assert llm._llm.rate_limit_scope() == (
-            'rootflo',
-            'https://example.invalid',
-            'model-1',
+        assert llm._llm.rate_limit_scope() == RateLimitScope(
+            provider='rootflo', model='model-1', base_url='https://example.invalid'
         )
         llm.rate_limit_max_wait = 3
         assert llm._llm.rate_limit_max_wait == 3

@@ -3,7 +3,7 @@ from typing import Awaitable, Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
-from flo_ai.llm.rate_limit import LLMProviderError
+from flo_ai.llm.rate_limits import LLMProviderError
 from flo_ai.models.chat_message import (
     BaseMessage,
     MediaMessageContent,

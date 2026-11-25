@@ -15,7 +15,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
-from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
@@ -35,7 +35,7 @@ class OpenAI(OpenAIToolCallingMixin, BaseLLM):
         client_kwargs, request_kwargs = split_client_kwargs(
             AsyncOpenAI, kwargs, reserved=('default_headers',)
         )
-        # llm.rate_limit owns retries; the SDK's own would hide 429s from it.
+        # llm.rate_limits owns retries; the SDK's own would hide 429s from it.
         client_kwargs.setdefault('max_retries', 0)
 
         super().__init__(

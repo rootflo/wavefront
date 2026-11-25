@@ -7,7 +7,7 @@ from .base_llm import BaseLLM
 from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import trace_llm_call, trace_llm_stream
-from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 
 
 class OllamaLLM(BaseLLM):

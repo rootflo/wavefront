@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardrailBlocked
-from flo_ai.llm.rate_limit import LLMProviderError
+from flo_ai.llm.rate_limits import LLMProviderError
 from flo_ai.models.chat_message import (
     AssistantMessage,
     BaseMessage,

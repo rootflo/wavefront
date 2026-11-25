@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, Any, List, AsyncIterator, Optional, Tuple
+from typing import Dict, Any, List, AsyncIterator, Optional
 import boto3
 from botocore.config import Config
 import asyncio
@@ -13,7 +13,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
-from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
+from flo_ai.llm.rate_limits import RateLimitScope, rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from flo_ai.utils.logger import logger
 from opentelemetry import trace
@@ -26,7 +26,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         temperature: float = 0.7,
         **kwargs,
     ):
-        # llm.rate_limit owns retries; boto's own would hide throttling from it.
+        # llm.rate_limits owns retries; boto's own would hide throttling from it.
         max_retries = kwargs.pop('max_retries', 0)
         super().__init__(model=model, temperature=temperature, **kwargs)
         self.boto_client = boto3.client(
@@ -38,9 +38,13 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         self.model = model
         self.kwargs = kwargs
 
-    def rate_limit_scope(self) -> Tuple[Any, ...]:
+    def rate_limit_scope(self) -> RateLimitScope:
         # Authenticated by boto credentials rather than a key; quotas are per region.
-        return ('bedrock', self.boto_client.meta.region_name, self.model)
+        return RateLimitScope(
+            provider='bedrock',
+            model=self.model,
+            region=self.boto_client.meta.region_name or '',
+        )
 
     @staticmethod
     def _strip_reasoning(text: str) -> str:

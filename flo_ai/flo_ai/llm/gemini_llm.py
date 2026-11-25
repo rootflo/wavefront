@@ -17,7 +17,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
-from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 

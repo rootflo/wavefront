@@ -16,6 +16,7 @@ from typing import (
     Tuple,
 )
 from flo_ai.helpers.generation_params import merge_generation_params
+from flo_ai.llm.rate_limits import RateLimitScope
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
@@ -174,11 +175,15 @@ class BaseLLM(ABC):
     provider_name: str = ''
 
     # How long one call may stall on rate limits, and how many times it may
-    # retry one; see llm.rate_limit. None falls back to the FLO_AI_RATE_LIMIT_*
+    # retry one; see llm.rate_limits. None falls back to the FLO_AI_RATE_LIMIT_*
     # env vars, then the defaults. Set as attributes, never kwargs, which would
     # be sent to the provider.
     rate_limit_max_wait: Optional[float] = None
     rate_limit_retries: Optional[int] = None
+
+    # Replaces the gate key rate_limit_scope() derives; RootFloLLM pins its
+    # wrapped LLM's to the config it resolved from.
+    _rate_limit_scope: Optional[RateLimitScope] = None
 
     def __init__(
         self,
@@ -193,18 +198,17 @@ class BaseLLM(ABC):
         self.kwargs = kwargs
         self._supports_retract = False
 
-    def rate_limit_scope(self) -> Tuple[Any, ...]:
+    def rate_limit_scope(self) -> RateLimitScope:
         """Key of the rate-limit gate this LLM's calls share."""
-        pinned = self.__dict__.get('_rate_limit_scope')
-        if pinned:
-            return pinned
+        if self._rate_limit_scope:
+            return self._rate_limit_scope
         key = str(self.api_key or '')
         digest = hashlib.sha256(key.encode()).hexdigest()[:12] if key else ''
-        return (
-            type(self).__name__,
-            self._rate_limit_base_url(),
-            self.model or '',
-            digest,
+        return RateLimitScope(
+            provider=type(self).__name__,
+            model=self.model or '',
+            base_url=self._rate_limit_base_url(),
+            account=digest,
         )
 
     def _rate_limit_base_url(self) -> str:

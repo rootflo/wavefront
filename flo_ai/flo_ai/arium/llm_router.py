@@ -16,7 +16,7 @@ from flo_ai.arium.memory import (
     MessageMemoryItem,
 )
 from flo_ai.llm.base_llm import BaseLLM
-from flo_ai.llm.rate_limit import LLMProviderError
+from flo_ai.llm.rate_limits import LLMProviderError
 from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
 

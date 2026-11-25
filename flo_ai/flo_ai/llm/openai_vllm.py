@@ -2,7 +2,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from .base_llm import flatten_extra_body
 from .openai_llm import OpenAI
 from flo_ai.telemetry.instrumentation import trace_llm_stream
-from flo_ai.llm.rate_limit import rate_limited, rate_limited_stream
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 
 
 class OpenAIVLLM(OpenAI):

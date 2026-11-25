@@ -15,9 +15,10 @@ from .gemini_llm import Gemini
 from .anthropic_llm import Anthropic
 from .openai_vllm import OpenAIVLLM
 from flo_ai.helpers.generation_params import merge_generation_params
-from flo_ai.llm.rate_limit import (
+from flo_ai.llm.rate_limits import (
     RATE_LIMIT_OPTIONS,
     LLMProviderError,
+    RateLimitScope,
     apply_rate_limit_options,
 )
 from flo_ai.tool.base_tool import Tool
@@ -134,7 +135,7 @@ class RootFloLLM(BaseLLM):
 
     @property
     def rate_limit_max_wait(self) -> Optional[float]:
-        """Seconds one call may stall on rate limits; see llm.rate_limit."""
+        """Seconds one call may stall on rate limits; see llm.rate_limits."""
         return self._rate_limit_options.get('rate_limit_max_wait')
 
     @rate_limit_max_wait.setter
@@ -143,7 +144,7 @@ class RootFloLLM(BaseLLM):
 
     @property
     def rate_limit_retries(self) -> Optional[int]:
-        """Retries one call may make on rate limits; see llm.rate_limit."""
+        """Retries one call may make on rate limits; see llm.rate_limits."""
         return self._rate_limit_options.get('rate_limit_retries')
 
     @rate_limit_retries.setter
@@ -447,7 +448,9 @@ class RootFloLLM(BaseLLM):
                     setattr(self._llm, name, value)
             # Pinned: the api_token is a fresh JWT per instance, so a key hash
             # would give every instance its own gate.
-            self._llm._rate_limit_scope = ('rootflo', self._base_url, self._model_id)
+            self._llm._rate_limit_scope = RateLimitScope(
+                provider='rootflo', model=self._model_id, base_url=self._base_url
+            )
 
             # Mark as initialized
             self._initialized = True
