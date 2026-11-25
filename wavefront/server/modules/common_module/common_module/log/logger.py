@@ -15,6 +15,9 @@ class RequestAwareLogger(logging.Logger):
         """Override error method to always include exc_info=True."""
         if 'exc_info' not in kwargs:
             kwargs['exc_info'] = True
+        # Report the caller's file and line, not this method's. This frame is
+        # outside the logging package, so findCaller would stop here otherwise.
+        kwargs['stacklevel'] = kwargs.get('stacklevel', 1) + 1
         super().error(msg, *args, **kwargs)
 
 

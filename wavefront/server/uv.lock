@@ -22,7 +22,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-10-22T15:20:00.000000Z"
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -1415,6 +1415,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-sqlalchemy" },
     { name = "opentelemetry-sdk" },
     { name = "redis" },
+    { name = "sentry-sdk" },
 ]
 
 [package.dev-dependencies]
@@ -1440,6 +1441,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-sqlalchemy", specifier = ">=0.49b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.28.2,<2.0.0" },
     { name = "redis", specifier = ">=5.2.1,<6.0.0" },
+    { name = "sentry-sdk", specifier = ">=2.75.0,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -2299,8 +2301,8 @@ dependencies = [
     { name = "chatbots-module" },
     { name = "common-module" },
     { name = "db-repo-module" },
-    { name = "deprecated-api-module" },
     { name = "dependency-injector" },
+    { name = "deprecated-api-module" },
     { name = "fastapi" },
     { name = "flo-lib" },
     { name = "guardrails-module" },
@@ -2332,8 +2334,8 @@ requires-dist = [
     { name = "chatbots-module", editable = "modules/chatbots_module" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "deprecated-api-module", editable = "modules/deprecated_api_module" },
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
+    { name = "deprecated-api-module", editable = "modules/deprecated_api_module" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "guardrails-module", editable = "modules/guardrails_module" },
@@ -6479,15 +6481,15 @@ wheels = [
 
 [[package]]
 name = "sentry-sdk"
-version = "2.47.0"
+version = "2.75.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/2a/d225cbf87b6c8ecce5664db7bcecb82c317e448e3b24a2dcdaacb18ca9a7/sentry_sdk-2.47.0.tar.gz", hash = "sha256:8218891d5e41b4ea8d61d2aed62ed10c80e39d9f2959d6f939efbf056857e050", size = 381895, upload-time = "2025-12-03T14:06:36.846Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/95/121b20d75e738d249a0e26e6476a2acb178673e8228002748fc0cd85ce55/sentry_sdk-2.75.0.tar.gz", hash = "sha256:c38ac2d4b2435c11da821e173bb9d9088c98f41ae92f559ce0e424170a8e1a29", size = 1092308, upload-time = "2026-11-12T13:24:13.977Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/ac/d6286ea0d49e7b58847faf67b00e56bb4ba3d525281e2ac306e1f1f353da/sentry_sdk-2.47.0-py2.py3-none-any.whl", hash = "sha256:d72f8c61025b7d1d9e52510d03a6247b280094a327dd900d987717a4fce93412", size = 411088, upload-time = "2025-12-03T14:06:35.374Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/ee/fbfe67386d64a7218013c8346b88b89d72f279b4ddb434ed5e94bea3d389/sentry_sdk-2.75.0-py3-none-any.whl", hash = "sha256:9a10e97de2cbd42ad7e4a6e02a0d5af19de9811eb02445077d41ba14c08e170c", size = 555165, upload-time = "2026-11-12T13:24:11.923Z" },
 ]
 
 [[package]]

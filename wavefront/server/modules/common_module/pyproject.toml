@@ -20,6 +20,9 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
     "opentelemetry-instrumentation-redis>=0.49b0",
     "opentelemetry-instrumentation-httpx>=0.49b0",
+    # Error reporting (common_module/error_reporting). Kept below 3: 3.0
+    # replaces the privacy options that module relies on.
+    "sentry-sdk>=2.75.0,<3.0.0",
     "flo-lib",
     "flo-utils",
 ]
