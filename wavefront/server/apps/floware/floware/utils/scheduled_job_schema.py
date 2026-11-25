@@ -3,10 +3,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 JobStatus = Literal['active', 'paused', 'running', 'failed', 'completed']
+# email_dynamic_query: run queries and email results.
+# scheduled_query: run queries on schedule and discard results.
+JobType = Literal['email_dynamic_query', 'scheduled_query']
 
 
 class CreateScheduledJobRequest(BaseModel):
-    job_type: str = Field(default='email_dynamic_query')
+    job_type: JobType = Field(default='email_dynamic_query')
     cron_expr: str
     timezone: str = Field(default='UTC')
     payload: dict[str, Any]
