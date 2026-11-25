@@ -6,7 +6,7 @@ import httpx
 from google.genai import errors as genai_errors
 
 from flo_ai.llm.rate_limits.models import Classification
-from flo_ai.llm.rate_limits.providers.common import by_status, header_delay
+from flo_ai.llm.rate_limits.providers.common import by_status, header_delay, seconds
 
 
 def classify_gemini_error(exc: BaseException) -> Optional[Classification]:
@@ -24,27 +24,32 @@ def classify_gemini_error(exc: BaseException) -> Optional[Classification]:
 
 
 def _error_details(details: Any) -> list:
-    if not isinstance(details, dict):
+    error = details.get('error') if isinstance(details, dict) else None
+    entries = error.get('details') if isinstance(error, dict) else None
+    return _dicts(entries)
+
+
+def _dicts(value: Any) -> list:
+    """The dict entries of ``value``, or none when it isn't a list.
+
+    The body is the provider's; a crash here would replace the 429 untyped.
+    """
+    if not isinstance(value, list):
         return []
-    entries = details.get('error', {}).get('details', [])
-    return [entry for entry in entries if isinstance(entry, dict)]
+    return [entry for entry in value if isinstance(entry, dict)]
 
 
 def _retry_delay(details: Any) -> Optional[float]:
     for entry in _error_details(details):
         if str(entry.get('@type', '')).endswith('RetryInfo'):
-            delay = str(entry.get('retryDelay', '')).rstrip('s')
-            try:
-                return max(0.0, float(delay))
-            except ValueError:
-                return None
+            return seconds(str(entry.get('retryDelay', '')).rstrip('s'))
     return None
 
 
 def _daily_quota(details: Any) -> bool:
     for entry in _error_details(details):
         if str(entry.get('@type', '')).endswith('QuotaFailure'):
-            for violation in entry.get('violations', []) or []:
+            for violation in _dicts(entry.get('violations')):
                 if 'PerDay' in str(violation.get('quotaId', '')):
                     return True
     return False

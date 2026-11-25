@@ -753,11 +753,10 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             )
             return is_final
 
-        except LLMProviderError as e:
-            # The message is already a real answer; a failed side call must not
-            # discard it, and another call would only load a failing provider.
-            logger.warning(f'LLM classification failed: {e}. Treating as final.')
-            return True
+        except LLMProviderError:
+            # Unclassified, the reply may be a plan that still needs a tool call,
+            # so it can't end the turn; the provider failure ends it instead.
+            raise
         except Exception as e:
             logger.warning(
                 f'LLM classification failed: {e}. Defaulting to final=False to allow continuation.'

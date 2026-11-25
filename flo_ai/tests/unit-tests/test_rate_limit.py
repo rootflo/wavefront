@@ -186,6 +186,67 @@ class TestClassify:
         )
         assert classify(error).retry_after == 1.5
 
+    @pytest.mark.parametrize(
+        'headers',
+        [
+            {'retry-after': 'inf'},
+            {'retry-after-ms': 'Infinity'},
+            {'retry-after': 'nan'},
+        ],
+    )
+    def test_non_finite_retry_after_is_no_delay(self, headers):
+        error = openai.RateLimitError('x', response=response(429, headers), body=None)
+        assert classify(error).retry_after is None
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            {'error': None},
+            {'error': 'oops'},
+            {'error': {'details': None}},
+            {
+                'error': {
+                    'details': [
+                        {'@type': 'x.QuotaFailure', 'violations': {'quotaId': 'PerDay'}}
+                    ]
+                }
+            },
+            {'error': {'details': [{'@type': 'x.QuotaFailure', 'violations': ['x']}]}},
+        ],
+    )
+    def test_gemini_malformed_details_still_classify(self, body):
+        info = classify(genai_errors.ClientError(429, body))
+        assert (info.kind, info.retry_after) == ('rate_limit', None)
+
+    def test_gemini_non_finite_retry_delay_is_no_delay(self):
+        error = gemini_429(
+            [
+                {
+                    '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+                    'retryDelay': 'infs',
+                }
+            ]
+        )
+        assert classify(error).retry_after is None
+
+    @pytest.mark.parametrize(
+        'error, kind',
+        [
+            (openai.ConflictError('x', response=response(409), body=None), 'transient'),
+            (
+                anthropic.ConflictError('x', response=response(409), body=None),
+                'transient',
+            ),
+            (genai_errors.ClientError(409, {'error': {'status': 'ABORTED'}}), 'fatal'),
+            (
+                httpx.HTTPStatusError('x', request=REQUEST, response=response(409)),
+                'fatal',
+            ),
+        ],
+    )
+    def test_409_is_transient_only_where_the_sdk_retried_it(self, error, kind):
+        assert classify(error).kind == kind
+
     def test_insufficient_quota_is_fatal(self):
         assert classify(openai_429(code='insufficient_quota')).kind == 'fatal'
 
@@ -295,9 +356,7 @@ class TestRateLimitedGenerate:
 
         # The first request plus the default retries, well inside the 60s budget.
         assert llm.calls == DEFAULT_RATE_LIMIT_RETRIES + 1
-        assert f'{DEFAULT_RATE_LIMIT_RETRIES + 1} attempts' in str(
-            caught.value
-        )
+        assert f'{DEFAULT_RATE_LIMIT_RETRIES + 1} attempts' in str(caught.value)
         # The last 429 still pauses other callers.
         assert gate.remaining() > 0
 
@@ -388,6 +447,17 @@ class TestSharedGate:
 
         await second.generate([])
         assert fake_time.sleeps == [5.0]
+
+    async def test_infinite_retry_after_backs_off_without_closing_the_gate(
+        self, fake_time
+    ):
+        first = ScriptedLLM([openai_429('inf'), 'ok'])
+        second = ScriptedLLM(['ok'])
+        install_gate(first, fake_time)
+
+        assert await first.generate([]) == {'content': 'ok'}
+        assert await second.generate([]) == {'content': 'ok'}
+        assert fake_time.sleeps and all(s < 60 for s in fake_time.sleeps)
 
     async def test_waiting_on_another_calls_cooldown_is_logged(
         self, fake_time, monkeypatch
@@ -751,14 +821,22 @@ class TestAgent:
         assert llm.calls == 1
         assert should_retry and analysis == 'try a different argument'
 
-    async def test_failed_classifier_keeps_the_answer(self, fake_time):
+    async def test_failed_classifier_does_not_end_the_turn(self, fake_time):
         for error in (openai_500(), openai_401(), openai_429(1)):
             llm = ScriptedLLM([error])
             llm.rate_limit_max_wait = 0
             install_gate(llm, fake_time)
             agent = Agent(name='a', system_prompt='x', llm=llm)
 
-            assert await agent._is_final_answer('The answer is 4.', 1, []) is True
+            with pytest.raises(LLMProviderError):
+                await agent._is_final_answer('I need the schema first.', 1, [])
+
+    async def test_explicit_final_answer_skips_the_classifier(self):
+        llm = ScriptedLLM([])
+        agent = Agent(name='a', system_prompt='x', llm=llm)
+
+        assert await agent._is_final_answer('Final Answer: 4', 1, []) is True
+        assert llm.calls == 0
 
     async def test_tool_result_survives_a_later_provider_error(self):
         sent_emails = []
