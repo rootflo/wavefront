@@ -82,6 +82,13 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
   const updateScheduledJob = useUpdateScheduledJob(appId);
   const saving = createScheduledJob.isPending || updateScheduledJob.isPending;
 
+  // No dismissing mid-save: the save's completion closes or errors this dialog, and must not land
+  // on another job opened in the meantime.
+  const handleOpenChange = (open: boolean) => {
+    if (!open && saving) return;
+    onOpenChange(open);
+  };
+
   const onValid = (values: ScheduledJobFormValues) => {
     const callbacks = {
       onSuccess: () => onOpenChange(false),
@@ -117,6 +124,7 @@ export const useScheduledJobForm = ({ isOpen, appId, job, onOpenChange }: UseSch
     activeTab: visibleTab,
     setActiveTab,
     saving,
+    handleOpenChange,
     handleSave: form.handleSubmit(onValid, onInvalid),
     datasources,
     appUsers,

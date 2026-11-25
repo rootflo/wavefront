@@ -108,7 +108,8 @@ const querySettingsShape = {
   startDateParam: z.string(),
   endDateParam: z.string(),
   paramsJson: parsedField((v) => parseJsonObject(v, 'Query params')),
-  columnStylesJson: parsedField((v) => parseJsonArray(v, 'Column styles')),
+  // Checked in the schema's superRefine, for email jobs only: it only styles emailed reports.
+  columnStylesJson: z.string(),
 };
 
 export const scheduledJobFormSchema = z
@@ -136,7 +137,16 @@ export const scheduledJobFormSchema = z
     emailContent: z.string(),
   })
   .superRefine((values, ctx) => {
+    // Email-only fields. Other job types hide them (keeping their values), so they must not block a save.
     if (values.jobType !== JOB_TYPE_EMAIL_DYNAMIC_QUERY) return;
+    const checkColumnStyles = (value: string, path: (string | number)[]) => {
+      const result = parseJsonArray(value, 'Column styles');
+      if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: result.error });
+    };
+    checkColumnStyles(values.defaults.columnStylesJson, ['defaults', 'columnStylesJson']);
+    values.queries.forEach((query, index) =>
+      checkColumnStyles(query.overrides.columnStylesJson, ['queries', index, 'overrides', 'columnStylesJson'])
+    );
     if (values.recipientUserIds.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

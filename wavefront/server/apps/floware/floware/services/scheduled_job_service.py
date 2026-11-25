@@ -1196,43 +1196,60 @@ class ScheduledJobService:
         dict[str, DatasourcePlugin],
         dict[str, tuple[list, str | None]],
     ]:
-        """Resolve merged specs, datasource plugins and query YAMLs for a job."""
+        """Resolve merged specs, datasource plugins and query YAMLs for a job.
+
+        All-or-nothing: the first query that cannot be resolved raises.
+        """
         merged_specs = self._merged_query_specs(payload)
         datasource_plugins: dict[str, DatasourcePlugin] = {}
         yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
 
         for spec in merged_specs:
-            query_id = spec['query_id']
-            datasource_id = spec['datasource_id']
-            if datasource_id not in datasource_plugins:
-                plugin, _, _ = await self._get_datasource_plugin(datasource_id)
-                datasource_plugins[datasource_id] = plugin
-            if query_id not in yaml_by_query_id:
-                (
-                    yaml_query,
-                    yaml_name,
-                ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
-                if not yaml_query:
-                    raise ValueError(f'Dynamic query not found: {query_id}')
-                yaml_by_query_id[query_id] = (yaml_query, yaml_name)
+            await self._resolve_query(spec, datasource_plugins, yaml_by_query_id)
 
         return merged_specs, datasource_plugins, yaml_by_query_id
 
+    async def _resolve_query(
+        self,
+        spec: dict,
+        datasource_plugins: dict[str, DatasourcePlugin],
+        yaml_by_query_id: dict[str, tuple[list, str | None]],
+    ) -> tuple[DatasourcePlugin, list]:
+        """A query's datasource plugin and YAML, cached in the dicts on success."""
+        query_id = spec['query_id']
+        datasource_id = spec['datasource_id']
+        if datasource_id not in datasource_plugins:
+            plugin, _, _ = await self._get_datasource_plugin(datasource_id)
+            datasource_plugins[datasource_id] = plugin
+        if query_id not in yaml_by_query_id:
+            (
+                yaml_query,
+                yaml_name,
+            ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
+            if not yaml_query:
+                raise ValueError(f'Dynamic query not found: {query_id}')
+            yaml_by_query_id[query_id] = (yaml_query, yaml_name)
+        return datasource_plugins[datasource_id], yaml_by_query_id[query_id][0]
+
     async def _execute_scheduled_query_job(self, payload: dict, job_timezone: str):
-        """Run each query on schedule and discard the rows (no email)."""
-        (
-            merged_specs,
-            datasource_plugins,
-            yaml_by_query_id,
-        ) = await self._prepare_query_specs(payload)
+        """Run each query on schedule and discard the rows (no email).
+
+        A query that cannot be resolved or run is recorded and skipped; the rest
+        still run, and the failures are raised together at the end.
+        """
+        merged_specs = self._merged_query_specs(payload)
+        datasource_plugins: dict[str, DatasourcePlugin] = {}
+        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
 
         failed_query_ids: list[str] = []
         for spec in merged_specs:
             query_id = spec['query_id']
-            yaml_query, _ = yaml_by_query_id[query_id]
             try:
+                datasource_plugin, yaml_query = await self._resolve_query(
+                    spec, datasource_plugins, yaml_by_query_id
+                )
                 rows = await self._fetch_dynamic_query_rows(
-                    datasource_plugins[spec['datasource_id']],
+                    datasource_plugin,
                     yaml_query,
                     query_id,
                     None,  # No user context: scheduled queries run without RLS.

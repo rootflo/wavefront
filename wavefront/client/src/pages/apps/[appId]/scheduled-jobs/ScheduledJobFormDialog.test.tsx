@@ -6,11 +6,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScheduledJobFormDialog from './ScheduledJobFormDialog';
 
 const createMutate = vi.fn();
+let savePending = false;
 const updateMutate = vi.fn();
 
 vi.mock('@app/hooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@app/hooks')>()),
-  useGetAllDatasources: () => ({ data: [{ id: 'ds-1', name: 'Warehouse', type: 'postgres' }] }),
+  useGetAllDatasources: () => ({
+    data: [
+      { id: 'ds-1', name: 'Warehouse', type: 'postgres' },
+      { id: 'ds-2', name: 'Lake', type: 'postgres' },
+    ],
+  }),
   useGetAllDynamicQueries: () => ({ data: [{ file: 'sales.yaml' }, { file: 'refunds.yaml' }], isLoading: false }),
   useGetAppUsers: () => ({
     data: [{ id: 'user-1', email: 'ana@example.com', first_name: 'Ana', last_name: 'Lee', role: 'app_admin' }],
@@ -20,7 +26,7 @@ vi.mock('@app/hooks', async (importOriginal) => ({
     data: [{ id: 'conn-1', name: 'Reports', mailbox_email: 'reports@example.com', status: 'active' }],
   }),
   useCreateScheduledJob: () => ({ mutate: createMutate, isPending: false }),
-  useUpdateScheduledJob: () => ({ mutate: updateMutate, isPending: false }),
+  useUpdateScheduledJob: () => ({ mutate: updateMutate, isPending: savePending }),
 }));
 
 const payload = {
@@ -70,6 +76,7 @@ const renderDialog = (props: Partial<React.ComponentProps<typeof ScheduledJobFor
 describe('ScheduledJobFormDialog', () => {
   beforeEach(() => {
     createMutate.mockReset();
+    savePending = false;
     updateMutate.mockReset();
   });
 
@@ -115,6 +122,7 @@ describe('ScheduledJobFormDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByText('Datasource is required')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Datasource' })).toHaveFocus());
     expect(createMutate).not.toHaveBeenCalled();
   });
 
@@ -156,8 +164,48 @@ describe('ScheduledJobFormDialog', () => {
     renderDialog({ job: { ...job, payload: { ...payload, recipient_user_ids: [] } } });
     await userEvent.click(screen.getByRole('button', { name: 'Update' }));
 
-    expect(await screen.findByText('At least one recipient user is required')).toBeInTheDocument();
+    const message = await screen.findByText('At least one recipient user is required');
+    const recipients = screen.getByRole('combobox', { name: 'Recipient users' });
+    expect(recipients).toHaveAttribute('aria-invalid', 'true');
+    expect(recipients.getAttribute('aria-describedby')).toContain(message.id);
     expect(screen.getByRole('tab', { name: 'Email' })).toHaveAttribute('data-state', 'active');
     expect(updateMutate).not.toHaveBeenCalled();
+  });
+
+  it('keeps queries on the same datasource and clears them when it changes, even back to the saved one', async () => {
+    renderDialog({ job });
+    const pick = async (combobox: string, option: string) => {
+      await userEvent.click(screen.getByRole('combobox', { name: combobox }));
+      await userEvent.click(await screen.findByRole('option', { name: option }));
+    };
+    const noQueries = 'No queries selected yet. Choose them on the Query tab.';
+
+    // Re-picking the current datasource keeps its queries.
+    await pick('Datasource', 'Warehouse');
+    expect(screen.getByText('sales')).toBeInTheDocument();
+
+    // A different datasource clears them; pick a query under it.
+    await pick('Datasource', 'Lake');
+    expect(screen.getByText(noQueries)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Queries' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add query' }));
+    await pick('Query', 'refunds');
+    await userEvent.click(screen.getByRole('tab', { name: 'Job setup' }));
+    expect(screen.getByText('refunds')).toBeInTheDocument();
+
+    // Back to the saved datasource: the query picked under Lake must not carry over.
+    await pick('Datasource', 'Warehouse');
+    expect(screen.getByText(noQueries)).toBeInTheDocument();
+  });
+
+  it('cannot be dismissed while a save is in flight', async () => {
+    savePending = true;
+    const { onOpenChange } = renderDialog({ job });
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

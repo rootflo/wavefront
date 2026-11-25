@@ -84,3 +84,39 @@ async def test_validate_payload_rejects_bad_payloads(job_type, payload, message)
     service, _ = _service({})
     with pytest.raises(ValueError, match=message):
         await service._validate_payload(job_type, payload)
+
+
+async def test_unresolvable_queries_fail_the_run_but_others_still_run():
+    service, plugin = _service({'ok': _ok([{'x': 1}]), 'later': _ok([])})
+    service.dynamic_query_service.get_dynamic_yaml_query = AsyncMock(
+        side_effect=lambda query_id: (
+            (None, None) if query_id == 'missing' else ([{'id': query_id}], query_id)
+        )
+    )
+
+    async def get_plugin(datasource_id):
+        if datasource_id == 'ds-broken':
+            raise RuntimeError('datasource unavailable')
+        return plugin, 'pg', datasource_id
+
+    service._get_datasource_plugin = AsyncMock(side_effect=get_plugin)
+    payload = {
+        'datasource_id': 'ds-1',
+        'queries': [
+            {'query_id': 'missing'},
+            {'query_id': 'ok'},
+            {'query_id': 'bad_ds', 'datasource_id': 'ds-broken'},
+            {'query_id': 'later'},
+        ],
+    }
+
+    with pytest.raises(ValueError, match='2/4 queries: missing, bad_ds'):
+        await service._execute_scheduled_query_job(payload, 'UTC')
+
+    # Both resolvable queries ran; ds-1 was loaded once and reused.
+    ran = [
+        call.args[0][0]['id'] for call in plugin.execute_dynamic_query.await_args_list
+    ]
+    assert ran == ['ok', 'later']
+    loaded = [call.args[0] for call in service._get_datasource_plugin.await_args_list]
+    assert loaded.count('ds-1') == 1

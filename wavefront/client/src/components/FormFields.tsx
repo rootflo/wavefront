@@ -124,7 +124,9 @@ export const FormSelectField = <TValues extends FieldValues, TName extends Field
       <FormItem className={className}>
         <FormLabel className={labelClassName}>{label}</FormLabel>
         <Select
-          value={field.value || emptyOption?.value || undefined}
+          // Stay controlled when empty: '' shows the placeholder, whereas undefined would make Radix
+          // fall back to its own state and keep showing a stale selection after a reset.
+          value={field.value || emptyOption?.value || ''}
           onValueChange={(value) => {
             const next = emptyOption && value === emptyOption.value ? '' : value;
             field.onChange(next);
@@ -133,7 +135,7 @@ export const FormSelectField = <TValues extends FieldValues, TName extends Field
           disabled={disabled}
         >
           <FormControl>
-            <SelectTrigger className={cn('w-full', triggerClassName)} onBlur={field.onBlur}>
+            <SelectTrigger ref={field.ref} className={cn('w-full', triggerClassName)} onBlur={field.onBlur}>
               <SelectValue placeholder={placeholder} />
             </SelectTrigger>
           </FormControl>

@@ -25,11 +25,11 @@ interface ScheduledJobFormDialogProps {
 
 const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen, appId, job, onOpenChange }) => {
   const state = useScheduledJobForm({ isOpen, appId, job, onOpenChange });
-  const { form, isEditing, isEmailJob, activeTab, setActiveTab, saving, handleSave } = state;
+  const { form, isEditing, isEmailJob, activeTab, setActiveTab, saving, handleOpenChange, handleSave } = state;
   const serverError = form.formState.errors.root?.server?.message;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="flex h-[760px] max-h-[calc(100vh-2rem)] max-w-4xl min-w-0 flex-col overflow-hidden lg:max-w-4xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</DialogTitle>
@@ -73,7 +73,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({ isOpen,
             {serverError ? <p className="mt-3 shrink-0 text-sm text-red-500">{serverError}</p> : null}
 
             <DialogFooter className="mt-4 shrink-0">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
                 Cancel
               </Button>
               <Button type="submit" loading={saving} disabled={saving}>

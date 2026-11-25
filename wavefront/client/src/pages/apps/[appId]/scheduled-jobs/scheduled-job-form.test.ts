@@ -129,4 +129,24 @@ describe('scheduled job form values', () => {
     });
     expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Add at least one query']);
   });
+
+  it('checks column styles only for email jobs, keeping them for a switch back', () => {
+    const base = toFormValues(makeJob('email_dynamic_query', emailPayload));
+    const values = {
+      ...base,
+      defaults: { ...base.defaults, columnStylesJson: '{}' },
+      queries: [{ ...base.queries[0], overrides: { ...base.queries[0].overrides, columnStylesJson: '[oops' } }],
+    };
+
+    const emailResult = scheduledJobFormSchema.safeParse(values);
+    expect(emailResult.error?.issues.map((issue) => [issue.path.join('.'), issue.message])).toEqual([
+      ['defaults.columnStylesJson', 'Column styles must be a JSON array'],
+      ['queries.0.overrides.columnStylesJson', 'Column styles must be valid JSON (array)'],
+    ]);
+
+    const queryOnly = scheduledJobFormSchema.safeParse({ ...values, jobType: 'scheduled_query' });
+    expect(queryOnly.success).toBe(true);
+    expect(queryOnly.data?.defaults.columnStylesJson).toBe('{}');
+    expect(toPayload(queryOnly.data!)).not.toHaveProperty('column_styles');
+  });
 });

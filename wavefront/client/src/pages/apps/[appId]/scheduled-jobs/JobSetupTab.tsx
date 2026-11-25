@@ -17,7 +17,6 @@ import { useState } from 'react';
 import { useWatch } from 'react-hook-form';
 import DateRangeFields from './DateRangeFields';
 import { FIELD_STYLE } from './scheduled-job-form';
-import { getDatasourceIdFromPayload } from './scheduled-job-utils';
 import { ScheduledJobFormState } from './useScheduledJobForm';
 
 const JOB_TYPE_OPTIONS = [JOB_TYPE_EMAIL_DYNAMIC_QUERY, JOB_TYPE_SCHEDULED_QUERY].map((value) => ({
@@ -27,9 +26,10 @@ const JOB_TYPE_OPTIONS = [JOB_TYPE_EMAIL_DYNAMIC_QUERY, JOB_TYPE_SCHEDULED_QUERY
 
 /** What the job does, how often it runs, from which datasource, and the defaults its queries share. */
 const JobSetupTab = ({ state }: { state: ScheduledJobFormState }) => {
-  const { form, queryFields, job, isEditing, isEmailJob, datasources } = state;
+  const { form, queryFields, isEditing, isEmailJob, datasources } = state;
   const { control } = form;
-  const queries = useWatch({ control, name: 'queries' });
+  // The query rows were all picked under this datasource: changing it clears them.
+  const [datasourceId, queries] = useWatch({ control, name: ['datasourceId', 'queries'] });
   const selectedQueryIds = queries.map((query) => query.queryId).filter(Boolean);
   const [defaultsExpanded, setDefaultsExpanded] = useState(false);
   // Keep the section open while it holds an error, so the message is visible.
@@ -80,8 +80,8 @@ const JobSetupTab = ({ state }: { state: ScheduledJobFormState }) => {
           placeholder="Select datasource"
           options={datasources.map((ds) => ({ value: ds.id, label: ds.name || ds.id }))}
           onValueChange={(value) => {
-            // The queries belong to the old datasource; keep them only when switching back to the saved one.
-            if (!job || getDatasourceIdFromPayload(job.payload || {}) !== value) queryFields.replace([]);
+            // `datasourceId` is still the value the rows were picked under (this render's value).
+            if (value !== datasourceId) queryFields.replace([]);
           }}
         />
         <FormInputField
