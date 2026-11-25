@@ -164,7 +164,9 @@ async def validate_hmac_signature(
         if not auth_secret:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.warning(
-                f'Invalid client_key: {client_key} [Request ID: {request_id}]'
+                # A prefix is enough to tell which client is misconfigured.
+                f'Invalid client_key: {(client_key or "")[:4]}... '
+                f'({len(client_key or "")} chars) [Request ID: {request_id}]'
             )
             return False
 
@@ -294,7 +296,8 @@ def validate_passthrough_auth(
     authenticated.
     """
     passthrough = request.headers.get(RootfloHeaders.PASSTHROUGH)
-    logger.info(f'PASSTHROUGH header present: {passthrough}')
+    # Never log the value: the header carries the shared secret.
+    logger.info(f'PASSTHROUGH header present: {passthrough is not None}')
 
     if not passthrough_secret:
         request_id = getattr(request.state, 'request_id', get_current_request_id())
