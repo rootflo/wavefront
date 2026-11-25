@@ -1,3 +1,13 @@
-from .postgres import NoRowsMatchedError, PostgresClient, RowMutationResult
+from .postgres import (
+    NoRowsMatchedError,
+    PostgresClient,
+    RowMutationResult,
+    UnstorableValueError,
+)
 
-__all__ = ['NoRowsMatchedError', 'PostgresClient', 'RowMutationResult']
+__all__ = [
+    'NoRowsMatchedError',
+    'PostgresClient',
+    'RowMutationResult',
+    'UnstorableValueError',
+]

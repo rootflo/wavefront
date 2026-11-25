@@ -36,4 +36,4 @@ async def passthrough(input_list: Optional[List[Any]] = None) -> str:
     payload = input_list[-1]
     if isinstance(payload, str):
         return payload
-    return json.dumps(payload)
+    return json.dumps(payload, ensure_ascii=False)

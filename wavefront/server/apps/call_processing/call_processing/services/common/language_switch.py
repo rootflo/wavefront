@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from pipecat.frames.frames import STTUpdateSettingsFrame, TTSUpdateSettingsFrame
 
+from call_processing.services.common.prompt_layout import build_system_prompt
 from call_processing.services.common.prompts import language_instruction
 from call_processing.services.common.providers.stt_service import STTServiceFactory
 from call_processing.services.common.providers.tts_service import TTSServiceFactory
@@ -57,16 +58,22 @@ def set_prompt_language(
 ) -> bool:
     """Point the system prompt at ``language``; False without a stored base prompt.
 
+    Phone calls rebuild it from its parts: the main prompt stays a cached
+    prefix and only the language pack and the last line change
+    (prompt_layout.py). Browser test rooms rebuild from the stored base.
+
     Mutates the system message in place so the conversation history (including
     a tool call and result being appended by Pipecat) is kept.
     """
+    parts = language_state.get('prompt_parts')
     base_prompt = language_state.get('original_system_prompt')
-    if not base_prompt:
+    if parts is not None:
+        content = build_system_prompt(parts, language)
+    elif base_prompt:
+        content = f'{language_instruction(language)}\n\n{base_prompt}'
+    else:
         return False
     messages = context.get_messages()
-    messages[0] = {
-        'role': 'system',
-        'content': f'{language_instruction(language)}\n\n{base_prompt}',
-    }
+    messages[0] = {'role': 'system', 'content': content}
     context.set_messages(messages)
     return True

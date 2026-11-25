@@ -70,4 +70,4 @@ async def fetch_configuration(
             f'{response.text}'
         )
 
-    return json.dumps(body.get('data'))
+    return json.dumps(body.get('data'), ensure_ascii=False)

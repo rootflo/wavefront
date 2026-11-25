@@ -426,6 +426,18 @@ class TestMediaResultsPassThrough:
 
         assert await adapter(inputs=[message('{"path": "x"}')]) == '{"rows": [1]}'
 
+    async def test_non_ascii_text_is_not_escaped(self):
+        """The next node's model reads this; \\u escapes were copied back as NULs."""
+
+        async def query(path: str):
+            return {'text': 'café – naïve'}
+
+        adapter = create_function_node_adapter(query, 'query')
+
+        result = await adapter(inputs=[message('{"path": "x"}')])
+
+        assert result == '{"text": "café – naïve"}'
+
     async def test_function_node_emits_the_media_as_a_user_message(self):
         """End to end through flo_ai's FunctionNode: the message the next node
         reads carries the image itself."""

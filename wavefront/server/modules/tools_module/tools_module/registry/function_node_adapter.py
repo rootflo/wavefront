@@ -255,7 +255,8 @@ def _convert_result(result: Any) -> str | ImageMessageContent | VideoMessageCont
     if isinstance(result, str):
         return result
     if isinstance(result, (dict, list)):
-        return json.dumps(result)
+        # Escaped non-ASCII (ا...) gets mangled by the next node's model.
+        return json.dumps(result, ensure_ascii=False)
     return str(result)
 
 

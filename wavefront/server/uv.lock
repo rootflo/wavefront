@@ -40,6 +40,7 @@ members = [
     "common-module",
     "datasource",
     "db-repo-module",
+    "deprecated-api-module",
     "flo-cloud",
     "flo-lib",
     "flo-stream",
@@ -47,7 +48,6 @@ members = [
     "flo-utils",
     "floconsole",
     "floware",
-    "gold-module",
     "guardrails-module",
     "inference-app",
     "knowledge-base-module",
@@ -1798,6 +1798,25 @@ wheels = [
 ]
 
 [[package]]
+name = "deprecated-api-module"
+version = "0.1.0"
+source = { editable = "modules/deprecated_api_module" }
+dependencies = [
+    { name = "common-module" },
+    { name = "dependency-injector" },
+    { name = "fastapi" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "common-module", editable = "modules/common_module" },
+    { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
+    { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
+    { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2280,10 +2299,10 @@ dependencies = [
     { name = "chatbots-module" },
     { name = "common-module" },
     { name = "db-repo-module" },
+    { name = "deprecated-api-module" },
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "flo-lib" },
-    { name = "gold-module" },
     { name = "guardrails-module" },
     { name = "knowledge-base-module" },
     { name = "llm-inference-config-module" },
@@ -2313,10 +2332,10 @@ requires-dist = [
     { name = "chatbots-module", editable = "modules/chatbots_module" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
+    { name = "deprecated-api-module", editable = "modules/deprecated_api_module" },
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "flo-lib", editable = "packages/flo_lib" },
-    { name = "gold-module", editable = "modules/gold_module" },
     { name = "guardrails-module", editable = "modules/guardrails_module" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -2420,33 +2439,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/77/cd/9be253869fc42e764de7f3dedd6969af7d44ff9c3375214a3442a6f3fc08/fsspec-2026.9.0.tar.gz", hash = "sha256:0f08147951c8cb31d844c3547d631053b127863b60be04cf06e121333ee0e2fe", size = 333545, upload-time = "2026-09-18T17:50:42.825Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl", hash = "sha256:8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f", size = 221738, upload-time = "2026-09-18T17:50:41.341Z" },
-]
-
-[[package]]
-name = "gold-module"
-version = "0.1.0"
-source = { editable = "modules/gold_module" }
-dependencies = [
-    { name = "azure-identity" },
-    { name = "azure-storage-blob" },
-    { name = "azure-storage-queue" },
-    { name = "common-module" },
-    { name = "dependency-injector" },
-    { name = "fastapi" },
-    { name = "google-cloud-pubsub" },
-    { name = "google-cloud-storage" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "azure-identity", specifier = ">=1.17.0,<2.0.0" },
-    { name = "azure-storage-blob", specifier = ">=12.20.0,<13.0.0" },
-    { name = "azure-storage-queue", specifier = ">=12.10.0,<13.0.0" },
-    { name = "common-module", editable = "modules/common_module" },
-    { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
-    { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
-    { name = "google-cloud-pubsub", specifier = ">=2.29.0,<3.0.0" },
-    { name = "google-cloud-storage", specifier = ">=3.0.0,<4" },
 ]
 
 [[package]]
