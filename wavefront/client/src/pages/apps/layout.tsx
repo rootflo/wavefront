@@ -90,7 +90,7 @@ const navItems: NavItem[] = [
     name: 'Scheduled Jobs',
     icon: CalendarClock,
     link: `/apps/:appId/scheduled-jobs`,
-    description: 'Schedule dynamic query reports to be emailed automatically',
+    description: 'Run dynamic queries on a schedule, optionally emailing the results',
   },
   {
     id: 'functions',
