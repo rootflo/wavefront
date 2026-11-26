@@ -57,3 +57,60 @@ def mock_request():
     mock_req.headers = {}
     mock_req.state = Mock()
     return mock_req
+
+
+class _CapturingTransport:
+    """Builds a sentry_sdk Transport that keeps events in memory."""
+
+    @staticmethod
+    def create():
+        from sentry_sdk.transport import Transport
+
+        class Capturing(Transport):
+            def __init__(self):
+                super().__init__()
+                self.envelopes = []
+
+            def capture_envelope(self, envelope):
+                self.envelopes.append(envelope)
+
+            @property
+            def events(self):
+                return [
+                    item.payload.json
+                    for envelope in self.envelopes
+                    for item in envelope.items
+                    if item.type == 'event'
+                ]
+
+        return Capturing()
+
+
+@pytest.fixture
+def start_sentry():
+    """Start error reporting with an in-memory transport; reset afterwards.
+
+    Returns a function: ``transport = start_sentry(frameworks=..., **settings)``.
+    """
+    from common_module.error_reporting import (
+        ErrorReportingSettings,
+        configure_error_reporting,
+    )
+    from common_module.error_reporting import bootstrap
+
+    bootstrap._reset_for_tests()
+
+    def start(frameworks=(), **overrides):
+        transport = _CapturingTransport.create()
+        settings = ErrorReportingSettings(
+            service_name='test-service',
+            dsn='https://public@example.invalid/1',
+            **overrides,
+        )
+        assert configure_error_reporting(
+            settings, frameworks=frameworks, _transport=transport
+        )
+        return transport
+
+    yield start
+    bootstrap._reset_for_tests()

@@ -38,6 +38,18 @@ def start_telemetry(config: dict) -> None:
     )
 
 
+def start_error_reporting(config: dict) -> None:
+    from common_module.error_reporting import ErrorReportingSettings
+    from common_module.error_reporting import configure_error_reporting
+
+    configure_error_reporting(
+        ErrorReportingSettings.from_config(
+            config, default_service_name=config['env_config']['app_name']
+        ),
+        frameworks=('fastapi',),
+    )
+
+
 def start_presidio_timeout(timeout: str | None) -> None:
     """Presidio reads REGEX_TIMEOUT_SECONDS at import. Set it before that import."""
     from guardrails_module.bootstrap import start_presidio_regex_timeout

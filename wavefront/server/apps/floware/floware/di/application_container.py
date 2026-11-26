@@ -2,7 +2,8 @@
 
 One strict read of config.ini. Module containers are children and receive that
 config; they do not open the file themselves. Process-wide side effects
-(logging, telemetry, the Presidio regex timeout) run from ``init_resources``.
+(logging, telemetry, error reporting, the Presidio regex timeout) run from
+``init_resources``.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from dependency_injector import providers
 from floware.di.helpers import (
     guardrails_engine,
     scheduler_worker_id,
+    start_error_reporting,
     start_logging,
     start_presidio_timeout,
     start_telemetry,
@@ -54,6 +56,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         log_level=config.env_config.log_level,
     )
     telemetry = providers.Resource(start_telemetry, config)
+    # After telemetry, so events link to the OTel trace from the first request.
+    error_reporting = providers.Resource(start_error_reporting, config)
     presidio_regex_timeout = providers.Resource(
         start_presidio_timeout,
         timeout=config.guardrails.regex_timeout_seconds,

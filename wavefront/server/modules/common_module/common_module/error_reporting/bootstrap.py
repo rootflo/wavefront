@@ -58,11 +58,18 @@ FRAMEWORKS = ('fastapi', 'celery')
 _lock = threading.Lock()
 # None until the first configure call; then that call's result.
 _configured: bool | None = None
+# The settings Sentry was started with; None unless it started.
+_active_settings: ErrorReportingSettings | None = None
 
 
 def error_reporting_enabled() -> bool:
     """True after a successful init in this process."""
     return _configured is True
+
+
+def active_settings() -> ErrorReportingSettings | None:
+    """The settings Sentry was started with, or None when it is not running."""
+    return _active_settings
 
 
 def configure_error_reporting(
@@ -80,10 +87,12 @@ def configure_error_reporting(
 
     ``_transport`` is for tests only.
     """
-    global _configured
+    global _configured, _active_settings
     with _lock:
         if _configured is None:
             _configured = _configure(settings, frameworks, _transport)
+            if _configured:
+                _active_settings = settings
         return _configured
 
 
@@ -237,9 +246,10 @@ def _framework_integrations(frameworks: Sequence[str]) -> list[Any]:
 
 def _reset_for_tests() -> None:
     """Close the client and forget the configure result. Tests only."""
-    global _configured
+    global _configured, _active_settings
     with _lock:
         _configured = None
+        _active_settings = None
         try:
             import sentry_sdk
 

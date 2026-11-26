@@ -41,6 +41,21 @@ def _sample_rate(value: Any) -> float:
     return rate
 
 
+def _flag(name: str, value: Any, default: bool) -> bool:
+    text = _text(value)
+    if text is None:
+        return default
+    lowered = text.lower()
+    if lowered in ('true', '1', 'yes', 'on'):
+        return True
+    if lowered in ('false', '0', 'no', 'off'):
+        return False
+    logger.warning(
+        f'[sentry] {name} must be true or false, got {text!r}; using {default}'
+    )
+    return default
+
+
 def _breadcrumb_level(value: Any) -> int:
     text = _text(value)
     if text is None:
@@ -66,6 +81,9 @@ class ErrorReportingSettings:
     # INFO logs carry secrets and personal data in places, so breadcrumbs
     # start at WARNING until those logs are cleaned up.
     breadcrumb_level: int = logging.WARNING
+    # Report event-loop blocks (from the loop monitor) as Sentry issues. Off
+    # switch for that one feature; the rest of error reporting is unaffected.
+    report_loop_blocks: bool = True
 
     @classmethod
     def from_config(
@@ -86,4 +104,7 @@ class ErrorReportingSettings:
             release=_text(sentry.get('release')),
             sample_rate=_sample_rate(sentry.get('sample_rate')),
             breadcrumb_level=_breadcrumb_level(sentry.get('breadcrumb_level')),
+            report_loop_blocks=_flag(
+                'loop_blocks', sentry.get('loop_blocks'), default=True
+            ),
         )
