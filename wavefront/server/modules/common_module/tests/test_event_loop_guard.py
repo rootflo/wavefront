@@ -376,7 +376,8 @@ def test_blocking_in_async_positive(src):
         'def f():\n    open("p")\n',
         'import time\ndef f():\n    time.sleep(1)\n',
         # references, not calls
-        'import time\nasync def f():\n    await run_in_pool("cpu", time.sleep, 1)\n',
+        'import time\nfrom common_module.blocking_io import Pool, run_in_pool\n'
+        'async def f():\n    await run_in_pool(Pool.CPU, time.sleep, 1)\n',
         # async cache API
         'async def f(cache):\n    await cache.aget_str("k")\n',
         # open rebound by import

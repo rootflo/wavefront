@@ -25,6 +25,7 @@ apps/call_processing/call_processing/cache/cache_manager.py::CacheManager.aget_s
 apps/call_processing/call_processing/cache/cache_manager.py::CacheManager.aset_json::to-thread
 apps/call_processing/call_processing/controllers/cache_controller.py::invalidate_cache::blocking-in-async
 apps/call_processing/call_processing/server.py::lifespan::to-thread
+apps/call_processing/call_processing/services/common/context/compiler.py::run_in_background::create-task
 apps/call_processing/call_processing/services/common/conversation.py::BaseConversation.run::await-cancel
 apps/call_processing/call_processing/services/common/conversation.py::BaseConversation.run.on_client_disconnected::await-cancel
 apps/call_processing/call_processing/services/common/conversation.py::BaseConversation.run.on_pipeline_finished::create-task
@@ -44,6 +45,7 @@ modules/agents_module/agents_module/services/agent_inference_service.py::AgentIn
 modules/agents_module/agents_module/services/async_agentic_execution_result_consumer.py::AsyncAgenticExecutionResultConsumer._process::to-thread
 modules/agents_module/agents_module/services/async_agentic_execution_result_consumer.py::AsyncAgenticExecutionResultConsumer._run_forever::blocking-in-async
 modules/agents_module/agents_module/services/async_agentic_execution_result_consumer.py::AsyncAgenticExecutionResultConsumer._run_forever::to-thread
+modules/agents_module/agents_module/services/async_agentic_execution_service.py::AsyncAgenticExecutionService._insert_and_enqueue::to-thread
 modules/agents_module/agents_module/services/async_agentic_execution_service.py::AsyncAgenticExecutionService.cancel_execution::to-thread
 modules/agents_module/agents_module/services/async_agentic_execution_service.py::AsyncAgenticExecutionService.create_and_enqueue_agent::to-thread
 modules/agents_module/agents_module/services/async_agentic_execution_service.py::AsyncAgenticExecutionService.create_and_enqueue_workflow::to-thread
