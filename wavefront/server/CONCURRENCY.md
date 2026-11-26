@@ -8,9 +8,9 @@ enforces them in CI.
 ## Rules
 
 1. **Blocking calls go through `run_in_pool`.** Inside `async def`, never call
-   sync I/O or CPU-heavy code directly: `time.sleep`, `requests`, the sync
-   Redis client or sync `CacheManager` methods, `open()`, KMS, cloud storage,
-   bcrypt. Prefer an async client where one exists: `await cache_manager.aget_str(...)`,
+   sync I/O or CPU-heavy code directly: `time.sleep`, `requests`, sync `httpx`,
+   `urllib`, `subprocess`, the sync Redis client or sync `CacheManager`
+   methods, `open()`, KMS, cloud storage, bcrypt. Prefer an async client where one exists: `await cache_manager.aget_str(...)`,
    or `try_a*` when a Redis failure should not fail the request. Otherwise use
    a named, bounded pool:
 
