@@ -247,6 +247,12 @@ def test_missing_section_uses_defaults():
     assert LoopMonitorSettings.from_mapping(None) == LoopMonitorSettings()
 
 
+async def test_monitor_is_off_unless_enabled():
+    assert LoopMonitorSettings().enabled is False
+    assert start_event_loop_monitor(None, service='svc') is None
+    assert start_event_loop_monitor({'enabled': ''}, service='svc') is None
+
+
 def test_non_positive_values_are_rejected():
     with pytest.raises(ValueError, match='interval_ms'):
         LoopMonitorSettings.from_mapping({'interval_ms': '0'})
@@ -257,7 +263,9 @@ async def test_disabled_monitor_does_not_start():
 
 
 async def test_start_helper_starts_and_stops():
-    monitor = start_event_loop_monitor({'interval_ms': '20'}, service='svc')
+    monitor = start_event_loop_monitor(
+        {'enabled': 'true', 'interval_ms': '20'}, service='svc'
+    )
     try:
         assert monitor is not None
         assert monitor._task is not None
