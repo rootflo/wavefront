@@ -60,6 +60,30 @@ REDIS_CONSTRUCTORS = {
     'redis.Redis.from_url',
     'redis.StrictRedis.from_url',
 }
+SYNC_HTTP_CALLS = {
+    'httpx.get',
+    'httpx.post',
+    'httpx.put',
+    'httpx.patch',
+    'httpx.delete',
+    'httpx.head',
+    'httpx.options',
+    'httpx.request',
+    'httpx.stream',
+    'httpx.Client',
+    'urllib.request.urlopen',
+}
+SUBPROCESS_CALLS = {
+    'subprocess.run',
+    'subprocess.call',
+    'subprocess.check_call',
+    'subprocess.check_output',
+    'subprocess.getoutput',
+    'subprocess.getstatusoutput',
+    'subprocess.Popen',
+    'os.system',
+    'os.popen',
+}
 
 
 @dataclass(frozen=True)
@@ -225,6 +249,8 @@ class _Scanner(ast.NodeVisitor):
             blocking = True
         elif dotted in REDIS_CONSTRUCTORS:
             blocking = True
+        elif dotted in SYNC_HTTP_CALLS or dotted in SUBPROCESS_CALLS:
+            blocking = True
         elif isinstance(func, ast.Attribute) and func.attr in SYNC_CACHE_METHODS:
             recv = _final_name(func.value)
             if recv is not None and 'cache' in recv.lower():
@@ -357,6 +383,16 @@ def test_await_cancel_positive():
         'async def f(self):\n    self.cache_manager.get_str("k")\n',
         'async def f(cache):\n    cache.add("k", "v")\n',
         'async def f(self):\n    self.cache.xadd("s", {})\n',
+        'import httpx\nasync def f():\n    httpx.get("u")\n',
+        'import httpx\nasync def f():\n    httpx.Client()\n',
+        'import httpx as h\nasync def f():\n    h.post("u")\n',
+        'import urllib.request\nasync def f():\n    urllib.request.urlopen("u")\n',
+        'from urllib.request import urlopen\nasync def f():\n    urlopen("u")\n',
+        'import subprocess\nasync def f():\n    subprocess.run(["ls"])\n',
+        'from subprocess import run as r\nasync def f():\n    r(["ls"])\n',
+        'import subprocess\nasync def f():\n    subprocess.Popen(["ls"])\n',
+        'import os\nasync def f():\n    os.system("ls")\n',
+        'import os\nasync def f():\n    os.popen("ls")\n',
     ],
 )
 def test_blocking_in_async_positive(src):
@@ -385,6 +421,10 @@ def test_blocking_in_async_positive(src):
         # async redis constructors
         'import redis.asyncio as aioredis\nasync def f():\n    aioredis.Redis()\n',
         'from redis.asyncio import Redis\nasync def f():\n    Redis.from_url("u")\n',
+        # async http / subprocess APIs, sync subprocess in a sync def
+        'import httpx\nasync def f():\n    httpx.AsyncClient()\n',
+        'import asyncio\nasync def f():\n    await asyncio.create_subprocess_exec("ls")\n',
+        'import subprocess\ndef f():\n    subprocess.run(["ls"])\n',
         # non-cache receiver with a cache-like method name
         'async def f(s):\n    s.add(1)\n',
         # unrelated receiver for create_task
