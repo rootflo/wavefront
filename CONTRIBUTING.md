@@ -139,6 +139,7 @@ git checkout -b docs/your-documentation-update
 - Add tests for new features
 - Update documentation as needed
 - Keep commits focused and atomic
+- Server code: follow the event-loop rules in [`wavefront/server/CONCURRENCY.md`](wavefront/server/CONCURRENCY.md) (blocking calls via `run_in_pool`, no unowned tasks or threads)
 
 ### 3. Test Your Changes
 
