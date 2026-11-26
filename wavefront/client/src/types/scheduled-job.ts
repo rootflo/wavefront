@@ -53,14 +53,12 @@ export interface ScheduledJobQuerySpec {
   end_date_param?: string;
 }
 
-export interface ScheduledJobEmailPayload {
+export type ScheduledJobType = 'email_dynamic_query' | 'scheduled_query';
+
+/** Payload shared by every job type: which queries to run and their defaults. */
+export interface ScheduledJobQueryPayload {
   datasource_id: string;
   queries: ScheduledJobQuerySpec[];
-  recipient_user_ids: string[];
-  /** Sender mailbox. Absent means the primary email connection. */
-  email_connection_id: string;
-  subject?: string;
-  email_content?: string;
   column_styles?: ColumnStyleConfig[];
   date_range?: 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days';
   start_date_param?: string;
@@ -71,29 +69,25 @@ export interface ScheduledJobEmailPayload {
   params?: Record<string, unknown>;
 }
 
-export type FormTab = 'schedule' | 'query' | 'email';
-export type PayloadDateRange = NonNullable<ScheduledJobEmailPayload['date_range']>;
-export type DateRangeOption = PayloadDateRange | 'none';
-
-/** Optional per-query overrides; empty fields inherit job-level defaults. */
-export interface QuerySpecFormOverrides {
-  datasource_id?: string;
-  filter?: string;
-  offset?: string;
-  limit?: string;
-  paramsJson?: string;
-  columnStylesJson?: string;
-  date_range?: DateRangeOption;
-  start_date_param?: string;
-  end_date_param?: string;
+/** email_dynamic_query payload: the queries plus who receives the results. */
+export interface ScheduledJobEmailPayload extends ScheduledJobQueryPayload {
+  recipient_user_ids: string[];
+  /** Sender mailbox. Absent means the primary email connection. */
+  email_connection_id: string;
+  subject?: string;
+  email_content?: string;
 }
 
+export type FormTab = 'schedule' | 'query' | 'email';
+export type PayloadDateRange = NonNullable<ScheduledJobQueryPayload['date_range']>;
+export type DateRangeOption = PayloadDateRange | 'none';
+
 export interface CreateScheduledJobRequest {
-  job_type: 'email_dynamic_query';
+  job_type: ScheduledJobType;
   cron_expr: string;
   timezone: string;
   max_retries: number;
-  payload: ScheduledJobEmailPayload;
+  payload: ScheduledJobQueryPayload | ScheduledJobEmailPayload;
 }
 
 export type JobStatus = 'active' | 'paused' | 'running' | 'failed' | 'completed';
@@ -101,7 +95,7 @@ export type JobStatus = 'active' | 'paused' | 'running' | 'failed' | 'completed'
 export interface UpdateScheduledJobRequest {
   cron_expr?: string;
   timezone?: string;
-  payload?: ScheduledJobEmailPayload;
+  payload?: ScheduledJobQueryPayload | ScheduledJobEmailPayload;
   max_retries?: number;
   status?: JobStatus;
 }
