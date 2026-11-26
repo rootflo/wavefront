@@ -287,22 +287,78 @@ def scan_repo(root: Path = SERVER_ROOT) -> List[Violation]:
     return out
 
 
+Key = Tuple[str, str, str]
+
 _ENTRY_RE = re.compile(
-    r'^[^:\s][^\s]*::[^\s:]+(?:\.[^\s:]+)*::[a-z-]+$|^[^\s]+::<module>::[a-z-]+$'
+    r'^[^:\s][^\s]*::[^\s:]+(?:\.[^\s:]+)*::[a-z-]+(?:::[0-9]+)?$'
+    r'|^[^\s]+::<module>::[a-z-]+(?:::[0-9]+)?$'
 )
 
 
-def parse_allowlist(path: Path = ALLOWLIST_PATH) -> List[Tuple[str, str, str]]:
+def parse_allowlist(path: Path = ALLOWLIST_PATH) -> List[Tuple[Key, int]]:
+    """Return ``((relpath, qualname, rule), count)`` per line, in file order.
+
+    ``count`` is the exact number of accepted hits; no ``::N`` suffix means 1.
+    """
     entries = []
     for raw in path.read_text(encoding='utf-8').splitlines():
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
         parts = line.split('::')
-        if len(parts) != 3 or not all(parts) or not _ENTRY_RE.match(line):
+        if len(parts) not in (3, 4) or not all(parts) or not _ENTRY_RE.match(line):
             raise ValueError(f'bad allowlist line: {raw!r}')
-        entries.append((parts[0], parts[1], parts[2]))
+        count = int(parts[3]) if len(parts) == 4 else 1
+        if count < 1:
+            raise ValueError(f'bad allowlist line (count must be >= 1): {raw!r}')
+        entries.append(((parts[0], parts[1], parts[2]), count))
     return entries
+
+
+def compare(allowed: Dict[Key, int], violations: List[Violation]) -> List[str]:
+    """Compare allowlisted counts with observed hits; return problem messages."""
+    hits: Dict[Key, List[Violation]] = {}
+    for v in violations:
+        hits.setdefault((v.relpath, v.qualname, v.rule), []).append(v)
+
+    def fmt(vs: List[Violation]) -> str:
+        return '\n'.join(
+            f'  {v.relpath}:{v.lineno} {v.qualname} {v.rule}'
+            for v in sorted(vs, key=lambda v: (v.relpath, v.lineno))
+        )
+
+    new = [v for k, vs in hits.items() if k not in allowed for v in vs]
+    over = sorted(k for k, vs in hits.items() if k in allowed and len(vs) > allowed[k])
+    under = sorted(k for k in allowed if len(hits.get(k, [])) < allowed[k])
+
+    problems = []
+    if new:
+        problems.append(
+            'New event-loop / concurrency violations. Use run_in_pool(...) or the '
+            'async CacheManager API, or add a justified "# concurrency: allowed" '
+            f'pragma:\n{fmt(new)}'
+        )
+    if over:
+        blocks = '\n'.join(
+            f'  {"::".join(k)}: {allowed[k]} allowed, {len(hits[k])} found\n'
+            + fmt(hits[k])
+            for k in over
+        )
+        problems.append(
+            'More hits than the allowlist accepts; fix the new call (the lines '
+            f'below are all hits for that entry):\n{blocks}'
+        )
+    if under:
+        lines = '\n'.join(
+            f'  {"::".join(k)}: {allowed[k]} allowed, {len(hits.get(k, []))} found'
+            ' — lower the count (or delete the entry if 0)'
+            for k in under
+        )
+        problems.append(
+            'Allowlist counts are stale; update event_loop_guard_allowlist.txt:'
+            f'\n{lines}'
+        )
+    return problems
 
 
 # --------------------------------------------------------------------------
@@ -498,36 +554,70 @@ def test_server_root_is_sane():
 
 
 def test_allowlist_format():
-    seen: Set[Tuple[str, str, str]] = set()
-    for entry in parse_allowlist():
-        assert entry not in seen, f'duplicate allowlist entry: {"::".join(entry)}'
-        seen.add(entry)
+    seen: Set[Key] = set()
+    for key, _count in parse_allowlist():
+        assert key not in seen, f'duplicate allowlist entry: {"::".join(key)}'
+        seen.add(key)
 
 
 def test_no_new_event_loop_violations():
     assert (SERVER_ROOT / 'pyproject.toml').exists(), SERVER_ROOT
-    allowed = set(parse_allowlist())
-    violations = scan_repo()
-
-    new = [v for v in violations if (v.relpath, v.qualname, v.rule) not in allowed]
-    hit = {(v.relpath, v.qualname, v.rule) for v in violations}
-    stale = sorted(e for e in allowed if e not in hit)
-
-    problems = []
-    if new:
-        lines = '\n'.join(
-            f'  {v.relpath}:{v.lineno} {v.qualname} {v.rule}'
-            for v in sorted(new, key=lambda v: (v.relpath, v.lineno))
-        )
-        problems.append(
-            'New event-loop / concurrency violations. Use run_in_pool(...) or the '
-            'async CacheManager API, or add a justified "# concurrency: allowed" '
-            f'pragma:\n{lines}'
-        )
-    if stale:
-        lines = '\n'.join(f'  {"::".join(e)}' for e in stale)
-        problems.append(
-            'Stale allowlist entries match nothing; delete them from '
-            f'event_loop_guard_allowlist.txt:\n{lines}'
-        )
+    problems = compare(dict(parse_allowlist()), scan_repo())
     assert not problems, '\n\n'.join(problems)
+
+
+# --------------------------------------------------------------------------
+# Allowlist matching unit tests (no repo scan)
+# --------------------------------------------------------------------------
+
+
+def _v(line: int, rel: str = 'a.py', qn: str = 'f', rule: str = 'thread'):
+    return Violation(rel, qn, rule, line)
+
+
+_K: Key = ('a.py', 'f', 'thread')
+
+
+def test_compare_exact_count_passes():
+    assert compare({_K: 2}, [_v(1), _v(2)]) == []
+
+
+def test_compare_over_count_names_key_and_lines():
+    out = compare({_K: 1}, [_v(10), _v(20)])
+    assert len(out) == 1
+    assert 'a.py::f::thread: 1 allowed, 2 found' in out[0]
+    assert 'a.py:10' in out[0] and 'a.py:20' in out[0]
+
+
+def test_compare_under_count_fails():
+    out = compare({_K: 3}, [_v(1)])
+    assert len(out) == 1
+    assert 'a.py::f::thread: 3 allowed, 1 found' in out[0]
+    assert 'lower the count' in out[0]
+
+
+def test_compare_zero_hits_is_stale():
+    out = compare({_K: 1}, [])
+    assert len(out) == 1 and '1 allowed, 0 found' in out[0]
+
+
+def test_compare_unlisted_key_is_new():
+    out = compare({}, [_v(5)])
+    assert len(out) == 1 and 'a.py:5 f thread' in out[0]
+
+
+def test_parse_allowlist_default_and_explicit_count(tmp_path):
+    p = tmp_path / 'allow.txt'
+    p.write_text('a.py::f::thread\nb.py::C.m::to-thread::3  # note\n')
+    assert parse_allowlist(p) == [
+        (('a.py', 'f', 'thread'), 1),
+        (('b.py', 'C.m', 'to-thread'), 3),
+    ]
+
+
+@pytest.mark.parametrize('line', ['a.py::f::thread::0', 'a.py::f::thread::x'])
+def test_parse_allowlist_rejects_bad_count(tmp_path, line):
+    p = tmp_path / 'allow.txt'
+    p.write_text(line + '\n')
+    with pytest.raises(ValueError):
+        parse_allowlist(p)

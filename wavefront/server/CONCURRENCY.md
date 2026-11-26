@@ -64,9 +64,10 @@ genuinely right (for example, the code that owns a pool or the lag monitor's
 watchdog thread), add `# concurrency: allowed` on that line with a short reason.
 
 `modules/common_module/tests/event_loop_guard_allowlist.txt` lists code that
-predates the guard, by `path::function::rule`. The list only shrinks. Delete an
-entry when you fix it; the guard fails on entries that no longer match. Do not
-add new entries.
+predates the guard, by `path::function::rule`, with an optional `::N` suffix for
+the exact number of accepted hits (default 1). The list only shrinks. Lower N or
+delete the entry when you fix a hit; the guard fails when a function gains or
+loses a hit. Do not add new entries or raise a count.
 
 Run it:
 
