@@ -12,6 +12,8 @@ class AsyncInferenceResponse(BaseModel):
     entity_id: uuid.UUID
     status_url: str
     variables: Optional[Dict[str, Any]] = None
+    retry_of_execution_id: Optional[uuid.UUID] = None
+    attempt: int = 1
 
 
 class AgenticExecutionStatusResponse(BaseModel):
@@ -27,6 +29,14 @@ class AgenticExecutionStatusResponse(BaseModel):
     error: Optional[str] = None
     variables: Optional[Dict[str, Any]] = None
     input_files: Optional[List[Any]] = None
+    version: Optional[int] = None
+    retry_of_execution_id: Optional[uuid.UUID] = None
+    attempt: int = 1
+    # Computed on read, not stored. A failed execution can be not retryable
+    # because it was already retried (see retried_by_execution_id) or because
+    # it reached the attempt cap.
+    is_retryable: bool = False
+    retried_by_execution_id: Optional[uuid.UUID] = None
     output_url: Optional[str] = None
     history_url: Optional[str] = None
     started_at: Optional[datetime] = None

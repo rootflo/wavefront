@@ -13,7 +13,7 @@ import pytest
 from redis import ConnectionError
 from redis.exceptions import OutOfMemoryError
 
-from db_repo_module.cache import cache_manager as module
+from db_repo_module.cache import base_cache as module
 from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
 from db_repo_module.cache.redis_settings import RedisSettings
 

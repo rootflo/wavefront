@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from db_repo_module.cache import cache_manager as module
+from db_repo_module.cache import base_cache as module
+from db_repo_module.cache import lua_scripts
 from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
 from db_repo_module.cache.redis_settings import RedisSettings
 
@@ -35,7 +36,7 @@ class FakeRedis:
 
     def _run_script(self, script, keys, argv):
         store = self.store
-        if script == CacheManager._RT_READ:
+        if script == lua_scripts.READ_SCRIPT:
             token = store.get(keys[1])
             if token is None:
                 if store.get(keys[2]):
@@ -43,17 +44,17 @@ class FakeRedis:
                 token = argv[0]
                 store[keys[1]] = token
             return [token, store.get(keys[0])]
-        if script == CacheManager._RT_FILL:
+        if script == lua_scripts.FILL_SCRIPT:
             if argv[0].startswith('pending:') or store.get(keys[1]) != argv[0]:
                 return 0
             store[keys[0]] = f'{argv[0]}\n{argv[1]}'
             return 1
-        if script == CacheManager._RT_BEGIN:
+        if script == lua_scripts.BEGIN_CHANGE_SCRIPT:
             store.setdefault(keys[2], set()).add(argv[2])
             store[keys[1]] = argv[0]
             store.pop(keys[0], None)
             return 1
-        if script == CacheManager._RT_END:
+        if script == lua_scripts.END_CHANGE_SCRIPT:
             writers = store.get(keys[2], set())
             writers.discard(argv[2])
             store.pop(keys[0], None)
@@ -416,11 +417,11 @@ async def test_lua_scripts_against_real_redis():
     keys = (value_key, gen_key, writers_key)
 
     async def read(new_token):
-        return await client.eval(CacheManager._RT_READ, 3, *keys, new_token, 60)
+        return await client.eval(lua_scripts.READ_SCRIPT, 3, *keys, new_token, 60)
 
     async def fill(token, value):
         return await client.eval(
-            CacheManager._RT_FILL, 2, value_key, gen_key, token, value, 60
+            lua_scripts.FILL_SCRIPT, 2, value_key, gen_key, token, value, 60
         )
 
     try:
@@ -434,11 +435,18 @@ async def test_lua_scripts_against_real_redis():
         # Two overlapping writers: the key stays pending until the last leaves.
         async def begin(writer):
             return await client.eval(
-                CacheManager._RT_BEGIN, 3, *keys, f'pending:{writer}', 60, writer
+                lua_scripts.BEGIN_CHANGE_SCRIPT,
+                3,
+                *keys,
+                f'pending:{writer}',
+                60,
+                writer,
             )
 
         async def end(writer, token):
-            return await client.eval(CacheManager._RT_END, 3, *keys, token, 60, writer)
+            return await client.eval(
+                lua_scripts.END_CHANGE_SCRIPT, 3, *keys, token, 60, writer
+            )
 
         assert await begin('a') and await begin('b')
         assert await client.get(value_key) is None

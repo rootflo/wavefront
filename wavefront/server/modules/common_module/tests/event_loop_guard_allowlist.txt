@@ -57,7 +57,7 @@ modules/common_module/common_module/security/secret_cipher.py::SecretCipher.apro
 modules/common_module/common_module/security/secret_cipher.py::SecretCipher.aprotect_fields::to-thread
 modules/common_module/common_module/security/secret_cipher.py::SecretCipher.areveal::to-thread
 modules/common_module/common_module/security/secret_cipher.py::SecretCipher.areveal_fields::to-thread
-modules/db_repo_module/db_repo_module/cache/cache_manager.py::CacheManager._run_async::to-thread
+modules/db_repo_module/db_repo_module/cache/base_cache.py::BaseCache._run_async::to-thread
 modules/guardrails_module/guardrails_module/services/guardrails_service.py::<module>::thread
 modules/guardrails_module/guardrails_module/services/guardrails_service.py::GuardrailsService.delete_policy::blocking-in-async
 modules/guardrails_module/guardrails_module/services/guardrails_service.py::GuardrailsService.get_policy::to-thread

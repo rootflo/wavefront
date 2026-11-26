@@ -12,7 +12,7 @@ from agents_module.utils.agent_guardrails import (
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
 from agents_module.utils.cache_utils import (
@@ -148,7 +148,7 @@ class WorkflowInferenceService:
 
         async def load() -> str:
             yaml_bytes: bytes = await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.read_file,
                 self.bucket_name,
                 yaml_key,

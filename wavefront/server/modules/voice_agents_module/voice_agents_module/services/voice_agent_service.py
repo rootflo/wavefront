@@ -3,7 +3,7 @@ import uuid
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
@@ -329,7 +329,7 @@ class VoiceAgentService:
         try:
             storage_key = generate_welcome_message_key(agent_id)
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.save_small_file,
                 audio_bytes,
                 self.voice_agent_bucket,
@@ -811,7 +811,7 @@ class VoiceAgentService:
 
             # Generate presigned URL with 2-hour expiration
             presigned_url = await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.generate_presigned_url,
                 bucket_name=self.voice_agent_bucket,
                 key=storage_key,

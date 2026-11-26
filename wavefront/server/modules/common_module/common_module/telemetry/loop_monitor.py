@@ -76,7 +76,7 @@ def remove_loop_block_listener(listener: LoopBlockListener) -> None:
 
 @dataclass(frozen=True)
 class LoopMonitorSettings:
-    enabled: bool = True
+    enabled: bool = False  # opt-in: set [event_loop_monitor] enabled=true
     threshold_ms: float = 50
     interval_ms: float = 100
     stack_threshold_ms: float = 250

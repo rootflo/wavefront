@@ -26,7 +26,7 @@ import threading
 import time
 from typing import Callable, Optional, TypeVar, Union
 
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import Pool, run_in_pool
 
 Key = Union[bytes, str]
 T = TypeVar('T')
@@ -101,7 +101,7 @@ class PublicKeyCache:
         # Check before taking a pool slot: a refetch the throttle would refuse
         # must not queue behind a busy kms pool and turn into a 503.
         if result is None and self._refetch_allowed() and self._refetch_due():
-            new_key = await run_in_pool('kms', self.refetch_if_rotated, key)
+            new_key = await run_in_pool(Pool.KMS, self.refetch_if_rotated, key)
             if new_key is not None:
                 result = decode(new_key)
         return result
@@ -113,11 +113,11 @@ class PublicKeyCache:
         waiting on the fetch lock, so a slow KMS could fill the pool.
         """
         if self.cache_seconds <= 0:  # cache off: each request fetches its own
-            return await run_in_pool('kms', self.get)
+            return await run_in_pool(Pool.KMS, self.get)
         loop = asyncio.get_running_loop()
         task = self._inflight.get(loop)
         if task is None:
-            task = loop.create_task(run_in_pool('kms', self.get))
+            task = loop.create_task(run_in_pool(Pool.KMS, self.get))
             self._inflight[loop] = task
 
             def done(finished: asyncio.Task) -> None:

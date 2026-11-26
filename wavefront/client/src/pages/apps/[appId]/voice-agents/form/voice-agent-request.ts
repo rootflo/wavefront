@@ -1,5 +1,6 @@
 import { CreateVoiceAgentRequest, UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
 import { fromEditorText } from '../conversation-config';
+import { keepLanguagePrompts } from './language-prompts';
 import { VoiceAgentInput } from './voice-agent-form';
 
 const E164_REGEX = /^\+[1-9]\d{1,14}$/;
@@ -64,7 +65,8 @@ export const buildVoiceAgentFields = (
   data: VoiceAgentInput,
   providers: { tts: ProviderSettings; stt: ProviderSettings }
 ): { ok: true; fields: VoiceAgentFields } | { ok: false; error: string } => {
-  const conversationConfig = fromEditorText(data.conversation_config);
+  // Unchecked languages keep their packs while the form is open; the server rejects them, so they go here
+  const conversationConfig = fromEditorText(keepLanguagePrompts(data.conversation_config, data.supported_languages));
   if (conversationConfig === undefined) {
     return { ok: false, error: 'Conversation configuration must be a valid JSON object' };
   }

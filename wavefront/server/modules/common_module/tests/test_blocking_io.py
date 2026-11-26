@@ -11,6 +11,7 @@ from common_module import blocking_io as module
 from common_module.blocking_io import (
     BlockingIoLimits,
     BlockingPoolBusyError,
+    Pool,
     configure_blocking_io,
     run_in_pool,
     shutdown_blocking_io,
@@ -106,6 +107,31 @@ async def test_pools_are_independent():
 async def test_unknown_pool_is_rejected():
     with pytest.raises(ValueError, match='Unknown blocking-I/O pool'):
         await run_in_pool('redis', lambda: None)
+
+
+async def test_pool_constants_and_names_share_one_pool():
+    """``Pool.KMS`` and ``'kms'`` are the same pool, and errors carry the plain name."""
+    configure_blocking_io({'kms_max_threads': '1', 'queue_wait_seconds': '0.1'})
+    release = threading.Event()
+    started = threading.Event()
+
+    def hold():
+        started.set()
+        release.wait(5)
+
+    holding = asyncio.ensure_future(run_in_pool(Pool.KMS, hold))
+    await asyncio.to_thread(started.wait, 5)  # the only kms thread is busy
+
+    try:
+        with pytest.raises(BlockingPoolBusyError) as excinfo:
+            await run_in_pool('kms', lambda: None)
+    finally:
+        release.set()
+        _ = await holding
+
+    assert type(excinfo.value.pool) is str
+    assert excinfo.value.pool == 'kms'
+    assert set(module._pools) == {'kms'}
 
 
 def test_configure_parses_config_strings():

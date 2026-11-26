@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List
 from uuid import uuid4
 import flo_lib.http as http
 
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import Pool, run_in_pool
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -142,7 +142,7 @@ class MessageProcessorService:
         yaml_bytes = yaml_content.encode('utf-8')
         async with self._invalidating(file_path):
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.save_small_file,
                 file_content=yaml_bytes,
                 bucket_name=self.bucket_name,
@@ -161,7 +161,7 @@ class MessageProcessorService:
 
         async def load() -> str:
             yaml_bytes = await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.read_file,
                 self.bucket_name,
                 filepath,
@@ -206,7 +206,7 @@ class MessageProcessorService:
         file_path = f'{self.prefix}/{processor.source}'
         async with self._invalidating(file_path):
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.delete_file,
                 self.bucket_name,
                 file_path,

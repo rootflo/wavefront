@@ -87,7 +87,7 @@ Provider implementations are split into cipher vs signer classes
 | `MESSAGE_PROCESSOR_YAML_CACHE_SECONDS`                                           | `[message_processor] yaml_cache_seconds` (floware; Redis cache of processor YAML; default 3600; 0 = no cache) |
 | `BLOCKING_IO_KMS_MAX_THREADS` / `BLOCKING_IO_STORAGE_MAX_THREADS`                | `[blocking_io] kms_max_threads` / `storage_max_threads` (floware; default 8 / 16)                               |
 | `BLOCKING_IO_CPU_MAX_THREADS` / `BLOCKING_IO_QUEUE_WAIT_SECONDS`                 | `[blocking_io] cpu_max_threads` / `queue_wait_seconds` (floware; default 4 / 10)                                |
-| `EVENT_LOOP_MONITOR_ENABLED` / `EVENT_LOOP_LAG_THRESHOLD_MS`                     | `[event_loop_monitor] enabled` / `threshold_ms` (floware; default true / 50)                                    |
+| `EVENT_LOOP_MONITOR_ENABLED` / `EVENT_LOOP_LAG_THRESHOLD_MS`                     | `[event_loop_monitor] enabled` / `threshold_ms` (floware; default false / 50)                                    |
 | `EVENT_LOOP_MONITOR_INTERVAL_MS` / `EVENT_LOOP_STACK_THRESHOLD_MS`               | `[event_loop_monitor] interval_ms` / `stack_threshold_ms` (floware; default 100 / 250)                          |
 | `EVENT_LOOP_LOG_COOLDOWN_SECONDS`                                                | `[event_loop_monitor] log_cooldown_seconds` (floware; default 30)                                               |
 | `FLOWARE_BASE_URL`                                                               | `[env_config] base_url` (wired via `common_module.runtime_settings`)                                            |

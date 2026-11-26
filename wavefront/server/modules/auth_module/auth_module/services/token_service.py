@@ -8,7 +8,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
-from common_module.blocking_io import run_in_pool
+from common_module.blocking_io import Pool, run_in_pool
 from common_module.security.public_key_cache import PublicKeyCache
 from flo_cloud._types import FloSigner
 
@@ -115,7 +115,9 @@ class TokenService:
 
     async def create_token_async(self, **kwargs: Any) -> str:
         """``create_token`` with the KMS signing call off the event loop."""
-        return await run_in_pool('kms', functools.partial(self.create_token, **kwargs))
+        return await run_in_pool(
+            Pool.KMS, functools.partial(self.create_token, **kwargs)
+        )
 
     # -- verification ----------------------------------------------------------
     #

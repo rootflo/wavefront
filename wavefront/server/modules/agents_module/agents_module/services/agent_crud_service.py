@@ -13,7 +13,7 @@ from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.utils.agent_utils import get_agent_yaml_key
@@ -240,7 +240,7 @@ class AgentCrudService:
             yaml_key = f'message_processors/v1/{processor.source}'
             try:
                 yaml_bytes = await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.read_file,
                     self.message_processor_bucket_name,
                     yaml_key,
@@ -397,7 +397,7 @@ class AgentCrudService:
             yaml_bytes = yaml_content.encode('utf-8')
             try:
                 await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.save_small_file,
                     file_content=yaml_bytes,
                     bucket_name=self.bucket_name,
@@ -471,7 +471,7 @@ class AgentCrudService:
         async def load_yaml() -> str:
             try:
                 yaml_bytes = await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.read_file,
                     self.bucket_name,
                     yaml_key,
@@ -569,7 +569,7 @@ class AgentCrudService:
         async def load_yaml() -> str:
             try:
                 yaml_bytes = await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.read_file,
                     self.bucket_name,
                     yaml_key,
@@ -693,7 +693,7 @@ class AgentCrudService:
                     agent.namespace, agent.name, write_version
                 )
                 await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.save_small_file,
                     file_content=yaml_content.encode('utf-8'),
                     bucket_name=self.bucket_name,

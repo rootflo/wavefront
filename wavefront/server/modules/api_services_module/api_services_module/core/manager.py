@@ -3,7 +3,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.api_services import ApiServices
 from flo_cloud.cloud_storage import CloudStorageManager
 from typing import List
-from common_module.blocking_io import BlockingPoolBusyError, run_in_pool
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 
 
@@ -35,7 +35,7 @@ class ApiServicesManager:
         service_def_path = f'api_services/{id}.yaml'
         async with self.cache_manager.invalidating(service_def_path):
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.save_small_file,
                 file_content=service_def_yaml.encode('utf-8'),
                 bucket_name=self.application_bucket,
@@ -51,7 +51,7 @@ class ApiServicesManager:
 
         async def load() -> str:
             yaml_bytes: bytes = await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.read_file,
                 bucket_name=self.application_bucket,
                 file_path=service_def_path,
@@ -81,7 +81,7 @@ class ApiServicesManager:
         service_def_path = f'api_services/{id}.yaml'
         async with self.cache_manager.invalidating(service_def_path):
             await run_in_pool(
-                'storage',
+                Pool.STORAGE,
                 self.cloud_storage_manager.save_small_file,
                 file_content=service_def_yaml.encode('utf-8'),
                 bucket_name=self.application_bucket,
@@ -108,7 +108,7 @@ class ApiServicesManager:
         async with self.cache_manager.invalidating(service_def_path):
             try:
                 await run_in_pool(
-                    'storage',
+                    Pool.STORAGE,
                     self.cloud_storage_manager.delete_file,
                     bucket_name=self.application_bucket,
                     file_path=service_def_path,

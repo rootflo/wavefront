@@ -15,12 +15,12 @@ enforces them in CI.
    a named, bounded pool:
 
    ```python
-   from common_module.blocking_io import run_in_pool
+   from common_module.blocking_io import Pool, run_in_pool
 
-   data = await run_in_pool('storage', storage.read_file, bucket, key)
+   data = await run_in_pool(Pool.STORAGE, storage.read_file, bucket, key)
    ```
 
-   The lanes are `'kms'`, `'storage'` and `'cpu'`. A full pool raises
+   The lanes are `Pool.KMS`, `Pool.STORAGE` and `Pool.CPU`. A full pool raises
    `BlockingPoolBusyError`, which the app turns into a 503 with `Retry-After`.
    Never swallow it in a broad `except Exception`: re-raise it. Do not use
    `asyncio.to_thread` or `loop.run_in_executor`. They share one unbounded
