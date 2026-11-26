@@ -7,6 +7,7 @@ from tools_module.utils.api_service_tool_loader import (
     build_tool_description,
 )
 from api_services_module.core.manager import ApiServicesManager
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from api_services_module.config.parser import ServiceDefinitionParser
 
@@ -49,7 +50,9 @@ class ApiServiceToolDetailsProvider(ToolDetailsProvider):
                     continue
 
                 # Load YAML content from cloud storage
-                yaml_content = self.api_services_manager.fetch_service_def(service)
+                yaml_content = await self.api_services_manager.fetch_service_def(
+                    service
+                )
 
                 # Parse YAML to ServiceDefinition
                 service_def = ServiceDefinitionParser.parse_yaml_string(yaml_content)
@@ -93,6 +96,8 @@ class ApiServiceToolDetailsProvider(ToolDetailsProvider):
                         )
                         continue
 
+            except BlockingPoolBusyError:
+                raise  # overload: answer 503, don't swallow it
             except Exception as e:
                 logger.warning(
                     f'Error loading service {service.id}: {str(e)}, skipping'

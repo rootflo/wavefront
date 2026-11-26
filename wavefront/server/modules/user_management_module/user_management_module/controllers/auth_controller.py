@@ -1,4 +1,3 @@
-import json
 from typing import Optional
 from uuid import uuid4
 
@@ -10,8 +9,9 @@ from common_module.feature.feature_flag import (
     INACTIVE_ACCOUNT_DISABLE_FLAG,
     FeatureFlags,
 )
+from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.cache_manager import CacheManager, CacheUnavailableError
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
@@ -45,7 +45,7 @@ from user_management_module.services.recaptcha_service import (
 )
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
-from user_management_module.utils.password_utils import verify_password
+from user_management_module.utils.password_utils import verify_password_async
 from user_management_module.utils.user_utils import create_account_lockout_response
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
@@ -111,7 +111,7 @@ async def authenticate(
             user
         )
         if is_locked:
-            if not verify_password(auth_data.password, user.password):
+            if not await verify_password_async(auth_data.password, user.password):
                 await account_lockout_service.record_locked_attempt(user)
             return create_account_lockout_response(
                 locked_until, account_lockout_service, response_formatter
@@ -131,7 +131,9 @@ async def authenticate(
                 ),
             )
 
-    if user is None or not verify_password(auth_data.password, user.password):
+    if user is None or not await verify_password_async(
+        auth_data.password, user.password
+    ):
         # Handle failed login attempt
         if user:  # Only track attempts for existing users
             (
@@ -164,26 +166,6 @@ async def authenticate(
     # Get device info from headers
     device_info = request.headers.get('User-Agent')
 
-    await user_service.invalidate_user_sessions(str(user.id))
-
-    # Create new session
-    session = await session_repository.create(
-        user_id=user.id, device_info=device_info, id=uuid4()
-    )
-
-    # Cache session data
-    session_cache_key = get_session_cache_key(session.id)
-    session_data = {
-        'id': str(session.id),
-        'user_id': str(session.user_id),
-        'device_info': session.device_info,
-    }
-    cache_manager.add(
-        session_cache_key,
-        json.dumps(session_data),
-        token_service.token_expiry,
-    )
-
     role_id = await user_service.get_user_role_for_scope(
         user_id=str(user.id), scope=ResourceScope.CONSOLE
     )
@@ -196,14 +178,43 @@ async def authenticate(
             ),
         )
 
-    # Include session_id in token payload
-    token = token_service.create_token(
+    # Sign the token BEFORE touching existing sessions: if signing fails (KMS
+    # down, kms pool busy) the user keeps their current session instead of
+    # ending up logged out with no replacement. The session id is chosen up
+    # front so the token can carry it.
+    session_id = uuid4()
+    token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=role_id,
-        payload={'session_id': str(session.id)},
+        payload={'session_id': str(session_id)},
         expiry=token_service.token_expiry,
     )
+
+    # The account, password or console role may have changed while we waited on
+    # bcrypt and signing.
+    if not await user_service.is_login_still_valid(
+        str(user.id), role_id, password_hash=user.password
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse('User account is disabled'),
+        )
+
+    await user_service.invalidate_user_sessions(str(user.id))
+
+    # Create new session
+    await session_repository.create(
+        user_id=user.id, device_info=device_info, id=session_id
+    )
+    # A reset or disable may have landed between the check and the insert.
+    if not await user_service.confirm_new_session(
+        str(session_id), str(user.id), role_id, password_hash=user.password
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse('User account is disabled'),
+        )
 
     response_data = {'access_token': token, 'token_type': 'bearer'}
     return JSONResponse(
@@ -307,12 +318,25 @@ async def logout(
     # Get the current session from request state
     current_session = request.state.session
 
-    # Delete the session from database
-    await session_repository.delete_all(id=current_session.session_id)
+    session_cache_key = get_session_cache_key(current_session.session_id)
 
-    # Clear both user and session cache
-    cache_manager.remove(current_session.user_id)
-    cache_manager.remove(get_session_cache_key(current_session.session_id))
+    # The middleware trusts a cached session before the database, so the DB
+    # delete is wrapped in a cache invalidation: strict before it (Redis down:
+    # 503 with nothing changed, retry-safe), best-effort after it, and fills
+    # that raced the logout can never bring the session back.
+    try:
+        async with cache_manager.invalidating(
+            current_session.user_id, session_cache_key
+        ):
+            await session_repository.delete_all(id=current_session.session_id)
+    except CacheUnavailableError as e:
+        logger.error(f'Logout could not invalidate the cached session: {e}')
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=response_formatter.buildErrorResponse(
+                'Logout could not be completed. Please try again shortly.'
+            ),
+        )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

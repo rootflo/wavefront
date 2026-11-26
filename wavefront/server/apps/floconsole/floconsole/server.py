@@ -14,8 +14,10 @@ import uvicorn
 # ruff: noqa: E402
 load_dotenv()  # Before di: create_container() reads config.ini with envs_required
 
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from floconsole.db import DatabaseClient
 from floconsole.di import application_container
 from floconsole.middleware.setup import add_middlewares
@@ -99,6 +101,38 @@ add_middlewares(
     app, allowed_origins=runtime.allowed_origins, environment=runtime.app_env
 )
 include_routers(app)
+
+
+@app.exception_handler(BlockingPoolBusyError)
+async def blocking_pool_busy_handler(request: Request, exc: BlockingPoolBusyError):
+    """A blocking-I/O pool (KMS signing, bcrypt) is full: overload, not a bug."""
+    logger.warning(
+        f'{exc.pool} pool busy on {request.method} {request.url.path!r}: {exc}'
+    )
+    return JSONResponse(
+        status_code=503,
+        headers={'Retry-After': str(retry_after_seconds())},
+        content=ResponseFormatter().buildErrorResponse(
+            error='The server is busy. Please try again shortly.'
+        ),
+    )
+
+
+@app.exception_handler(PublicKeyUnavailableError)
+async def public_key_unavailable_handler(
+    request: Request, exc: PublicKeyUnavailableError
+):
+    """KMS is down while verifying a token: the token may be valid, so 503."""
+    logger.error(
+        f'Token key unavailable on {request.method} {request.url.path!r}: {exc}'
+    )
+    return JSONResponse(
+        status_code=503,
+        headers={'Retry-After': str(retry_after_seconds())},
+        content=ResponseFormatter().buildErrorResponse(
+            error='Authentication is temporarily unavailable. Please try again shortly.'
+        ),
+    )
 
 
 @app.exception_handler(Exception)

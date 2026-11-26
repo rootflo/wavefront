@@ -50,6 +50,8 @@ class AuthContainer(containers.DeclarativeContainer):
             _validation_issuers, config.jwt_token.validation_issuer
         ),
         token_prefix=config.jwt_token.console_token_prefix,
+        public_key_cache_seconds=config.jwt_token.public_key_cache_seconds,
+        public_key_refresh_min_seconds=config.jwt_token.public_key_refresh_min_seconds,
     )
 
     # Always registered. Singleton is lazy, so an empty Superset URL costs

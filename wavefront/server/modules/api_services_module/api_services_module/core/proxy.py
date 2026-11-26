@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 import yaml
 from fastapi import HTTPException
 from fastapi.responses import Response
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from ..models.pipeline import PipelineContext, PipelineException
 from ..models.service import ProxyResponse, ServiceDefinition, ApiConfig
@@ -225,6 +226,8 @@ class ApiProxy:
                 http_status_code=502,  # Bad Gateway for pipeline errors
             )
 
+        except BlockingPoolBusyError:
+            raise  # retryable overload: the app answers 503 with Retry-After
         except Exception as e:
             logger.error(f'Exception: {str(e)}', exc_info=True)
             context.add_trace('proxy', f'Unexpected error: {str(e)}')
@@ -276,6 +279,8 @@ class ApiProxy:
             # Invalidate cached pipelines
             self.pipeline_cache.invalidate_service(service_id)
 
+        except BlockingPoolBusyError:
+            raise  # overload: let the app handler answer 503
         except Exception as e:
             logger.error(f'Failed with error: {str(e)}', exc_info=True)
             raise HTTPException(
@@ -505,7 +510,7 @@ class ApiProxy:
             raise HTTPException(
                 status_code=404, detail=f'Service not found: {service_id}'
             )
-        stored_yaml = self.api_services_manager.fetch_service_def(service)
+        stored_yaml = await self.api_services_manager.fetch_service_def(service)
         service_yaml = await self._validate_secrets(
             service_yaml, stored_yaml=stored_yaml
         )
@@ -525,14 +530,15 @@ class ApiProxy:
         )
         try:
             await self.reload_service(service_id)
-        except HTTPException:
-            # Put the previous definition back, in storage and in memory
+        except (HTTPException, BlockingPoolBusyError):
+            # Put the previous definition back, in storage and in memory, then
+            # re-raise the original error (an overload stays a 503).
             await self.api_services_manager.update_api_service(
                 id=service_id, service_def_yaml=stored_yaml
             )
             try:
                 await self.reload_service(service_id)
-            except HTTPException:
+            except (HTTPException, BlockingPoolBusyError):
                 logger.error(f'Failed to restore service {service_id}')
             raise
         self.api_change_publisher.publish_message(

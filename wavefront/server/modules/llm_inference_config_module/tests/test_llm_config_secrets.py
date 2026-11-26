@@ -1,6 +1,7 @@
 """The api_key is stored and cached protected, revealed only for runtime use or
 to internal services, and never returned in public responses."""
 
+import contextlib
 import json
 import uuid
 from datetime import datetime
@@ -108,6 +109,35 @@ class FakeCache:
     def remove(self, key):
         self.store.pop(key, None)
 
+    async def try_aget_str(self, key, default=None):
+        return self.store.get(key, default)
+
+    async def try_aadd(self, key, value, expiry=None, nx=False):
+        self.add(key, value, expiry)
+        return True
+
+    async def try_aremove(self, key):
+        self.remove(key)
+        return True
+
+    async def read_through(self, key, loader, *, ttl):
+        if key in self.store:
+            return self.store[key]
+        value = await loader()
+        if value is not None:
+            self.store[key] = value
+        return value
+
+    @contextlib.asynccontextmanager
+    async def invalidating(self, *keys):
+        for key in keys:
+            self.remove(key)
+        try:
+            yield
+        finally:
+            for key in keys:
+                self.remove(key)
+
 
 def assert_no_secret(value):
     """Recursively assert a public response holds no key or ciphertext."""
@@ -197,6 +227,7 @@ async def test_create_stores_and_caches_the_protected_key(
     row = repository.rows[uuid.UUID(created['id'])]
     assert_stored_form(row.api_key, flag_on)
 
+    await service.get_public_config(row.id)  # the first read fills the cache
     cached = json.loads(cache.store[get_llm_inference_config_cache_key(row.id)])
     assert_stored_form(cached['api_key'], flag_on)
 

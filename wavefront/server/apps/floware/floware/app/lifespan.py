@@ -6,8 +6,10 @@ import asyncio
 from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
+from common_module.blocking_io import configure_blocking_io, shutdown_blocking_io
 from common_module.log.logger import logger
 from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
+from common_module.telemetry.loop_monitor import start_event_loop_monitor
 from datasource.executor import configure_limits, shutdown_pools
 from db_repo_module.database.connection import DatabaseClient
 from fastapi import FastAPI
@@ -23,13 +25,25 @@ from knowledge_base_module.services.kb_index_status_consumer import (
 async def lifespan(app: FastAPI):
     # Startup code (runs before the application starts)
     logger.info('Starting application...')
+    loop_monitor = None
 
     try:
         config = application_container.config()
+        # First, so blocking work during startup shows up too. The telemetry
+        # providers were set up when the DI container was built.
+        loop_monitor = start_event_loop_monitor(
+            config.get('event_loop_monitor'),
+            service=(config.get('telemetry') or {}).get('service_name') or 'floware',
+        )
         # Before anything can call a datasource: the pools are sized on first use.
         datasource_limits = configure_limits(config.get('datasource') or {})
         logger.info(f'Datasource limits: {datasource_limits}')
+        blocking_io_limits = configure_blocking_io(config.get('blocking_io'))
+        logger.info(f'Blocking I/O limits: {blocking_io_limits}')
         db = application_container.db
+        # The async Redis client belongs to this loop; a* calls from other loops
+        # (scheduled jobs) fall back to the sync client on a thread.
+        db.cache_manager().bind_event_loop()
         db_client: DatabaseClient = db.db_client()
 
         if isinstance(db_client, DatabaseClient):
@@ -157,6 +171,7 @@ async def lifespan(app: FastAPI):
         # Drop queued datasource calls so the worker is not held up running a
         # backlog nobody is waiting for any more.
         shutdown_pools()
+        shutdown_blocking_io()
         async_agentic_exec_consumer.stop()
         try:
             await asyncio.wait_for(
@@ -179,12 +194,22 @@ async def lifespan(app: FastAPI):
                 'KbIndexStatusConsumer did not stop within '
                 f'{consumer_shutdown_timeout_s}s; cancelled'
             )
+        await db.cache_manager().aclose()
         logger.info('Shutting down application...')
 
     except Exception as e:
         logger.error(f'Error during application lifecycle: {str(e)}')
         raise
     finally:
+        # All idempotent: they cover error exits that skipped the normal shutdown.
+        shutdown_pools()
+        shutdown_blocking_io()
+        try:
+            await application_container.db.cache_manager().aclose()
+        except Exception as exc:
+            logger.warning(f'Closing the async cache client failed: {exc}')
+        if loop_monitor is not None:
+            await loop_monitor.stop()
         # In a `finally` so buffered spans and metrics are still flushed when
         # shutdown takes an error path or startup fails before `yield`.
         shutdown_telemetry()

@@ -37,6 +37,7 @@ except ImportError:
 
 
 from flo_cloud.cloud_storage import CloudStorageManager
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -215,8 +216,11 @@ class AgentInferenceService:
             # Load YAML to get input_schema
             yaml_key = f'message_processors/v1/{processor.source}'
             try:
-                yaml_bytes = self.cloud_storage_manager.read_file(
-                    self.message_processor_bucket_name, yaml_key
+                yaml_bytes = await run_in_pool(
+                    Pool.STORAGE,
+                    self.cloud_storage_manager.read_file,
+                    self.message_processor_bucket_name,
+                    yaml_key,
                 )
                 yaml_content = yaml_bytes.decode('utf-8')
                 yaml_dict = yaml.safe_load(yaml_content)
@@ -259,12 +263,16 @@ class AgentInferenceService:
                 logger.info(f'Dynamically loaded message processor tool: {tool_name}')
                 return tool
 
+            except BlockingPoolBusyError:
+                raise  # overload: a 503, not a silently missing tool
             except Exception as e:
                 logger.warning(
                     f'Failed to load YAML for message processor {tool_name}: {str(e)}'
                 )
                 return None
 
+        except BlockingPoolBusyError:
+            raise
         except Exception as e:
             logger.debug(f'Message processor {tool_name} not found: {str(e)}')
             return None

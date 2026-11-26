@@ -3,6 +3,7 @@ import uuid
 from typing import List, Optional, Tuple
 from uuid import UUID
 
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
@@ -327,13 +328,17 @@ class VoiceAgentService:
         # Upload to cloud storage
         try:
             storage_key = generate_welcome_message_key(agent_id)
-            self.cloud_storage_manager.save_small_file(
+            await run_in_pool(
+                Pool.STORAGE,
+                self.cloud_storage_manager.save_small_file,
                 audio_bytes,
                 self.voice_agent_bucket,
                 storage_key,
                 content_type='audio/mpeg',
             )
             logger.info(f'Uploaded welcome message audio with key: {storage_key}')
+        except BlockingPoolBusyError:
+            raise  # overload: answer 503, don't swallow it
         except Exception as e:
             logger.error(f'Failed to upload audio to cloud storage: {str(e)}')
             raise Exception(f'Audio upload failed: {str(e)}')
@@ -805,7 +810,9 @@ class VoiceAgentService:
             storage_key = generate_welcome_message_key(agent_id)
 
             # Generate presigned URL with 2-hour expiration
-            presigned_url = self.cloud_storage_manager.generate_presigned_url(
+            presigned_url = await run_in_pool(
+                Pool.STORAGE,
+                self.cloud_storage_manager.generate_presigned_url,
                 bucket_name=self.voice_agent_bucket,
                 key=storage_key,
                 operation='get',
@@ -818,6 +825,8 @@ class VoiceAgentService:
             logger.info(f'Generated and cached presigned URL for agent {agent_id}')
             return presigned_url
 
+        except BlockingPoolBusyError:
+            raise  # overload: answer 503, don't swallow it
         except Exception as e:
             logger.error(
                 f'Failed to generate presigned URL for agent {agent_id}: {str(e)}'
