@@ -6,9 +6,26 @@ from typing import Optional, Dict, Any, Callable
 from functools import wraps
 from opentelemetry.trace import Status, StatusCode, Span
 from .telemetry import get_tracer, get_meter
+from flo_ai.models.chat_message import MediaMessageContent
 from flo_ai.utils.profiler import aprofile, record as _profile_record
 import time
 import asyncio
+
+
+def result_length(result: Any) -> int:
+    """Text length of a result's final message, for `*.result.length` attributes.
+
+    A history or workflow memory is measured by its last entry rather than
+    stringified whole, which would copy every attached file; media counts as 0.
+    """
+    if isinstance(result, list):
+        return result_length(result[-1]) if result else 0
+    result = getattr(result, 'result', result)  # MessageMemoryItem
+    content = getattr(result, 'content', result)  # BaseMessage
+    if isinstance(content, MediaMessageContent):
+        return 0
+    text = getattr(content, 'text', content)  # TextMessageContent
+    return len(text) if isinstance(text, str) else len(str(text))
 
 
 class LLMMetrics:
@@ -680,9 +697,7 @@ def trace_agent_execution(agent_name: str = ''):
                         )
 
                         span.set_status(Status(StatusCode.OK))
-                        span.set_attribute(
-                            'agent.result.length', len(str(result)) if result else 0
-                        )
+                        span.set_attribute('agent.result.length', result_length(result))
 
                         return result
 

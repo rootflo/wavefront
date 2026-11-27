@@ -84,6 +84,14 @@ MAX_DOCUMENT_BYTES = _env_int('DOCUMENT_MAX_BYTES', 50 * 1024 * 1024)
 MAX_UNCOMPRESSED_BYTES = _env_int('DOCUMENT_MAX_UNCOMPRESSED_BYTES', 400 * 1024 * 1024)
 MAX_COMPRESSION_RATIO = _env_int('DOCUMENT_MAX_COMPRESSION_RATIO', 200)
 
+#: Pages of a PDF rasterized for a provider without native PDF input. Each page
+#: becomes one image in the request, and every page is held until the last.
+MAX_PDF_PAGES = _env_int('DOCUMENT_MAX_PDF_PAGES', 50)
+
+#: Longest side of a rasterized page, in pixels. A PDF can declare any page
+#: size, so a few-kB file could otherwise demand a multi-GB pixmap.
+MAX_PDF_PAGE_SIDE = _env_int('DOCUMENT_MAX_PDF_PAGE_SIDE', 2048)
+
 
 class DocumentExtractionError(Exception):
     """Raised when a document cannot be converted to text.
@@ -91,6 +99,14 @@ class DocumentExtractionError(Exception):
     Callers at the API boundary turn this into a 400. The message is safe to
     return to the caller: it never contains document content.
     """
+
+    # The same file fails the same way, so an agent reports it rather than
+    # asking the model to analyse and retry.
+    retryable = False
+
+
+class DocumentTooLarge(DocumentExtractionError):
+    """Raised when a document exceeds a limit before any of it is processed."""
 
 
 _UTF16_BOMS = (b'\xff\xfe', b'\xfe\xff')

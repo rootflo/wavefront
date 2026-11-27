@@ -24,6 +24,7 @@ class RateLimitGate:
         self.sleep = sleep
         self.rand = rand
         self._cooldown_until = 0.0
+        self.last_used = clock()
 
     @property
     def cooldown_until(self) -> float:
@@ -33,14 +34,34 @@ class RateLimitGate:
         return max(0.0, self._cooldown_until - self.clock())
 
     def extend(self, delay: float) -> None:
+        self.last_used = self.clock()
         self._cooldown_until = max(self._cooldown_until, self.clock() + delay)
 
+    def idle_for(self) -> float:
+        return self.clock() - self.last_used
+
+
+# One gate per provider, model, endpoint and key: a long-lived process that
+# sees many keys would keep every gate forever. Only gates idle this long,
+# with no cooldown left, are dropped, so no call is holding one in practice.
+GATE_PRUNE_THRESHOLD = 256
+GATE_IDLE_SECONDS = 3600.0
 
 _gates: Dict[RateLimitScope, RateLimitGate] = {}
+
+
+def _prune_idle_gates() -> None:
+    for scope, gate in list(_gates.items()):
+        if gate.remaining() == 0 and gate.idle_for() > GATE_IDLE_SECONDS:
+            _gates.pop(scope, None)
 
 
 def get_gate(scope: RateLimitScope) -> RateLimitGate:
     gate = _gates.get(scope)
     if gate is None:
+        if len(_gates) >= GATE_PRUNE_THRESHOLD:
+            _prune_idle_gates()
         gate = _gates[scope] = RateLimitGate()
+    else:
+        gate.last_used = gate.clock()
     return gate

@@ -1,6 +1,6 @@
 from typing import List, Any, Dict, Optional, TYPE_CHECKING, Callable
 from flo_ai.utils.logger import logger
-from flo_ai.arium.memory import MessageMemory
+from flo_ai.agent.base_agent import BaseAgent
 from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.arium.protocols import ExecutableNode
 import asyncio
@@ -55,9 +55,31 @@ class AriumNode:
         return result
 
 
+def _reachable_agents(node: Any) -> List[BaseAgent]:
+    """Every agent a run of `node` can reach, through nested workflows too."""
+    if isinstance(node, BaseAgent):
+        return [node]
+    if isinstance(node, AriumNode):
+        children = list(node.arium.nodes.values())
+    elif isinstance(node, ForEachNode):
+        children = [node.execute_node]
+    else:
+        return []
+
+    # Keyed by id so an agent reachable by two paths is restored once.
+    agents: Dict[int, BaseAgent] = {}
+    for child in children:
+        for agent in _reachable_agents(child):
+            agents[id(agent)] = agent
+    return list(agents.values())
+
+
 class ForEachNode:
     """
     Execute a node on each item in a collection.
+
+    Items are independent: every item runs against the conversation history its
+    agents had before the loop, so no item sees another item or its replies.
 
     Supports only sequential execution for now. (parallel execution would be supported in future)
     """
@@ -102,10 +124,25 @@ class ForEachNode:
         # Only ExecutableNode types have a run method
         if not isinstance(self.execute_node, ExecutableNode):
             raise TypeError(f'Node {self.execute_node.name} does not support execution')
-        result = await self.execute_node.run(
-            inputs=[item],
-            variables=item_variables,
-        )
+
+        # Restored even on failure; shared agents make this sequential-only.
+        histories = [
+            (agent, list(agent.conversation_history))
+            for agent in _reachable_agents(self.execute_node)
+        ]
+        try:
+            result = await self.execute_node.run(
+                inputs=[item],
+                variables=item_variables,
+            )
+        finally:
+            for agent, history in histories:
+                agent.conversation_history = history
+            # The item is done; its rendered pages would otherwise be held,
+            # with every other item's, until the workflow returns.
+            cache = getattr(getattr(item, 'content', None), '_formatted_cache', None)
+            if isinstance(cache, dict):
+                cache.clear()
 
         # Return last item if result is a list, otherwise return as-is
         if isinstance(result, list) and result:
@@ -126,57 +163,6 @@ class ForEachNode:
         logger.info(f"ForEach '{self.name}': Completed processing {len(results)} items")
 
         return results
-
-    async def _execute_item_with_isolated_memory(
-        self,
-        item: Any,
-        index: int,
-        variables: Optional[Dict[str, Any]] = None,
-    ) -> Any:
-        """
-        Execute the node on a single item with isolated memory.
-        This prevents memory accumulation across iterations.
-        """
-        logger.info(
-            f"ForEach '{self.name}': Processing item {index + 1} with isolated memory"
-        )
-
-        # Create execution variables with item context
-        item_variables = (variables or {}).copy()
-
-        # If the execute_node is an AriumNode, we can create a new memory instance
-        if isinstance(self.execute_node, AriumNode):
-            # Create a new memory instance for this iteration
-            original_memory = self.execute_node.arium.memory
-            self.execute_node.arium.memory = MessageMemory()
-
-            try:
-                # Execute the node with isolated memory
-                result = await self.execute_node.run(
-                    inputs=[item],
-                    variables=item_variables,
-                )
-            finally:
-                # Restore original memory
-                self.execute_node.arium.memory = original_memory
-        else:
-            # For non-Arium nodes, execute normally
-            # Only ExecutableNode types have a run method
-            if isinstance(self.execute_node, ExecutableNode):
-                result = await self.execute_node.run(
-                    inputs=[item],
-                    variables=item_variables,
-                )
-            else:
-                # StartNode/EndNode don't have run methods
-                raise TypeError(
-                    f'Node {self.execute_node.name} does not support execution'
-                )
-
-        # Return last item if result is a list, otherwise return as-is
-        if isinstance(result, list) and result:
-            return result[-1]
-        return result
 
 
 class FunctionNode:

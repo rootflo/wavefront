@@ -1,3 +1,7 @@
+# Field names like `bytes` shadow the builtin; unevaluated annotations keep
+# `Optional[bytes]` from resolving to that field on Python 3.10.
+from __future__ import annotations
+
 from typing import Literal, Optional, Dict, Any
 from dataclasses import dataclass, field
 
@@ -13,7 +17,7 @@ class MessageType:
 class MediaMessageContent:
     type: Optional[Literal['text', 'image', 'document', 'video']] = None
     url: Optional[str] = None
-    base64: Optional[str] = None
+    base64: Optional[str] = field(default=None, repr=False)
     mime_type: Optional[str] = None
     # Original name of the uploaded file, carried through for traceability.
     # Not sent to the LLM — provider payloads ignore it.
@@ -23,9 +27,10 @@ class MediaMessageContent:
 @dataclass
 class ImageMessageContent(MediaMessageContent):
     url: Optional[str] = None
-    base64: Optional[str] = None
+    # Kept out of repr: messages end up in logs, prompts and span attributes.
+    base64: Optional[str] = field(default=None, repr=False)
     mime_type: Optional[str] = None
-    bytes: Optional[bytes] = None
+    bytes: Optional[bytes] = field(default=None, repr=False)
 
     def __post_init__(self):
         self.type = 'image'
@@ -35,8 +40,9 @@ class ImageMessageContent(MediaMessageContent):
 @dataclass
 class DocumentMessageContent(MediaMessageContent):
     url: Optional[str] = None
-    base64: Optional[str] = None
-    bytes: Optional[bytes] = None
+    # Kept out of repr: messages end up in logs, prompts and span attributes.
+    base64: Optional[str] = field(default=None, repr=False)
+    bytes: Optional[bytes] = field(default=None, repr=False)
     mime_type: Optional[str] = None
 
     def __post_init__(self):

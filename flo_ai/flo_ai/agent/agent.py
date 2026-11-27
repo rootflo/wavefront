@@ -1,4 +1,6 @@
 import json
+import logging
+from collections import Counter
 from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM
@@ -27,8 +29,32 @@ from flo_ai.utils.variable_extractor import (
 from flo_ai.telemetry.instrumentation import (
     trace_agent_execution,
     agent_metrics,
+    result_length,
 )
 from flo_ai.telemetry import get_tracer
+
+
+def _describe_request(messages: List[Any]) -> str:
+    """Roles and content kinds of a provider request; never the content itself,
+    which holds every attached image and rendered page as base64."""
+    parts = []
+    for message in messages:
+        if not isinstance(message, dict):
+            parts.append(type(message).__name__)
+            continue
+        content = message.get('content')
+        if isinstance(content, str):
+            kind = f'text[{len(content)} chars]'
+        elif isinstance(content, list):
+            counts = Counter(
+                block.get('type', '?') if isinstance(block, dict) else 'object'
+                for block in content
+            )
+            kind = ', '.join(f'{t} x{n}' if n > 1 else t for t, n in counts.items())
+        else:
+            kind = type(content).__name__
+        parts.append(f"{message.get('role')}({kind})")
+    return '; '.join(parts)
 
 
 class Agent(BaseAgent):
@@ -207,14 +233,19 @@ class Agent(BaseAgent):
             try:
                 messages = await self._get_message_history(variables)
 
-                logger.debug(f'Sending messages to LLM: {messages}')
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        'Sending %d messages to LLM: %s',
+                        len(messages),
+                        _describe_request(messages),
+                    )
                 response = await self.llm.generate(
                     messages, output_schema=self.output_schema
                 )
-                logger.debug(f'Raw LLM Response: {response}')
+                logger.debug('Raw LLM Response: %s', response)
 
                 assistant_message = self.llm.get_message_content(response)
-                logger.debug(f'Extracted message: {assistant_message}')
+                logger.debug('Extracted message: %s', assistant_message)
 
                 # Ensure act_as is not None (default to 'assistant' if missing)
                 role = self.act_as if self.act_as is not None else MessageType.ASSISTANT
@@ -387,7 +418,7 @@ class Agent(BaseAgent):
                                     )
                                     tool_span.set_attribute(
                                         'tool.result.length',
-                                        len(str(function_response)),
+                                        result_length(function_response),
                                     )
                             else:
                                 function_response = await tool.run(

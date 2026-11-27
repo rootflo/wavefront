@@ -1,6 +1,35 @@
+import logging
 from typing import Dict, Any, Callable, List, Optional
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
+
+# Characters of a tool result shown in its log line.
+TOOL_RESULT_PREVIEW_CHARS = 200
+
+
+def describe_tool_result(result: Any) -> str:
+    """A tool result's type and size, never its content."""
+    if isinstance(result, str):
+        return f'str[{len(result)} chars]'
+    if isinstance(result, (list, tuple, dict, set)):
+        return f'{type(result).__name__}[{len(result)} items]'
+    mime_type = getattr(result, 'mime_type', None)
+    name = type(result).__name__
+    return f'{name}({mime_type})' if mime_type else name
+
+
+def log_tool_result(label: str, result: Any) -> None:
+    """Results can be whole query results, pages or files, so only their type,
+    size and first characters are logged."""
+    if logger.isEnabledFor(logging.INFO):
+        preview = result if isinstance(result, str) else str(result)
+        logger.info(
+            '%s returned %s: %s',
+            label,
+            describe_tool_result(result),
+            preview[:TOOL_RESULT_PREVIEW_CHARS],
+            stacklevel=2,
+        )
 
 
 class ToolExecutionError(AgentError):
@@ -43,7 +72,7 @@ class Tool:
         try:
             logger.info(f'Executing tool {self.name} with kwargs: {kwargs}')
             tool_result = await self.function(**kwargs)
-            logger.info(f'Tool {self.name} returned: {tool_result}')
+            log_tool_result(f'Tool {self.name}', tool_result)
             return tool_result
         except ToolCallFailed as e:
             logger.warning(f'Tool {self.name} failed: {e}')
