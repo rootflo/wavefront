@@ -1,16 +1,101 @@
 """HTTP exception handlers for the floware FastAPI app."""
 
+import math
+
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from common_module.telemetry import record_exception_on_span
 from authz_module import AccessDenied
+from datasource.executor import DatasourceBusyError, limits
+from db_repo_module.cache.cache_manager import CacheUnavailableError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from flo_ai.llm.guarded_llm import GuardrailBlocked
 
 
 def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
+    @app.exception_handler(DatasourceBusyError)
+    async def datasource_busy_handler(request: Request, exc: DatasourceBusyError):
+        """Every datasource thread on this worker is busy: overload, not a bug.
+
+        503 with Retry-After so clients back off and retry, and a warning rather
+        than a traceback, since the cause is a slow datasource, not this code.
+        """
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'Datasource busy on {request.method} {request.url.path!r} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            # Whole seconds, as HTTP requires; rounded up so 2.5 s waits 3.
+            headers={
+                'Retry-After': str(max(1, math.ceil(limits().queue_wait_seconds)))
+            },
+            content=ResponseFormatter().buildErrorResponse(
+                error='The datasource is busy. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(BlockingPoolBusyError)
+    async def blocking_pool_busy_handler(request: Request, exc: BlockingPoolBusyError):
+        """A blocking-I/O pool (KMS, storage, CPU) is full: overload, not a bug.
+
+        Same shape as the datasource handler above: 503 with Retry-After and a
+        warning, no traceback.
+        """
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'{exc.pool} pool busy on {request.method} {request.url.path!r} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': str(retry_after_seconds())},
+            content=ResponseFormatter().buildErrorResponse(
+                error='The server is busy. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(CacheUnavailableError)
+    async def cache_unavailable_handler(request: Request, exc: CacheUnavailableError):
+        """Redis is down on a path that must not skip it (logout, revoking old
+        sessions at login). The failure is fast and temporary, so a 503."""
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'Cache unavailable on {request.method} {request.url.path!r} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': '5'},
+            content=ResponseFormatter().buildErrorResponse(
+                error='The service is temporarily unavailable. Please try again shortly.'
+            ),
+        )
+
+    @app.exception_handler(PublicKeyUnavailableError)
+    async def public_key_unavailable_handler(
+        request: Request, exc: PublicKeyUnavailableError
+    ):
+        """KMS is down while verifying a token outside the auth middleware (for
+        example a password-reset link). The token may be valid: 503, not 401."""
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.error(
+            f'Token key unavailable on {request.method} {request.url.path} '
+            f'[Request ID: {request_id}]: {exc}'
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={'Retry-After': str(retry_after_seconds())},
+            content=ResponseFormatter().buildErrorResponse(
+                error='Authentication is temporarily unavailable. Please try again shortly.'
+            ),
+        )
+
     @app.exception_handler(GuardrailBlocked)
     async def guardrail_blocked_handler(request: Request, exc: GuardrailBlocked):
         """Turn a policy block into a plain error response.
@@ -40,7 +125,7 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
             else logger.warning
         )
         emit(
-            f'Guardrail blocked {request.method} {request.url.path} '
+            f'Guardrail blocked {request.method} {request.url.path!r} '
             f'[Request ID: {request_id}]: {detail}'
         )
 

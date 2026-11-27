@@ -32,6 +32,7 @@ const getAuthenticatorsKey = (appId: string) => ['authenticators', appId];
 const getAuthenticatorKey = (appId: string, authId: string) => ['authenticator', appId, authId];
 const getOAuthAppsKey = (appId: string) => ['oauth-apps', appId];
 const getOAuthAppKey = (appId: string, oauthAppId: string) => ['oauth-app', appId, oauthAppId];
+const getSecretsKey = (appId: string) => ['secrets', appId];
 const getEmailConnectionsKey = (appId: string) => ['email-connections', appId];
 const getEmailConnectionKey = (appId: string, connectionId: string) => ['email-connection', appId, connectionId];
 const getLLMConfigsKey = (appId: string) => ['llm-configs', appId];
@@ -104,6 +105,7 @@ export {
   getEmailConnectionsKey,
   getOAuthAppKey,
   getOAuthAppsKey,
+  getSecretsKey,
   readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseIndexStatusKey,

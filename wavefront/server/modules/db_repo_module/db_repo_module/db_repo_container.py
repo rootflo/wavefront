@@ -6,6 +6,7 @@ from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
+from db_repo_module.models.secret import Secret
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
@@ -99,6 +100,12 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
+    secret_repository = providers.Singleton(
+        SQLAlchemyRepository[Secret],
+        model=Secret,
+        db_client=db_client,
+    )
+
     user_repository = providers.Singleton(
         SQLAlchemyRepository[User], model=User, db_client=db_client
     )
@@ -140,6 +147,13 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db=config.redis.db,
         pool_size=config.redis.pool_size,
         pool_timeout=config.redis.pool_timeout,
+        socket_timeout=config.redis.socket_timeout,
+        connection_timeout=config.redis.connection_timeout,
+        max_retries=config.redis.max_retries,
+        initial_backoff=config.redis.initial_backoff,
+        max_backoff=config.redis.max_backoff,
+        async_pool_size=config.redis.async_pool_size,
+        async_command_timeout=config.redis.async_command_timeout,
     )
 
     cache_manager = providers.Singleton(

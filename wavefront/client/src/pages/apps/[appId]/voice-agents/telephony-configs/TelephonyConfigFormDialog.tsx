@@ -27,6 +27,7 @@ import {
   SipTransport,
   TelephonyConfig,
   TelephonyCredentials,
+  TelephonyCredentialsUpdate,
   TelephonyProvider,
   UpdateTelephonyConfigRequest,
 } from '@app/types/telephony-config';
@@ -59,7 +60,7 @@ type TelephonyConfigInput = z.infer<typeof telephonyConfigSchema>;
 
 const DEFAULT_PROVIDER: TelephonyProvider = 'twilio';
 
-/** Credentials are never returned by the API, so their fields always start empty. */
+/** Secret credentials are never returned by the API (only masked), so the credential fields always start empty. */
 const toFormValues = (config?: TelephonyConfig): TelephonyConfigInput => ({
   display_name: config?.display_name ?? '',
   description: config?.description || '',
@@ -103,49 +104,37 @@ const buildNewCredentials = (
 };
 
 /**
- * Credentials for an update. Fields left empty keep the stored values; switching provider needs a full new
- * set. Returns undefined to leave credentials untouched, or an error message.
+ * Credentials for an update. With the provider unchanged, only the fields the user filled in are sent and the
+ * server keeps the stored values of the rest. Switching provider needs a full new set. Returns undefined to leave
+ * credentials untouched, or an error message.
  */
 const buildUpdatedCredentials = (
   config: TelephonyConfig,
   provider: TelephonyProvider,
   data: TelephonyConfigInput
-): TelephonyCredentials | undefined | string => {
-  const providerChanged = provider !== config.provider;
-  const base = (providerChanged ? {} : config.credentials) as Record<string, string | undefined>;
+): TelephonyCredentialsUpdate | undefined | string => {
+  if (provider !== config.provider) {
+    const credentials = buildNewCredentials(provider, data);
+    return typeof credentials === 'string' ? `${credentials} when switching provider` : credentials;
+  }
 
+  const filled: TelephonyCredentialsUpdate = {};
+  const set = (key: keyof TelephonyCredentialsUpdate, value?: string) => {
+    const trimmed = value?.trim();
+    if (trimmed) filled[key] = trimmed;
+  };
   if (provider === 'twilio') {
-    const nextAccountSid = data.account_sid?.trim();
-    const nextAuthToken = data.auth_token?.trim();
-    if (providerChanged && (!nextAccountSid || !nextAuthToken)) {
-      return 'Twilio Account SID and Auth Token are required when switching provider';
-    }
-    if (!providerChanged && !nextAccountSid && !nextAuthToken) return undefined;
-    return {
-      account_sid: nextAccountSid || base.account_sid || '',
-      auth_token: nextAuthToken || base.auth_token || '',
-    };
+    set('account_sid', data.account_sid);
+    set('auth_token', data.auth_token);
+  } else if (provider === 'exotel') {
+    set('api_key', data.api_key);
+    set('api_token', data.api_token);
+    set('account_sid', data.exotel_account_sid);
+    set('subdomain', data.subdomain);
+  } else {
+    set('api_key', data.api_key);
   }
-  if (provider === 'exotel') {
-    const nextApiKey = data.api_key?.trim();
-    const nextApiToken = data.api_token?.trim();
-    const nextAccountSid = data.exotel_account_sid?.trim();
-    const nextSubdomain = data.subdomain?.trim();
-    if (providerChanged && (!nextApiKey || !nextApiToken || !nextAccountSid || !nextSubdomain)) {
-      return 'All Exotel credentials are required when switching provider';
-    }
-    if (!providerChanged && !nextApiKey && !nextApiToken && !nextAccountSid && !nextSubdomain) return undefined;
-    return {
-      api_key: nextApiKey || base.api_key || '',
-      api_token: nextApiToken || base.api_token || '',
-      account_sid: nextAccountSid || base.account_sid || '',
-      subdomain: nextSubdomain || base.subdomain || '',
-    };
-  }
-  const nextApiKey = data.api_key?.trim();
-  if (providerChanged && !nextApiKey) return 'API Key is required when switching to Smartflo';
-  if (!providerChanged && !nextApiKey) return undefined;
-  return { api_key: nextApiKey || base.api_key || '' };
+  return Object.keys(filled).length ? filled : undefined;
 };
 
 interface TelephonyConfigFormDialogProps {
@@ -399,7 +388,13 @@ const TelephonyConfigFormDialog: React.FC<TelephonyConfigFormDialogProps> = ({ i
                         )}
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                        <Input
+                          placeholder={
+                            (!credentialsRequired && config?.credentials.account_sid) ||
+                            'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+                          }
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -451,6 +446,7 @@ const TelephonyConfigFormDialog: React.FC<TelephonyConfigFormDialogProps> = ({ i
                         </FormLabel>
                         <FormControl>
                           <Input
+                            type="password"
                             placeholder={credentialsRequired ? 'Enter your API key' : 'Enter new API key to update'}
                             {...field}
                           />
@@ -503,7 +499,9 @@ const TelephonyConfigFormDialog: React.FC<TelephonyConfigFormDialogProps> = ({ i
                         <FormControl>
                           <Input
                             placeholder={
-                              credentialsRequired ? 'Enter your account SID' : 'Enter new account SID to update'
+                              credentialsRequired
+                                ? 'Enter your account SID'
+                                : config?.credentials.account_sid || 'Enter new account SID to update'
                             }
                             {...field}
                           />
@@ -527,7 +525,13 @@ const TelephonyConfigFormDialog: React.FC<TelephonyConfigFormDialogProps> = ({ i
                           )}
                         </FormLabel>
                         <FormControl>
-                          <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
+                          <Input
+                            placeholder={
+                              (!credentialsRequired && config?.credentials.subdomain) ||
+                              'ccm-api.exotel.com or ccm-api.in.exotel.com'
+                            }
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

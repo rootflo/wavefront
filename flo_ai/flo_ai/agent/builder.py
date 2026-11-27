@@ -26,6 +26,7 @@ class AgentBuilder:
         self._owns_llm = False
         self._temperature: Optional[float] = None
         self._generation_params: Dict[str, Any] = {}
+        self._rate_limit_max_wait: Optional[float] = None
         self._tools: List[Tool] = []
         self._max_retries = 3
         self._reasoning_pattern = ReasoningPattern.DIRECT
@@ -190,6 +191,15 @@ class AgentBuilder:
         self._max_retries = max_retries
         return self
 
+    def with_rate_limit_wait(self, seconds: float) -> 'AgentBuilder':
+        """Set how long one LLM call may stall on rate limits before failing.
+
+        0 never retries a rate limit, and fails at once while another call on
+        the same provider key is cooling down.
+        """
+        self._rate_limit_max_wait = seconds
+        return self
+
     def with_output_schema(
         self, schema: Union[Dict[str, Any], Type[BaseModel]]
     ) -> 'AgentBuilder':
@@ -222,7 +232,11 @@ class AgentBuilder:
         # Applied here so the values reach whichever LLM the agent ends up
         # with, whatever order the builder was configured in.
         llm = self._llm
-        if self._temperature is not None or self._generation_params:
+        if (
+            self._temperature is not None
+            or self._generation_params
+            or self._rate_limit_max_wait is not None
+        ):
             if not self._owns_llm:
                 # On a copy: a base_llm shared between agents would otherwise
                 # give every one of them the last settings written to it,
@@ -233,6 +247,8 @@ class AgentBuilder:
                 llm.temperature = self._temperature
             if self._generation_params:
                 llm.apply_generation_params(self._generation_params)
+            if self._rate_limit_max_wait is not None:
+                llm.rate_limit_max_wait = self._rate_limit_max_wait
 
         # Decorated last, so the wrapper sees the LLM at its final temperature and
         # generation params rather than ones still to be mutated through it. A

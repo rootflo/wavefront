@@ -1,5 +1,6 @@
 import asyncio
 import base64 as _base64
+import hashlib
 import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -15,6 +16,7 @@ from typing import (
     Tuple,
 )
 from flo_ai.helpers.generation_params import merge_generation_params
+from flo_ai.llm.rate_limits import RateLimitScope
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
@@ -172,6 +174,17 @@ class BaseLLM(ABC):
     # translating canonical generation params; see llm.generation_params.
     provider_name: str = ''
 
+    # How long one call may stall on rate limits, and how many times it may
+    # retry one; see llm.rate_limits. None falls back to the FLO_AI_RATE_LIMIT_*
+    # env vars, then the defaults. Set as attributes, never kwargs, which would
+    # be sent to the provider.
+    rate_limit_max_wait: Optional[float] = None
+    rate_limit_retries: Optional[int] = None
+
+    # Replaces the gate key rate_limit_scope() derives; RootFloLLM pins its
+    # wrapped LLM's to the config it resolved from.
+    _rate_limit_scope: Optional[RateLimitScope] = None
+
     def __init__(
         self,
         model: str,
@@ -184,6 +197,27 @@ class BaseLLM(ABC):
         self.temperature = temperature
         self.kwargs = kwargs
         self._supports_retract = False
+
+    def rate_limit_scope(self) -> RateLimitScope:
+        """Key of the rate-limit gate this LLM's calls share."""
+        if self._rate_limit_scope:
+            return self._rate_limit_scope
+        key = str(self.api_key or '')
+        digest = hashlib.sha256(key.encode()).hexdigest()[:12] if key else ''
+        return RateLimitScope(
+            provider=type(self).__name__,
+            model=self.model or '',
+            base_url=self._rate_limit_base_url(),
+            account=digest,
+        )
+
+    def _rate_limit_base_url(self) -> str:
+        # SDK clients that take a base_url expose it; a proxy and the direct
+        # API must not share a gate.
+        base_url = getattr(self, 'base_url', None) or getattr(
+            getattr(self, 'client', None), 'base_url', None
+        )
+        return str(base_url or '')
 
     def __copy__(self) -> 'BaseLLM':
         """A copy whose per-agent settings are independent of this instance's.

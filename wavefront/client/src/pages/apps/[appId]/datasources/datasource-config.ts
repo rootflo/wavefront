@@ -20,6 +20,9 @@ export interface ConfigField {
   wide?: boolean;
 }
 
+/** What the server returns in place of a saved secret. Sent back unchanged, it keeps that secret. */
+export const SECRET_MASK = '********';
+
 /** Values as the form holds them: text for text-like fields, true/false for switches. */
 export type ConfigValues = Record<string, string | boolean>;
 
@@ -186,6 +189,10 @@ export const valuesToConfig = (
       return;
     }
     if (field.kind === 'json') {
+      if (text === SECRET_MASK) {
+        config[field.key] = text;
+        return;
+      }
       try {
         const parsed = JSON.parse(text);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();

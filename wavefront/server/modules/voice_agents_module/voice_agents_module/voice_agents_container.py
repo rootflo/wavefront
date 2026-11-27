@@ -18,6 +18,7 @@ from voice_agents_module.services.smartflo_service import SmartfloService
 from voice_agents_module.services.tts_generator_service import TTSGeneratorService
 from voice_agents_module.services.tool_service import ToolService
 from voice_agents_module.services.webrtc_room_client import WebRTCRoomClient
+from voice_agents_module.services.call_prepare_client import CallPrepareClient
 from common_module.config_loader import is_truthy
 
 
@@ -29,6 +30,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     cache_manager = providers.Dependency()
     cloud_storage_manager = providers.Dependency()
     call_processing_cache_invalidator = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     # Repositories
     telephony_config_repository = providers.Singleton(
@@ -79,6 +81,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         telephony_config_repository=telephony_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     tts_config_service = providers.Singleton(
@@ -86,6 +89,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         tts_config_repository=tts_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     stt_config_service = providers.Singleton(
@@ -93,6 +97,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         stt_config_repository=stt_config_repository,
         cache_manager=cache_manager,
         cache_invalidator=call_processing_cache_invalidator,
+        secret_cipher=secret_cipher,
     )
 
     tts_generator_service = providers.Singleton(
@@ -127,6 +132,13 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     smartflo_service = providers.Singleton(
         SmartfloService,
         call_processing_base_url=config.voice_agents.call_processing_base_url,
+    )
+
+    # Outbound calls: hands the ringing call's context to call_processing
+    call_prepare_client = providers.Singleton(
+        CallPrepareClient,
+        call_processing_base_url=config.voice_agents.call_processing_base_url,
+        passthrough_secret=config.env_config.passthrough_secret,
     )
 
     webrtc_room_client = providers.Singleton(

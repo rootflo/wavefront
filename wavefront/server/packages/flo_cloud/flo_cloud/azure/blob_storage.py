@@ -15,6 +15,7 @@ from azure.storage.blob import (
 )
 
 from .._types import CloudStorageHandler, FolderListing, StorageObject
+from .._url import normalize_asset_url, rebase_url
 from ..exceptions import CloudStorageFileNotFoundError
 
 
@@ -27,6 +28,7 @@ class AzureBlobStorage(CloudStorageHandler):
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         tenant_id: Optional[str] = None,
+        asset_url: Optional[str] = None,
     ):
         """
         Initialize Azure Blob Storage client.
@@ -49,11 +51,15 @@ class AzureBlobStorage(CloudStorageHandler):
             client_id: Azure AD application (client) ID.
             client_secret: Azure AD application client secret.
             tenant_id: Azure AD tenant (directory) ID.
+            asset_url: Base URL for SAS URLs (custom domain in front of the
+                        account); the proxy must strip any path prefix. SAS
+                        signatures don't cover the host.
         """
         if not account_url:
             raise ValueError('account_url must be provided')
-        self._account_url = account_url
+        self._account_url = account_url.rstrip('/')
         self._account_name = self._parse_account_name(account_url)
+        self._asset_url = normalize_asset_url(asset_url)
 
         creds_provided = [client_id, client_secret, tenant_id]
         if all(creds_provided):
@@ -271,7 +277,7 @@ class AzureBlobStorage(CloudStorageHandler):
 
             encoded_key = quote(key, safe='/')
             blob_url = f'{self._account_url}/{bucket_name}/{encoded_key}?{sas_token}'
-            return blob_url
+            return rebase_url(blob_url, self._asset_url)
         except Exception as e:
             raise Exception(
                 f'Error generating SAS URL for Azure Blob Storage: {str(e)}'

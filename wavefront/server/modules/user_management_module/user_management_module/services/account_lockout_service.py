@@ -31,10 +31,13 @@ class AccountLockoutService:
             int(lockout_duration_hours) if lockout_duration_hours else 24
         )
 
-    def _cache_user(self, user: User, expiry: int = USER_CACHE_TTL_SECONDS) -> None:
+    async def _cache_user(
+        self, user: User, expiry: int = USER_CACHE_TTL_SECONDS
+    ) -> None:
         """Write the user onto the same key GET /users/{id} reads, so lockout
-        fields never go stale behind that endpoint's hour-long cache."""
-        self.cache_manager.add(
+        fields never go stale behind that endpoint's hour-long cache. A Redis
+        failure is logged; the entry then expires on its TTL."""
+        await self.cache_manager.try_aadd(
             user_by_id_cache_key(str(user.id)),
             json.dumps(user.to_dict()),
             expiry=expiry,
@@ -67,7 +70,7 @@ class AccountLockoutService:
             last_failed_attempt=None,
         )
         if updated:
-            self._cache_user(updated)
+            await self._cache_user(updated)
 
     async def check_account_lockout(
         self, user: User
@@ -130,7 +133,7 @@ class AccountLockoutService:
             await session.commit()
             await session.refresh(db_user)
 
-            self._cache_user(
+            await self._cache_user(
                 db_user,
                 expiry=self.get_lockout_time_remaining(db_user.locked_until)
                 or USER_CACHE_TTL_SECONDS,
@@ -170,7 +173,7 @@ class AccountLockoutService:
             # to_dict() below reads columns the commit expired.
             await session.refresh(db_user)
 
-            self._cache_user(
+            await self._cache_user(
                 db_user,
                 expiry=self.get_lockout_time_remaining(db_user.locked_until)
                 or USER_CACHE_TTL_SECONDS,

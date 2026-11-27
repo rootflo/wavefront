@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Database,
   KeyRound,
+  LockKeyhole,
   Mail,
   MessageSquareText,
   Plug,
@@ -89,7 +90,7 @@ const navItems: NavItem[] = [
     name: 'Scheduled Jobs',
     icon: CalendarClock,
     link: `/apps/:appId/scheduled-jobs`,
-    description: 'Schedule dynamic query reports to be emailed automatically',
+    description: 'Run dynamic queries on a schedule, optionally emailing the results',
   },
   {
     id: 'functions',
@@ -144,6 +145,14 @@ if (appEnv.isApiServicesEnabled) {
     link: `/apps/:appId/api-services`,
     description: 'Manage API Connectors',
   });
+  // Only API services reference secrets so far.
+  finalNavItems.push({
+    id: 'secrets',
+    name: 'Secrets',
+    icon: LockKeyhole,
+    link: `/apps/:appId/secrets`,
+    description: 'Credentials API services reference by name',
+  });
 }
 finalNavItems.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
@@ -151,7 +160,7 @@ finalNavItems.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivi
 const NAV_GROUPS: { title: string; ids: string[] }[] = [
   { title: 'Build', ids: ['agents', 'workflows', 'voice-agents', 'chatbots', 'functions'] },
   { title: 'Data', ids: ['datasources', 'knowledge-bases', 'configurations', 'api-services'] },
-  { title: 'Connect', ids: ['model-hub', 'email-connections', 'oauth-apps', 'authenticators'] },
+  { title: 'Connect', ids: ['model-hub', 'email-connections', 'oauth-apps', 'authenticators', 'secrets'] },
   { title: 'AI Governance', ids: ['guardrails'] },
   { title: 'Others', ids: ['scheduled-jobs'] },
 ];

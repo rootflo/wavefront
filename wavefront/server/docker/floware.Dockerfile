@@ -1,7 +1,7 @@
 # Wolfi (Chainguard's glibc-based distro) instead of Debian slim: its packages
 # carry no unpatched CVEs, whereas Debian ships glibc/zlib/libxml2/util-linux
 # issues it marks no-fix. Pinned by digest; bump with `docker pull` + rescan.
-FROM cgr.dev/chainguard/wolfi-base@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
+FROM cgr.dev/chainguard/wolfi-base@sha256:be019c1c74fe69204a42c4e10bc4d886a49bf5403ffa74374ef7baa408fc9a26
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ COPY wavefront/server/modules/auth_module /app/modules/auth_module
 COPY wavefront/server/modules/authz_module /app/modules/authz_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
-COPY wavefront/server/modules/gold_module /app/modules/gold_module
+COPY wavefront/server/modules/deprecated_api_module /app/modules/deprecated_api_module
 COPY wavefront/server/modules/guardrails_module /app/modules/guardrails_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module

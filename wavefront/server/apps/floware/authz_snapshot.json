@@ -151,7 +151,7 @@
         "admin": 200,
         "anonymous": 401,
         "console_user": 403,
-        "manager": 403,
+        "manager": 200,
         "user": 403,
         "user_with_flags": 403
       }
@@ -284,6 +284,19 @@
         "manager": 401,
         "user": 401,
         "user_with_flags": 401
+      }
+    },
+    "DELETE /floware/v1/secrets/{secret_id}": {
+      "resolves_to": [
+        "secrets:DeleteSecret"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
       }
     },
     "DELETE /floware/v1/stt-configs/{config_id}": {
@@ -1170,13 +1183,39 @@
         "user_with_flags": 401
       }
     },
-    "GET /floware/v1/settings/config": {
+    "GET /floware/v1/secrets": {
       "resolves_to": [
-        "public"
+        "secrets:ListSecrets"
       ],
       "status": {
         "admin": 200,
-        "anonymous": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/secrets/{secret_id}": {
+      "resolves_to": [
+        "secrets:GetSecret"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floware/v1/settings/config": {
+      "resolves_to": [
+        "settings:GetAppConfig"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
         "console_user": 200,
         "manager": 200,
         "user": 200,
@@ -1659,7 +1698,7 @@
         "admin": 200,
         "anonymous": 401,
         "console_user": 403,
-        "manager": 403,
+        "manager": 200,
         "user": 403,
         "user_with_flags": 403
       }
@@ -1672,7 +1711,7 @@
         "admin": 200,
         "anonymous": 401,
         "console_user": 403,
-        "manager": 403,
+        "manager": 200,
         "user": 403,
         "user_with_flags": 403
       }
@@ -1911,6 +1950,19 @@
         "user_with_flags": 403
       }
     },
+    "POST /floware/v1/agentic-executions/{execution_id}/retry": {
+      "resolves_to": [
+        "agents:RetryExecution"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
     "POST /floware/v1/agents/{namespace}/{agent_id}/inference": {
       "resolves_to": [
         "agents:InvokeAgent"
@@ -1938,6 +1990,19 @@
       }
     },
     "POST /floware/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}": {
+      "resolves_to": [
+        "api_services:InvokeApi"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floware/v1/api-services/{service_id}/execute": {
       "resolves_to": [
         "api_services:InvokeApi"
       ],
@@ -2301,19 +2366,6 @@
         "user_with_flags": 200
       }
     },
-    "POST /floware/v1/image/historical_images": {
-      "resolves_to": [
-        "images:UploadHistoricalImages"
-      ],
-      "status": {
-        "admin": 200,
-        "anonymous": 401,
-        "console_user": 200,
-        "manager": 200,
-        "user": 200,
-        "user_with_flags": 200
-      }
-    },
     "POST /floware/v1/knowledge-base/{kb_id}/retrieve": {
       "resolves_to": [
         "knowledge_bases:Query"
@@ -2533,6 +2585,19 @@
         "manager": 401,
         "user": 401,
         "user_with_flags": 401
+      }
+    },
+    "POST /floware/v1/secrets": {
+      "resolves_to": [
+        "secrets:CreateSecret"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
       }
     },
     "POST /floware/v1/store_embedding": {
@@ -2912,6 +2977,19 @@
         "user_with_flags": 200
       }
     },
+    "PUT /floware/v1/secrets/{secret_id}": {
+      "resolves_to": [
+        "secrets:UpdateSecret"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
     "PUT /floware/v1/settings/config/app-icon": {
       "resolves_to": [
         "settings:UpdateAppConfig"
@@ -3074,6 +3152,13 @@
       "description": "",
       "legacy": "AUTHENTICATED",
       "resource_type": null,
+      "service": "agents"
+    },
+    {
+      "action": "agents:RetryExecution",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "agent_execution",
       "service": "agents"
     },
     {
@@ -3366,7 +3451,7 @@
     {
       "action": "datasources:DeleteRows",
       "description": "",
-      "legacy": "ADMIN",
+      "legacy": "CUSTOM(row_writer)",
       "resource_type": "datasource",
       "service": "datasources"
     },
@@ -3492,7 +3577,7 @@
     {
       "action": "datasources:UpdateRows",
       "description": "",
-      "legacy": "ADMIN",
+      "legacy": "CUSTOM(row_writer)",
       "resource_type": "datasource",
       "service": "datasources"
     },
@@ -3617,13 +3702,6 @@
     },
     {
       "action": "images:AnalyzeImage",
-      "description": "",
-      "legacy": "AUTHENTICATED",
-      "resource_type": null,
-      "service": "images"
-    },
-    {
-      "action": "images:UploadHistoricalImages",
       "description": "",
       "legacy": "AUTHENTICATED",
       "resource_type": null,
@@ -3894,6 +3972,48 @@
       "legacy": "ADMIN",
       "resource_type": "scheduled_job",
       "service": "scheduled_jobs"
+    },
+    {
+      "action": "secrets:CreateSecret",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "secret",
+      "service": "secrets"
+    },
+    {
+      "action": "secrets:DeleteSecret",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "secret",
+      "service": "secrets"
+    },
+    {
+      "action": "secrets:GetSecret",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "secret",
+      "service": "secrets"
+    },
+    {
+      "action": "secrets:ListSecrets",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "secret",
+      "service": "secrets"
+    },
+    {
+      "action": "secrets:UpdateSecret",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "secret",
+      "service": "secrets"
+    },
+    {
+      "action": "settings:GetAppConfig",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "settings"
     },
     {
       "action": "settings:UpdateAppConfig",
@@ -4662,6 +4782,20 @@
     },
     {
       "actions": [
+        "agents:RetryExecution"
+      ],
+      "endpoint": "agents_module.controllers.async_inference_controller.retry_execution",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/agentic-executions/{execution_id}/retry",
+      "public": false
+    },
+    {
+      "actions": [
         "agents:InvokeAgent"
       ],
       "endpoint": "agents_module.controllers.agent_controller.agent_inference",
@@ -4756,6 +4890,20 @@
         "POST"
       ],
       "path": "/floware/v1/api-services/{service_id}/authenticators/{auth_version}/{auth_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "api_services:InvokeApi"
+      ],
+      "endpoint": "api_services_module.core.router.ProxyRouter._setup_management_routes.<locals>.execute_api",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/api-services/{service_id}/execute",
       "public": false
     },
     {
@@ -5348,7 +5496,7 @@
       ],
       "endpoint": "plugins_module.controllers.datasource_controller.update_rows_json_multi",
       "legacy": [
-        "ADMIN"
+        "CUSTOM(row_writer)"
       ],
       "methods": [
         "PATCH"
@@ -5362,7 +5510,7 @@
       ],
       "endpoint": "plugins_module.controllers.datasource_controller.delete_rows_json",
       "legacy": [
-        "ADMIN"
+        "CUSTOM(row_writer)"
       ],
       "methods": [
         "DELETE"
@@ -5390,7 +5538,7 @@
       ],
       "endpoint": "plugins_module.controllers.datasource_controller.update_rows_json",
       "legacy": [
-        "ADMIN"
+        "CUSTOM(row_writer)"
       ],
       "methods": [
         "PATCH"
@@ -5786,7 +5934,7 @@
       "actions": [
         "images:AnalyzeImage"
       ],
-      "endpoint": "gold_module.controllers.image_controller.process_image",
+      "endpoint": "deprecated_api_module.controllers.image_controller.process_image",
       "legacy": [
         "AUTHENTICATED"
       ],
@@ -5794,20 +5942,6 @@
         "POST"
       ],
       "path": "/floware/v1/image/analyse",
-      "public": false
-    },
-    {
-      "actions": [
-        "images:UploadHistoricalImages"
-      ],
-      "endpoint": "gold_module.controllers.image_controller.upload_historical_images",
-      "legacy": [
-        "AUTHENTICATED"
-      ],
-      "methods": [
-        "POST"
-      ],
-      "path": "/floware/v1/image/historical_images",
       "public": false
     },
     {
@@ -6491,14 +6625,88 @@
       "public": false
     },
     {
-      "actions": [],
+      "actions": [
+        "secrets:ListSecrets"
+      ],
+      "endpoint": "api_services_module.secrets.secret_controller.list_secrets",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/secrets",
+      "public": false
+    },
+    {
+      "actions": [
+        "secrets:CreateSecret"
+      ],
+      "endpoint": "api_services_module.secrets.secret_controller.create_secret",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floware/v1/secrets",
+      "public": false
+    },
+    {
+      "actions": [
+        "secrets:DeleteSecret"
+      ],
+      "endpoint": "api_services_module.secrets.secret_controller.delete_secret",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floware/v1/secrets/{secret_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "secrets:GetSecret"
+      ],
+      "endpoint": "api_services_module.secrets.secret_controller.get_secret",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floware/v1/secrets/{secret_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "secrets:UpdateSecret"
+      ],
+      "endpoint": "api_services_module.secrets.secret_controller.update_secret",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floware/v1/secrets/{secret_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "settings:GetAppConfig"
+      ],
       "endpoint": "floware.controllers.config_controller.get_config",
-      "legacy": [],
+      "legacy": [
+        "AUTHENTICATED"
+      ],
       "methods": [
         "GET"
       ],
       "path": "/floware/v1/settings/config",
-      "public": true
+      "public": false
     },
     {
       "actions": [

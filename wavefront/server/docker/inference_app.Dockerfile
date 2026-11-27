@@ -2,7 +2,7 @@
 # no CUDA base image. Wolfi (Chainguard's glibc-based distro) instead of
 # Ubuntu: its packages carry no unpatched CVEs. Pinned by digest; bump with
 # `docker pull` + rescan.
-FROM cgr.dev/chainguard/wolfi-base@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
+FROM cgr.dev/chainguard/wolfi-base@sha256:be019c1c74fe69204a42c4e10bc4d886a49bf5403ffa74374ef7baa408fc9a26
 
 WORKDIR /app
 
@@ -33,6 +33,7 @@ COPY --chown=appuser:appuser wavefront/server/pyproject.toml wavefront/server/uv
 COPY --chown=appuser:appuser wavefront/server/modules/authz_module /app/modules/authz_module
 COPY --chown=appuser:appuser wavefront/server/modules/common_module /app/modules/common_module
 COPY --chown=appuser:appuser wavefront/server/packages/flo_cloud /app/packages/flo_cloud
+COPY --chown=appuser:appuser wavefront/server/packages/flo_utils /app/packages/flo_utils
 COPY --chown=appuser:appuser wavefront/server/packages/flo_lib /app/packages/flo_lib
 COPY --chown=appuser:appuser wavefront/server/apps/inference_app /app/apps/inference_app
 

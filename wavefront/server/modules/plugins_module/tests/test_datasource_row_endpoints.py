@@ -1,4 +1,4 @@
-"""Admin-only guard on the row update and delete endpoints."""
+"""Role guard on the row update and delete endpoints (admin, manager, editor until RBAC)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -54,7 +54,7 @@ def client():
 def admin():
     # Routes declare an action; the default authorizer asks user_utils.
     with patch.object(
-        user_utils, 'check_is_admin', AsyncMock(return_value=True)
+        user_utils, 'can_write_datasource_rows', AsyncMock(return_value=True)
     ) as mock:
         yield mock
 

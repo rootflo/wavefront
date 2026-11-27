@@ -2769,3 +2769,41 @@ async def test_send_reset_password_email_generic_when_mail_fails(
     finally:
         core_containers.email_send_service.send.side_effect = None
         core_containers.email_send_service.send = original
+
+
+@pytest.mark.asyncio
+async def test_reset_password_keeps_the_code_when_the_hash_cannot_start():
+    """A full CPU pool must not burn the single-use reset code."""
+    from unittest.mock import MagicMock, patch
+
+    from common_module.blocking_io import BlockingPoolBusyError
+    from user_management_module.constants.auth import PASSWORD_RESET_TOKEN_PURPOSE
+    from user_management_module.controllers import user_controller
+
+    token_service = MagicMock()
+    token_service.decode_token_async = AsyncMock(
+        return_value={'purpose': PASSWORD_RESET_TOKEN_PURPOSE, 'code': 'c1'}
+    )
+    cache = MagicMock()
+    recaptcha = MagicMock(verify=AsyncMock(return_value=(True, None)))
+    reset_user = MagicMock(
+        secret_token='t', new_password='Test@123', recaptcha_token='r'
+    )
+
+    with patch.object(
+        user_controller,
+        'hash_password_async',
+        AsyncMock(side_effect=BlockingPoolBusyError('cpu', 10.0)),
+    ):
+        with pytest.raises(BlockingPoolBusyError):
+            await user_controller.reset_password(
+                reset_user=reset_user,
+                response_formatter=MagicMock(),
+                token_service=token_service,
+                user_reset_cache=cache,
+                user_repository=MagicMock(),
+                user_service=MagicMock(),
+                recaptcha_service=recaptcha,
+            )
+
+    cache.pop_str.assert_not_called()

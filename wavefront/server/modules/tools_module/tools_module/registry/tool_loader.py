@@ -1,8 +1,23 @@
+import functools
 import json
 import os
 from typing import Callable, Dict, List, Mapping, Optional
 from flo_ai.tool.base_tool import Tool
+from tools_module.errors import ToolCallFailed
 from tools_module.registry.function_node_registry import build_function_node_registry
+
+
+def _failure_as_result(function: Callable) -> Callable:
+    """Hand a ToolCallFailed back to the model as the tool's result."""
+
+    @functools.wraps(function)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await function(*args, **kwargs)
+        except ToolCallFailed as e:
+            return str(e)
+
+    return wrapper
 
 
 class ToolLoader:
@@ -84,7 +99,7 @@ class ToolLoader:
         return Tool(
             name=tool_metadata['name'],
             description=tool_metadata['description'],
-            function=tool_function,
+            function=_failure_as_result(tool_function),
             parameters=tool_metadata['parameters'],
         )
 

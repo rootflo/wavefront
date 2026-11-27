@@ -47,11 +47,12 @@ def wire_containers() -> None:
         ],
     )
 
-    application_container.gold.wire(
-        packages=['gold_module.controllers'],
+    application_container.deprecated_api.wire(
+        packages=['deprecated_api_module.controllers'],
     )
 
     common_packages = [
+        'api_services_module.secrets',
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
@@ -59,7 +60,7 @@ def wire_containers() -> None:
         'chatbots_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
-        'gold_module.controllers',
+        'deprecated_api_module.controllers',
         'plugins_module.controllers',
         'plugins_module.services',
         'product_analysis_module.controllers',
@@ -126,7 +127,7 @@ def wire_containers() -> None:
         modules=['api_services_module.api_services_container'],
         packages=[
             'api_services_module.core',
-            'api_services_module.execution',
+            'api_services_module.secrets',
         ],
     )
 

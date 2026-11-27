@@ -4,7 +4,7 @@ from uuid import UUID
 from floconsole.constants.user import UserRole
 from floconsole.db.models.user import User
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from floconsole.utils.password_utils import hash_password
+from floconsole.utils.password_utils import hash_password_async
 
 
 class UserService:
@@ -19,7 +19,7 @@ class UserService:
         """Update user by ID"""
         # Hash password if it's being updated
         if 'password' in update_data:
-            update_data['password'] = hash_password(update_data['password'])
+            update_data['password'] = await hash_password_async(update_data['password'])
 
         if update_data:
             result = await self.user_repository.find_one_and_update(

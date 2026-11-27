@@ -228,12 +228,15 @@ const AuthenticatorDetailPage: React.FC = () => {
         <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
         <Input
           id={fieldId('param', key)}
-          type="text"
+          type={paramConfig.sensitive ? 'password' : 'text'}
           value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
           disabled={disabled}
           placeholder={paramConfig.placeholder}
         />
+        {paramConfig.sensitive && !disabled && (
+          <p className="frost-text-muted text-xs">Leave ******** to keep the existing secret.</p>
+        )}
       </div>
     );
   };

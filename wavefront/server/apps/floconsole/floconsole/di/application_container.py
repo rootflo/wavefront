@@ -84,6 +84,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         token_prefix=config.jwt_token.token_prefix,
         issuer=config.jwt_token.issuer,
         audience=config.jwt_token.audience,
+        public_key_cache_seconds=config.jwt_token.public_key_cache_seconds,
+        public_key_refresh_min_seconds=config.jwt_token.public_key_refresh_min_seconds,
     )
 
     # Floware proxy service

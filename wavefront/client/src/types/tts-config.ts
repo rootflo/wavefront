@@ -8,6 +8,8 @@ export interface TtsConfig {
   description: string | null;
   provider: TtsProvider;
   region: string | null;
+  /** The api_key itself is never returned. */
+  has_api_key: boolean;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;

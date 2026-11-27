@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardrailBlocked
+from flo_ai.llm.rate_limits import LLMProviderError
 from flo_ai.models.chat_message import (
     AssistantMessage,
     BaseMessage,
@@ -14,7 +15,7 @@ from flo_ai.models.chat_message import (
     SystemMessage,
     VideoMessageContent,
 )
-from flo_ai.tool.base_tool import Tool, ToolExecutionError
+from flo_ai.tool.base_tool import Tool, ToolCallFailed, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
@@ -135,6 +136,8 @@ class Agent(BaseAgent):
                     raise ValueError(f'Invalid input type: {type(input)}')
 
         retry_count = 0
+        # Set when a tool is invoked; the inputs may carry results of their own.
+        self._tool_executed = False
 
         try:
             # If no tools, act as conversational agent
@@ -143,7 +146,7 @@ class Agent(BaseAgent):
 
             # Otherwise, run as tool agent
             return await self._run_with_tools(retry_count, variables)
-        except GuardrailBlocked:
+        except (GuardrailBlocked, LLMProviderError) as error:
             # A refused turn leaves no trace. The payload never reached the
             # provider, so nothing about it is part of the conversation — and
             # keeping it would poison every turn after it, since the history is
@@ -158,6 +161,12 @@ class Agent(BaseAgent):
             # The system prompt is re-added by _setup_system_message on the next
             # run, which strips any existing one first, so restoring a snapshot
             # taken before it moved is safe.
+            #
+            # A provider failure is undone too, so the caller can resend the
+            # same input without duplicating the user turn - unless a tool
+            # already ran, whose result must stay so a resend doesn't repeat it.
+            if isinstance(error, LLMProviderError) and self._tool_executed:
+                raise
             self.conversation_history = history_before_turn
             self.system_prompt = system_prompt_before_turn
             self.resolved_variables = resolved_variables_before_turn
@@ -216,7 +225,8 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except GuardrailBlocked:
+            # A provider error was already retried at the LLM boundary.
+            except (GuardrailBlocked, LLMProviderError):
                 raise
             except Exception as e:
                 retry_count += 1
@@ -362,27 +372,35 @@ class Agent(BaseAgent):
                         # Track tool execution with telemetry
                         tracer = get_tracer()
 
-                        if tracer:
-                            with tracer.start_as_current_span(
-                                f'agent.tool.{function_name}',
-                                attributes={
-                                    'tool.name': function_name,
-                                    'agent.name': self.name,
-                                },
-                            ) as tool_span:
+                        self._tool_executed = True
+                        try:
+                            if tracer:
+                                with tracer.start_as_current_span(
+                                    f'agent.tool.{function_name}',
+                                    attributes={
+                                        'tool.name': function_name,
+                                        'agent.name': self.name,
+                                    },
+                                ) as tool_span:
+                                    function_response = await tool.run(
+                                        inputs=[], variables=None, **function_args
+                                    )
+                                    tool_span.set_attribute(
+                                        'tool.result.length',
+                                        len(str(function_response)),
+                                    )
+                            else:
                                 function_response = await tool.run(
                                     inputs=[], variables=None, **function_args
                                 )
-                                tool_span.set_attribute(
-                                    'tool.result.length', len(str(function_response))
-                                )
-                        else:
-                            function_response = await tool.run(
-                                inputs=[], variables=None, **function_args
-                            )
+                            tool_status = 'success'
+                        except ToolCallFailed as failure:
+                            # The model reads why and decides what to do next.
+                            function_response = str(failure)
+                            tool_status = 'error'
 
                         agent_metrics.record_tool_call(
-                            self.name, function_name, 'success'
+                            self.name, function_name, tool_status
                         )
 
                         tool_call_count += 1
@@ -447,7 +465,20 @@ class Agent(BaseAgent):
                             'function_call': function_call,
                             'attempt': retry_count,
                         }
-                        should_retry, analysis = await self.handle_error(e, context)
+                        try:
+                            should_retry, analysis = await self.handle_error(e, context)
+                        except LLMProviderError:
+                            if isinstance(e, ToolExecutionError):
+                                # The tool ran, so the turn is kept: record how
+                                # it failed for the next one.
+                                self.add_to_history(
+                                    FunctionMessage(
+                                        content='Here is the result of the tool call: \n'
+                                        + str(e),
+                                        name=error_function_name,
+                                    )
+                                )
+                            raise
                         if should_retry and retry_count <= self.max_retries:
                             # Record retry
                             agent_metrics.record_retry(
@@ -501,7 +532,8 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except GuardrailBlocked:
+            # A provider error was already retried at the LLM boundary.
+            except (GuardrailBlocked, LLMProviderError):
                 raise
             except Exception as e:
                 retry_count += 1
@@ -721,6 +753,10 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             )
             return is_final
 
+        except LLMProviderError:
+            # Unclassified, the reply may be a plan that still needs a tool call,
+            # so it can't end the turn; the provider failure ends it instead.
+            raise
         except Exception as e:
             logger.warning(
                 f'LLM classification failed: {e}. Defaulting to final=False to allow continuation.'

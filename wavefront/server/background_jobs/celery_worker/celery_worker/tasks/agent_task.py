@@ -1,11 +1,12 @@
 """Celery task: async agent inference."""
 
 import asyncio
-from typing import Dict
+from typing import Dict, Optional
 from uuid import UUID
 
 from agents_module.utils.trace_utils import serialize_conversation_trace
 from common_module.log.logger import logger
+from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 
 from celery_worker.celery_app import app
 from celery_worker.event_loop import get_event_loop
@@ -19,6 +20,18 @@ from celery_worker.tasks.helpers import (
     reconstruct_inputs,
     save_json,
 )
+
+
+async def _resolve_llm_config(services, payload: Dict) -> Optional[LlmInferenceConfig]:
+    # The payload carries only the id; the key is fetched from floware here so
+    # it never sits in the broker.
+    config_id = payload.get('llm_inference_config_id')
+    if not config_id:
+        return None
+    config = await services.llm_config_client.get_runtime_config(config_id)
+    if not config:
+        raise ValueError(f'LLM inference configuration not found: {config_id}')
+    return build_llm_config(config)
 
 
 async def _run(task, payload: Dict) -> None:
@@ -40,7 +53,7 @@ async def _run(task, payload: Dict) -> None:
         inputs = await asyncio.to_thread(
             reconstruct_inputs, payload, services.cloud_storage
         )
-        llm_config = build_llm_config(payload.get('llm_config'))
+        llm_config = await _resolve_llm_config(services, payload)
 
         (
             result,

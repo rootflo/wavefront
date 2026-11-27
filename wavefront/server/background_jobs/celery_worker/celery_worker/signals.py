@@ -1,4 +1,4 @@
-"""Celery worker process signals (telemetry + event-loop teardown)."""
+"""Celery worker process signals (telemetry, guardrails warmup, event-loop teardown)."""
 
 from celery.signals import (
     worker_process_init,
@@ -24,6 +24,37 @@ def setup_telemetry(**kwargs):
             CONFIG, default_service_name='wavefront-celery-worker'
         )
     )
+
+
+@worker_process_init.connect
+def warm_guardrails(**kwargs):
+    """Load the guardrails models before any task runs, as floware does at startup.
+
+    Services are otherwise built by the first task, so the spaCy download and
+    load landed inside that task's per-check timeout and, under a FAIL_CLOSED
+    policy, rejected it. Connected after setup_telemetry so the work is traced.
+    Runs on the shared loop so the adapters' async clients bind to the loop
+    tasks use. A failure is logged, not raised: the first task retries.
+    """
+    from common_module.config_loader import is_truthy
+    from common_module.log.logger import logger
+    from celery_worker.settings import CONFIG
+
+    if not is_truthy(CONFIG.get('guardrails', {}).get('enabled')):
+        return
+
+    from celery_worker.event_loop import get_event_loop
+    from celery_worker.services import get_services
+
+    try:
+        engine = get_services().guardrails_engine
+        if engine is not None:
+            logger.info('Warming up guardrails engines and models...')
+            get_event_loop().run_until_complete(engine.warmup())
+    except Exception:
+        logger.exception(
+            'Guardrails warmup failed; the first guarded task will load models instead'
+        )
 
 
 def teardown_event_loop(**kwargs):

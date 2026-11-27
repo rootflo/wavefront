@@ -1,5 +1,20 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
+
+
+# Config keys holding credentials, by authenticator type: stored through
+# SecretCipher and masked in API responses.
+AUTHENTICATOR_SECRET_FIELDS: Dict[str, Tuple[str, ...]] = {
+    'google_oauth': ('client_secret',),
+    'microsoft_oauth': ('client_secret',),
+    'microsoft_adfs': ('client_secret',),
+}
+
+
+def get_authenticator_secret_fields(auth_type: Optional[Any]) -> Tuple[str, ...]:
+    """Secret config keys for ``auth_type`` (a string or an AuthenticatorType);
+    empty for a type without any."""
+    return AUTHENTICATOR_SECRET_FIELDS.get(getattr(auth_type, 'value', auth_type), ())
 
 
 class AddAuthenticatorPayload(BaseModel):

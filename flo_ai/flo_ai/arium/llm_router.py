@@ -16,6 +16,7 @@ from flo_ai.arium.memory import (
     MessageMemoryItem,
 )
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm.rate_limits import LLMProviderError
 from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
 
@@ -186,6 +187,10 @@ class BaseLLMRouter(ABC):
                     f"LLM router attempt {attempt + 1}: Invalid decision '{decision}', retrying..."
                 )
 
+            except LLMProviderError:
+                # Already retried at the LLM boundary, and a fallback route would
+                # be one the model never chose.
+                raise
             except Exception as e:
                 logger.error(f'LLM router attempt {attempt + 1} failed: {e}')
 

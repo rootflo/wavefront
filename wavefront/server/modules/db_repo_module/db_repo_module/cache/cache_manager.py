@@ -1,141 +1,234 @@
-import time
-from typing import Any, List, Optional, Union
+import contextlib
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Union,
+)
 
-from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
-from db_repo_module.cache.redis_settings import RedisSettings
-from redis import Connection
+from db_repo_module.cache.base_cache import BaseCache
+from db_repo_module.cache.base_cache import CacheUnavailableError
+from db_repo_module.cache.base_cache import _with_retry
+from db_repo_module.cache.lua_scripts import (
+    FILL_SCRIPT,
+    PENDING_MARKER,
+    PENDING_TTL_SECONDS,
+    READ_SCRIPT,
+    TOKEN_TTL_SECONDS,
+)
 from redis import ConnectionError
-from redis import BlockingConnectionPool
-from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
-from redis import SSLConnection
 from redis import TimeoutError
-from redis.exceptions import OutOfMemoryError
-from tenacity import retry
-from tenacity import retry_if_exception
-from tenacity import stop_after_attempt
-from tenacity import wait_exponential
+from redis import asyncio as aioredis
+
+__all__ = ['CacheManager', 'CacheUnavailableError']
 
 
-def _is_retryable_redis_error(exc: BaseException) -> bool:
-    """Retry everything except OOM, which fails the same way every time."""
-    if isinstance(exc, OutOfMemoryError):
-        return False
-    return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
-
-
-class CacheManager(CommonCache):
-    def __init__(
+class CacheManager(BaseCache):
+    async def aget_str(
         self,
-        namespace: str = '',
-        settings: RedisSettings | None = None,
-    ):
-        """
-        Args:
-            settings: Redis connection, pool, and retry settings. Defaults match
-                [redis] ini defaults (localhost, pool_size 20, pool_timeout 2s).
-                pool_size is a per-process cap; when every connection is busy,
-                callers wait up to pool_timeout then get
-                ConnectionError('No connection available.').
-        """
-        redis = settings or RedisSettings()
-        self.namespace = namespace
-        self.max_retries = int(redis.max_retries)
-        self.initial_backoff = int(redis.initial_backoff)
-        self.max_backoff = int(redis.max_backoff)
-        self._redis_host = redis.host
-        self._redis_port = int(redis.port)
-        self._redis_protocol = redis.protocol
-        self._redis_password = redis.password
-        self._redis_db = int(redis.db)
-        self._pool_timeout = float(redis.pool_timeout)
+        key: str,
+        default: Any = None,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Optional[str]:
+        """Async ``get_str``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
 
-        self.pool = self._create_connection_pool(
-            connection_timeout=int(redis.connection_timeout),
-            socket_timeout=int(redis.socket_timeout),
-            socket_keepalive=bool(redis.socket_keepalive),
-            pool_size=int(redis.pool_size),
+        async def call(client: aioredis.Redis) -> Optional[str]:
+            return await client.get(namespaced)
+
+        value = await self._run_async(
+            'GET', call, lambda: self.get_str(key), attempts, timeout
         )
-        self.redis = self._create_redis_connection()
+        return value if value is not None else default
 
-        # Test the connection immediately - fail fast if Redis is unreachable
-        try:
-            self.redis.ping()
-            logger.info('Connected to Redis with redis ping')
-        except (ConnectionError, TimeoutError, RedisError) as e:
-            logger.error(f'Failed to connect to Redis during initialization: {e}')
-            logger.error('Server will not start without Redis connectivity')
-            raise RuntimeError(f'Redis connection test failed: {e}') from e
-
-    def _create_connection_pool(
+    async def aadd(
         self,
-        connection_timeout: int,
-        socket_timeout: int,
-        socket_keepalive: bool,
-        pool_size: int,
-    ) -> ConnectionPool:
+        key: str,
+        value: Union[str, int, float, bytes],
+        expiry: int = 3600,
+        nx: bool = False,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """Async ``add``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
+
+        async def call(client: aioredis.Redis) -> bool:
+            return bool(await client.set(namespaced, value, ex=expiry, nx=nx))
+
+        return await self._run_async(
+            'SET',
+            call,
+            lambda: self.add(key, value, expiry=expiry, nx=nx),
+            attempts,
+            timeout,
+        )
+
+    async def aremove(
+        self,
+        key: str,
+        *,
+        attempts: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """Async ``remove``. Raises CacheUnavailableError if Redis fails."""
+        namespaced = f'{self.namespace}/{key}'
+
+        async def call(client: aioredis.Redis) -> bool:
+            return bool(await client.delete(namespaced))
+
+        return await self._run_async(
+            'DEL', call, lambda: self.remove(key), attempts, timeout
+        )
+
+    # Tolerant versions for callers where the cache is an optimisation: a Redis
+    # failure is logged and treated as a miss (reads) or a no-op (writes), so
+    # the request carries on from the database. A failed remove leaves the old
+    # value until its TTL expires; that is logged so it can be traced.
+
+    async def try_aget_str(self, key: str, default: Any = None) -> Optional[str]:
+        """``aget_str`` that returns ``default`` when Redis fails."""
         try:
-            host = self._redis_host
-            port = self._redis_port
-            protocol = self._redis_protocol
-            password = self._redis_password
+            return await self.aget_str(key, default)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache read skipped for {key}: {e}')
+            return default
 
-            connection_class = Connection
-            if protocol == 'rediss' or port == 10000:
-                logger.info(f'Using SSLConnection for Redis (Port: {port})')
-                connection_class = SSLConnection
-
-            pool_kwargs = {
-                'connection_class': connection_class,
-                'host': host,
-                'port': port,
-                'db': self._redis_db,
-                'max_connections': pool_size,
-                'socket_timeout': socket_timeout,
-                'socket_keepalive': socket_keepalive,
-                'socket_connect_timeout': connection_timeout,
-                'retry_on_timeout': True,
-                'health_check_interval': 30,
-                'encoding': 'utf-8',
-                'decode_responses': True,
-                # Azure Managed Redis drops the connection on CLIENT SETINFO rather
-                # than returning a RESP error, which redis-py 5.x doesn't handle —
-                # the dropped socket triggers a reconnect loop that hits Python's
-                # recursion limit. Empty strings skip the command entirely.
-                'lib_name': '',
-                'lib_version': '',
-            }
-
-            if password:
-                pool_kwargs['password'] = password
-
-            # Blocking: when every connection is busy, wait briefly for one to
-            # be released instead of failing at once with 'Too many connections'.
-            return BlockingConnectionPool(timeout=self._pool_timeout, **pool_kwargs)
-        except Exception as e:
-            logger.error(f'Failed to create connection pool: {e}s')
-            raise
-
-    def _create_redis_connection(self) -> Redis:
-        logger.info('Creating Redis connection from pool...')
-        return Redis(connection_pool=self.pool)
-
-    def _checking_redis_connection(self):
+    async def try_aadd(
+        self,
+        key: str,
+        value: Union[str, int, float, bytes],
+        expiry: int = 3600,
+        nx: bool = False,
+    ) -> bool:
+        """``aadd`` that returns False when Redis fails."""
         try:
-            self.redis.ping()
-            return True
-        except (ConnectionError, TimeoutError) as e:
-            logger.warning(f'Redis connection lost: {e}. Attempting to reconnect...')
-            self.redis = self._create_redis_connection()
+            return await self.aadd(key, value, expiry=expiry, nx=nx)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache write skipped for {key}: {e}')
             return False
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    async def try_aremove(self, key: str) -> bool:
+        """``aremove`` that returns False when Redis fails."""
+        try:
+            return await self.aremove(key)
+        except CacheUnavailableError as e:
+            logger.warning(
+                f'Cache delete failed for {key}; it may be stale until it expires: {e}'
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # Generation-checked cache-aside (read_through / invalidating)
+    #
+    # The protocol and its Lua scripts are described in lua_scripts.py.
+    # ------------------------------------------------------------------
+
+    async def read_through(
+        self,
+        key: str,
+        loader: Callable[[], Awaitable[Optional[str]]],
+        *,
+        ttl: int,
+    ) -> Optional[str]:
+        """The cached value for ``key``, or ``loader()`` from the source of truth.
+
+        ``loader`` returns the string to cache, or None for "not found" (not
+        cached). Redis failures never fail the read: the loader's value is
+        returned and the fill is skipped. ``loader`` runs at most once, and its
+        own errors propagate.
+        """
+        value_key, gen_key = self._rt_keys(key)
+        args = (
+            value_key,
+            gen_key,
+            self._rt_writers_key(key),
+            self._new_token(),
+            TOKEN_TTL_SECONDS,
+        )
+        token: Optional[str] = None
+        try:
+
+            async def read(client: aioredis.Redis) -> Any:
+                return await client.eval(READ_SCRIPT, 3, *args)
+
+            def read_sync() -> Any:
+                return self.redis.eval(READ_SCRIPT, 3, *args)
+
+            raw_token, raw_value = await self._run_async(
+                'READ', read, read_sync, attempts=1, timeout=None
+            )
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache read skipped for {key}: {e}')
+        else:
+            token, cached = self._as_str(raw_token), self._as_str(raw_value)
+            if token is not None and token.startswith(PENDING_MARKER):
+                # A change is in flight (or its final rotation failed): read
+                # the source of truth and don't cache what we read.
+                token = None
+            elif cached is not None:
+                tag, _, payload = cached.partition('\n')
+                if tag == token:
+                    return payload
+
+        value = await loader()
+        if value is None or token is None:
+            return value
+        try:
+
+            async def fill(client: aioredis.Redis) -> Any:
+                return await client.eval(
+                    FILL_SCRIPT, 2, value_key, gen_key, token, value, ttl
+                )
+
+            def fill_sync() -> Any:
+                return self.redis.eval(
+                    FILL_SCRIPT, 2, value_key, gen_key, token, value, ttl
+                )
+
+            await self._run_async('FILL', fill, fill_sync, attempts=1, timeout=None)
+        except CacheUnavailableError as e:
+            logger.warning(f'Cache fill skipped for {key}: {e}')
+        return value
+
+    @contextlib.asynccontextmanager
+    async def invalidating(self, *keys: str) -> AsyncIterator[None]:
+        """Wrap a change to the source of truth behind ``keys``.
+
+        Before the body: registers this writer and marks the keys pending,
+        strictly. If Redis is down this raises CacheUnavailableError (a 503) and
+        the body never runs, so nothing has changed and a retry is safe. While
+        pending, reads bypass the cache. After the body (success or failure):
+        this writer leaves, and the last writer out sets a fresh token,
+        best-effort. If that fails the keys stay uncacheable until the marker
+        expires, which is safe.
+        """
+        if not keys:
+            yield
+            return
+        writer = self._new_token()
+        await self._rotate(keys, pending=True, writer=writer)
+        try:
+            yield
+        finally:
+            try:
+                await self._rotate(keys, pending=False, writer=writer)
+            except CacheUnavailableError as e:
+                logger.warning(
+                    f'Cache rotation after a change failed for {keys}; these keys '
+                    f'bypass the cache for up to {PENDING_TTL_SECONDS}s: {e}'
+                )
+
+    @_with_retry
     def add(
         self,
         key: str,
@@ -152,11 +245,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error adding key: {key} to cache: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def get_str(self, key: str, default: Any = None) -> Optional[str]:
         try:
             value = self.redis.get(f'{self.namespace}/{key}')
@@ -170,11 +259,7 @@ class CacheManager(CommonCache):
         value = self.get_str(key, default)
         return int(value) if value is not None else default
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def pop_str(self, key: str, default: Any = None) -> Optional[str]:
         """GETDEL when available; otherwise a GET+DEL pipeline."""
         namespaced = f'{self.namespace}/{key}'
@@ -192,11 +277,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error popping key: {key} from cache: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def incr_with_expiry(self, key: str, expiry: int) -> int:
         """INCR a fixed-window counter. EXPIRE NX opens the window on first hit."""
         namespaced = f'{self.namespace}/{key}'
@@ -214,11 +295,7 @@ class CacheManager(CommonCache):
     # failure that outlives the request: the key keeps serving the pre-write
     # value until its TTL expires, so a transient blip here means stale reads
     # long after the blip is over.
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def remove(self, key: str) -> bool:
         try:
             return bool(self.redis.delete(f'{self.namespace}/{key}'))
@@ -255,11 +332,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error removing keys with pattern: {pattern} from cache: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def publish(self, channel: str, message: str) -> int:
         """
         Publish a message to a Redis channel.
@@ -308,7 +381,7 @@ class CacheManager(CommonCache):
                     print(f"Received: {message['data']}")
         """
         try:
-            pubsub = self.redis.pubsub()
+            pubsub = Redis(connection_pool=self._get_pubsub_pool()).pubsub()
 
             if channels:
                 namespaced_channels = [f'{self.namespace}/{ch}' for ch in channels]
@@ -332,11 +405,7 @@ class CacheManager(CommonCache):
     # Redis Streams
     # ------------------------------------------------------------------
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def xadd(self, stream: str, fields: dict, maxlen: int = 10000) -> str:
         """Append an entry to a Redis Stream. Returns the message ID."""
         try:
@@ -363,11 +432,7 @@ class CacheManager(CommonCache):
                 logger.error(f'Error creating consumer group {group}: {e}')
                 raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def xread_group(
         self,
         group: str,
@@ -397,11 +462,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error reading from stream group {group}: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def xack(self, stream: str, group: str, *message_ids: str) -> int:
         """Acknowledge one or more messages in a consumer group."""
         try:
@@ -410,11 +471,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def xpending_range(
         self,
         stream: str,
@@ -442,11 +499,7 @@ class CacheManager(CommonCache):
             logger.error(f'Error listing pending entries on stream {stream}: {e}')
             raise
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception(_is_retryable_redis_error),
-    )
+    @_with_retry
     def xautoclaim(
         self,
         stream: str,
@@ -473,26 +526,3 @@ class CacheManager(CommonCache):
             raise
         # [next_start_id, claimed, deleted_ids] (Redis 7) or the first two (6.2)
         return result[1] if result and len(result) > 1 else []
-
-    def close(self):
-        try:
-            self.pool.disconnect()
-            logger.info('Redis connection pool closed successfully')
-        except Exception as e:
-            logger.error(f'Error closing Redis connection pool: {e}')
-
-    def _retry_with_backoff(self, func: callable, *args, **kwargs) -> Any:
-        retries = 0
-        while retries < self.max_retries:
-            try:
-                return func(*args, **kwargs)
-            except (RedisError, ConnectionError, TimeoutError) as e:
-                retries += 1
-                if retries >= self.max_retries:
-                    logger.error(f'Max retries reached for {func.__name__}: {e}')
-                    raise
-                backoff = min(
-                    self.initial_backoff * (2 ** (retries - 1)), self.max_backoff
-                )
-                logger.warning(f'Retrying {func.__name__} in {backoff} seconds...')
-                time.sleep(backoff)

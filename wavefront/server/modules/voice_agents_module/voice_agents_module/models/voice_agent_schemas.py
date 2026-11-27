@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+import json
+import re
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from typing import Optional, Union, Any, Dict, List
 from enum import Enum
 from datetime import datetime
@@ -6,6 +9,38 @@ import uuid
 
 # Sentinel value for partial updates
 UNSET = object()
+
+MAX_LANGUAGE_PROMPT_CHARS = 20_000
+
+
+def check_language_prompts(conversation_config: Any, supported_languages: Any) -> None:
+    """``conversation_config.language_prompts``: {language code: text} only.
+
+    Each pack is added to the system prompt while the call is in that language
+    (call_processing's prompt_layout.py). Keys must be supported languages when
+    those are known in the same request; values are text, size-capped.
+    """
+    if not isinstance(conversation_config, dict):
+        return
+    packs = conversation_config.get('language_prompts')
+    if packs is None:
+        return
+    if not isinstance(packs, dict):
+        raise ValueError('conversation_config.language_prompts must be an object')
+    for language, text in packs.items():
+        if not isinstance(text, str):
+            raise ValueError(f'language_prompts.{language} must be text')
+        if len(text) > MAX_LANGUAGE_PROMPT_CHARS:
+            raise ValueError(
+                f'language_prompts.{language} is over '
+                f'{MAX_LANGUAGE_PROMPT_CHARS} characters'
+            )
+    if isinstance(supported_languages, list):
+        unknown = sorted(set(packs) - set(supported_languages))
+        if unknown:
+            raise ValueError(
+                f'language_prompts has languages the agent does not support: {unknown}'
+            )
 
 
 class VoiceAgentStatus(str, Enum):
@@ -99,6 +134,11 @@ class CreateVoiceAgentPayload(BaseModel):
 
         return v
 
+    @model_validator(mode='after')
+    def validate_language_prompts(self):
+        check_language_prompts(self.conversation_config, self.supported_languages)
+        return self
+
 
 class UpdateVoiceAgentPayload(BaseModel):
     name: Union[str, Any] = Field(default=UNSET)
@@ -118,6 +158,11 @@ class UpdateVoiceAgentPayload(BaseModel):
     outbound_numbers: Union[List[str], Any] = Field(default=UNSET)
     supported_languages: Union[List[str], Any] = Field(default=UNSET)
     default_language: Union[str, Any] = Field(default=UNSET)
+
+    @model_validator(mode='after')
+    def validate_language_prompts(self):
+        check_language_prompts(self.conversation_config, self.supported_languages)
+        return self
 
 
 class VoiceAgentListItem(BaseModel):
@@ -160,12 +205,42 @@ class VoiceAgentResponse(BaseModel):
     updated_at: datetime
 
 
+MAX_CALL_CONTEXT_BYTES = 2048
+_CALL_CONTEXT_KEY = re.compile(r'^[a-z0-9_]{1,40}$')
+
+
 class InitiateCallPayload(BaseModel):
     to_number: str = Field(..., description='Destination phone number (E.164 format)')
     from_number: Optional[str] = Field(
         None,
         description='Source phone number (optional, defaults to first configured number)',
     )
+    context: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            'What the caller system already knows about this caller (name, reason '
+            'for the call, ...). The agent gets it up front; tools can use it as '
+            '`outbound.<key>`. Keys: lowercase letters, digits and _ (up to 40); '
+            f'values: text; {MAX_CALL_CONTEXT_BYTES} bytes at most in total.'
+        ),
+    )
+
+    @field_validator('context')
+    @classmethod
+    def validate_context(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        if not v:
+            return v
+        bad_keys = [key for key in v if not _CALL_CONTEXT_KEY.match(key)]
+        if bad_keys:
+            raise ValueError(
+                f'context keys must be lowercase letters, digits or _: {bad_keys}'
+            )
+        # UTF-8 bytes of compact JSON, as the client counts them (a Hindi
+        # character is 3 bytes, not a 6-byte \uXXXX escape)
+        size = len(json.dumps(v, ensure_ascii=False, separators=(',', ':')).encode())
+        if size > MAX_CALL_CONTEXT_BYTES:
+            raise ValueError(f'context is over {MAX_CALL_CONTEXT_BYTES} bytes')
+        return v
 
 
 class CreateWebRTCRoomPayload(BaseModel):

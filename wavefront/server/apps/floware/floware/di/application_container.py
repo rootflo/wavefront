@@ -32,7 +32,7 @@ from floware.services.config_service import ConfigService
 from floware.services.notification_service import NotificationService
 from floware.services.scheduled_job_service import ScheduledJobService
 from floware.services.scheduler_manager import SchedulerManager
-from gold_module.gold_container import GoldContainer
+from deprecated_api_module.deprecated_api_container import DeprecatedApiContainer
 from guardrails_module.container import GuardrailsContainer
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
@@ -79,6 +79,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         kms_signer=common.kms_signer,
+        secret_cipher=common.secret_cipher,
     )
 
     plugins = providers.Container(
@@ -87,6 +88,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cloud_storage_manager=common.cloud_storage_manager,
         kms_cipher=common.kms_cipher,
+        secret_cipher=common.secret_cipher,
         dynamic_query_repository=db.dynamic_query_repository,
         cache_manager=db.cache_manager,
         namespace_repository=db.namespace_repository,
@@ -104,6 +106,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         email_send_service=plugins.email_send_service,
+        secret_cipher=common.secret_cipher,
     )
 
     knowledge_base = providers.Container(
@@ -116,11 +119,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
         rag_queue=common.rag_queue,
     )
 
-    gold = providers.Container(
-        GoldContainer,
-        config=config,
-        cloud_storage_manager=common.cloud_storage_manager,
-        gold_queue=common.gold_queue,
+    deprecated_api = providers.Container(
+        DeprecatedApiContainer,
+        floware_base_url=common.runtime_settings.provided.floware_base_url,
     )
 
     product_analysis = providers.Container(ProductAnalysisContainer, config=config)
@@ -129,10 +130,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ApiServicesContainer,
         config=config,
         api_services_repository=db.api_services_repository,
+        secret_repository=db.secret_repository,
         cloud_storage_manager=common.cloud_storage_manager,
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         response_formatter=common.response_formatter,
+        secret_cipher=common.secret_cipher,
     )
 
     tools = providers.Container(
@@ -153,6 +156,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+        secret_cipher=common.secret_cipher,
     )
 
     agents = providers.Container(
@@ -183,6 +187,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         cache_manager=db.cache_manager,
         cloud_storage_manager=common.cloud_storage_manager,
         call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+        secret_cipher=common.secret_cipher,
     )
 
     chatbots = providers.Container(

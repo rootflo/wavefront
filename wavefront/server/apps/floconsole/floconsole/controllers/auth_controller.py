@@ -13,7 +13,7 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from floconsole.utils.password_utils import verify_password
+from floconsole.utils.password_utils import verify_password_async
 from floconsole.constants.auth import AUTH_ROLE_ID
 from floconsole.db.models.user import User
 from floconsole.db.models.session import Session
@@ -46,7 +46,9 @@ async def authenticate(
     ),
 ):
     user = await user_repository.find_one(email=auth_data.email)
-    if user is None or not verify_password(auth_data.password, user.password):
+    if user is None or not await verify_password_async(
+        auth_data.password, user.password
+    ):
         # Handle failed login attempt
         logger.error(f'Authentication failed for email: {auth_data.email}')
         return JSONResponse(
@@ -65,20 +67,38 @@ async def authenticate(
     # Get device info from headers
     device_info = request.headers.get('User-Agent')
 
-    await session_repository.delete_all(user_id=user.id)
-
-    # Create new session
-    session = await session_repository.create(
-        user_id=user.id, device_info=device_info, id=uuid4()
-    )
-
-    # Include session_id in token payload
-    token = token_service.create_token(
+    # Sign the token BEFORE touching existing sessions: if signing fails (KMS
+    # down, kms pool busy) the user keeps their current session instead of
+    # ending up logged out with no replacement.
+    session_id = uuid4()
+    token = await token_service.create_token_async(
         sub=user.email,
         user_id=str(user.id),
         role_id=AUTH_ROLE_ID,
-        payload={'session_id': str(session.id)},
+        payload={'session_id': str(session_id)},
         expiry=token_service.token_expiry,
+    )
+
+    # bcrypt and signing ran off the event loop, so a password change or an
+    # account disable can land in between. Only admit the login if the
+    # credential it was checked against is still the current one.
+    current = await user_repository.find_one(id=user.id)
+    if current is None or current.deleted or current.password != user.password:
+        logger.warning(
+            f'Login for {auth_data.email} rejected: account changed during login'
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Incorrect username or password'
+            ),
+        )
+
+    await session_repository.delete_all(user_id=user.id)
+
+    # Create new session
+    await session_repository.create(
+        user_id=user.id, device_info=device_info, id=session_id
     )
 
     response_data = {'access_token': token, 'token_type': 'bearer'}

@@ -6,7 +6,7 @@ import pytest
 from auth_module.controllers.superset_controller import superset_controller
 from common_module.feature.feature_flag import FeatureFlags
 from dependency_injector import providers
-from flo_testing import make_test_client
+from flo_testing import add_async_cache_methods, make_test_client
 
 SUPERSET_CONTROLLER = 'auth_module.controllers.superset_controller'
 
@@ -15,7 +15,7 @@ SUPERSET_CONTROLLER = 'auth_module.controllers.superset_controller'
 def setup_containers(core_containers):
     # These tests exercise the real session lookup, so the user container's
     # cache has to miss rather than serve the canned session payload.
-    cache_miss = Mock()
+    cache_miss = add_async_cache_methods(Mock())
     cache_miss.get_str.return_value = None
     core_containers.user.cache_manager.override(cache_miss)
     core_containers.common.feature_flags.override(

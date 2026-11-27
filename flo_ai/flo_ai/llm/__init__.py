@@ -8,6 +8,7 @@ from .vertexai_llm import VertexAI
 from .rootflo_llm import RootFloLLM
 from .aws_bedrock_llm import AWSBedrock
 from .azure_openai_llm import AzureOpenAI
+from .rate_limits import LLMProviderError, LLMRateLimited
 
 __all__ = [
     'BaseLLM',
@@ -20,4 +21,6 @@ __all__ = [
     'RootFloLLM',
     'AWSBedrock',
     'AzureOpenAI',
+    'LLMProviderError',
+    'LLMRateLimited',
 ]

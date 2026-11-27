@@ -11,6 +11,7 @@ import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]
 import EmailConnectionsPage from '@app/pages/apps/[appId]/email-connections';
 import OAuthAppsPage from '@app/pages/apps/[appId]/oauth-apps';
 import ScheduledJobsPage from '@app/pages/apps/[appId]/scheduled-jobs';
+import SecretsPage from '@app/pages/apps/[appId]/secrets';
 // import TriggersPage from '@app/pages/apps/[appId]/triggers';
 import ConfigurationsManagement from '@app/pages/apps/[appId]/configurations';
 import ConfigurationDetail from '@app/pages/apps/[appId]/configurations/[configKey]';
@@ -93,6 +94,10 @@ const routes = {
         {
           path: 'api-services/:id',
           element: <ApiServiceDetail />,
+        },
+        {
+          path: 'secrets',
+          element: <SecretsPage />,
         },
         {
           path: 'datasources',

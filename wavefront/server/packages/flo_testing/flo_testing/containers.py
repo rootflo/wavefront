@@ -9,6 +9,7 @@ the matching ``unwire()`` in teardown.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from dataclasses import field
@@ -17,6 +18,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import Mock
 
 import pytest
+from db_repo_module.cache.cache_manager import CacheUnavailableError
 
 DEFAULT_CONFIG: dict[str, Any] = {
     'web': {'url': 'http://test.example.com'},
@@ -41,9 +43,87 @@ LEGACY_RESOLVER = 'user_management_module.authorization.legacy_resolver'
 PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
+def add_async_cache_methods(cache_manager: Mock) -> Mock:
+    """Give a CacheManager mock its async API, forwarding to the sync mocks.
+
+    Tests that configure or assert on ``get_str``/``add``/``remove`` keep covering code
+    that now calls the async versions.
+    """
+
+    async def aget_str(key, default=None, **_kwargs):
+        value = cache_manager.get_str(key)
+        return value if value is not None else default
+
+    async def aadd(key, value, expiry=3600, nx=False, **_kwargs):
+        if nx:
+            return cache_manager.add(key, value, expiry, nx=True)
+        return cache_manager.add(key, value, expiry)
+
+    async def aremove(key, **_kwargs):
+        return cache_manager.remove(key)
+
+    cache_manager.aget_str = AsyncMock(side_effect=aget_str)
+    cache_manager.aadd = AsyncMock(side_effect=aadd)
+    cache_manager.aremove = AsyncMock(side_effect=aremove)
+
+    # Tolerant versions behave like CacheManager's: they go through the strict
+    # mock (so a test can make it raise) and swallow CacheUnavailableError.
+    async def try_aget_str(key, default=None, **_kwargs):
+        try:
+            return await cache_manager.aget_str(key, default)
+        except CacheUnavailableError:
+            return default
+
+    async def try_aadd(key, value, expiry=3600, nx=False, **_kwargs):
+        try:
+            return await cache_manager.aadd(key, value, expiry, nx)
+        except CacheUnavailableError:
+            return False
+
+    async def try_aremove(key, **_kwargs):
+        try:
+            return await cache_manager.aremove(key)
+        except CacheUnavailableError:
+            return False
+
+    cache_manager.try_aget_str = AsyncMock(side_effect=try_aget_str)
+    cache_manager.try_aadd = AsyncMock(side_effect=try_aadd)
+    cache_manager.try_aremove = AsyncMock(side_effect=try_aremove)
+
+    # read_through / invalidating, mapped onto the sync mocks: a hit is
+    # get_str, a fill is add(key, value, ttl), each rotation is remove(key).
+    async def read_through(key, loader, *, ttl):
+        try:
+            cached = cache_manager.get_str(key)
+        except CacheUnavailableError:
+            return await loader()
+        if cached is not None:
+            return cached
+        value = await loader()
+        if value is not None:
+            with contextlib.suppress(CacheUnavailableError):  # fill is best-effort
+                cache_manager.add(key, value, ttl)
+        return value
+
+    @contextlib.asynccontextmanager
+    async def invalidating(*keys):
+        for key in keys:
+            cache_manager.remove(key)  # strict: a raise stops the change
+        try:
+            yield
+        finally:
+            for key in keys:
+                with contextlib.suppress(CacheUnavailableError):  # best-effort
+                    cache_manager.remove(key)
+
+    cache_manager.read_through = AsyncMock(side_effect=read_through)
+    cache_manager.invalidating = Mock(side_effect=invalidating)
+    return cache_manager
+
+
 def build_cache_manager(user_id: str) -> Mock:
     """Cache stub that answers both the session lookup and the reset-code lookup."""
-    cache_manager = Mock()
+    cache_manager = add_async_cache_methods(Mock())
     session_payload = json.dumps({'user_id': user_id, 'device_info': 'Mozilla/5.0'})
     cache_manager.get_str.side_effect = (
         lambda key: user_id if key == RESET_CODE else session_payload
@@ -57,8 +137,24 @@ def build_cache_manager(user_id: str) -> Mock:
     return cache_manager
 
 
+def add_async_token_methods(token_service: Mock) -> Mock:
+    """Give a token-service mock ``decode_token_async``/``create_token_async``.
+
+    They forward to the sync mocks, so a test that sets
+    ``decode_token.return_value`` or ``create_token.side_effect`` (or asserts on
+    them) covers code that calls either version.
+    """
+    token_service.decode_token_async = AsyncMock(
+        side_effect=lambda token: token_service.decode_token(token)
+    )
+    token_service.create_token_async = AsyncMock(
+        side_effect=lambda **kwargs: token_service.create_token(**kwargs)
+    )
+    return token_service
+
+
 def build_token_service(user_id: str, session_id: str) -> Mock:
-    token_service = Mock()
+    token_service = add_async_token_methods(Mock())
     token_service.create_token.return_value = 'mock_token'
     token_service.decode_token.return_value = {
         'sub': 'test@example.com',
