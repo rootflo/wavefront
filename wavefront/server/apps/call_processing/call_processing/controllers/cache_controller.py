@@ -1,10 +1,10 @@
 """Cache management endpoints for voice agent configurations"""
 
+from authz_module import Legacy, requires
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Header, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
 
 from call_processing.log.logger import logger
 from call_processing.services.common.voice_agent_cache_service import (
@@ -26,62 +26,19 @@ class InvalidateCacheRequest(BaseModel):
     config_id: str  # Can be UUID string or phone number for inbound_number type
 
 
-@inject
-def verify_passthrough_auth(
-    x_passthrough: Optional[str] = Header(None),
-    app_env: str = Depends(Provide[ApplicationContainer.config.env_config.app_env]),
-    passthrough_secret: Optional[str] = Depends(
-        Provide[ApplicationContainer.config.env_config.passthrough_secret]
-    ),
-) -> None:
-    """
-    Verify passthrough authentication header.
-    In non-production, validates the passthrough header.
-    In production, skips validation (relies on service mesh/mTLS).
-
-    Args:
-        x_passthrough: X-Passthrough header value
-
-    Raises:
-        HTTPException: If authentication fails in non-production
-    """
-    # In production, skip passthrough validation (use service mesh instead)
-    if (app_env or 'production') == 'production':
-        return
-
-    # Non-production: Strict passthrough validation
-    expected_secret = passthrough_secret or None
-
-    if not expected_secret:
-        logger.warning('Passthrough not configured')
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Passthrough not configured',
-        )
-
-    if not x_passthrough:
-        logger.warning('Missing X-Passthrough header')
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Missing X-Passthrough header',
-        )
-
-    if x_passthrough != expected_secret:
-        logger.warning('Invalid X-Passthrough header')
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Invalid authentication credentials',
-        )
-
-
-@cache_router.post('/invalidate', status_code=200)
+@cache_router.post(
+    '/invalidate',
+    status_code=200,
+    dependencies=[
+        Depends(requires('calls:InvalidateCache', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def invalidate_cache(
     request: InvalidateCacheRequest,
     voice_agent_cache_service: VoiceAgentCacheService = Depends(
         Provide[ApplicationContainer.voice_agent_cache_service]
     ),
-    _auth: None = Depends(verify_passthrough_auth),
 ):
     """
     Invalidate and refresh a specific config in cache

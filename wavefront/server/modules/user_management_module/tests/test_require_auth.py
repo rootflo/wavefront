@@ -25,11 +25,12 @@ from user_management_module.authorization.require_auth import (
     matches_any_route,
     matches_dynamic_route,
     mtls_principal_prefixes,
-    optional_auth_apis,
     validate_hmac_signature,
     validate_mtls_auth,
     validate_passthrough_auth,
 )
+from authz_module import AuthenticationError
+from user_management_module.authorization import authenticator as authenticator_module
 from user_management_module.constants.auth import RootfloHeaders, SERVICE_AUTH_ROLE_ID
 
 
@@ -88,12 +89,10 @@ def test_matches_dynamic_route_rejects_extra_segments():
 
 
 def test_matches_any_route_exact_and_dynamic():
-    assert matches_any_route('/floware/v1/health', optional_auth_apis)
-    assert matches_any_route(
-        '/floware/v1/triggers/t1/a1/invoke',
-        optional_auth_apis,
-    )
-    assert not matches_any_route('/floware/v1/users', optional_auth_apis)
+    routes = ['/floware/v1/image/analyse', '/floware/v1/triggers/{t}/{a}/invoke']
+    assert matches_any_route('/floware/v1/image/analyse', routes)
+    assert matches_any_route('/floware/v1/triggers/t1/a1/invoke', routes)
+    assert not matches_any_route('/floware/v1/users', routes)
 
 
 def test_is_request_hmac_true_when_any_hmac_header_present():
@@ -172,8 +171,7 @@ async def test_validate_hmac_signature_rejects_missing_headers():
 CLIENT_APPS_PREFIXES = mtls_principal_prefixes(['client-applications'])
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_accepts_allowed_spiffe():
+def test_validate_mtls_auth_accepts_allowed_spiffe():
     request = MagicMock()
     request.headers = Headers(
         {
@@ -184,19 +182,21 @@ async def test_validate_mtls_auth_accepts_allowed_spiffe():
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is True
-    assert request.state.session.role_id == SERVICE_AUTH_ROLE_ID
+    principal = validate_mtls_auth(request, CLIENT_APPS_PREFIXES)
+    assert principal is not None
+    assert principal.is_service
+    assert principal.role_id == SERVICE_AUTH_ROLE_ID
+    assert principal.attributes['spiffe_id'].endswith('/sa/app')
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_rejects_disallowed_namespace():
+def test_validate_mtls_auth_rejects_disallowed_namespace():
     request = MagicMock()
     request.headers = Headers(
         {'X-Forwarded-Client-Cert': 'URI=spiffe://cluster.local/ns/evil/sa/app'}
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is False
+    assert validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is None
 
 
 def _passthrough_request(header_value):
@@ -207,47 +207,28 @@ def _passthrough_request(header_value):
 
 
 def test_validate_passthrough_auth_success():
-    formatter = MagicMock()
-
-    assert (
-        validate_passthrough_auth(
-            _passthrough_request('shared-secret'), formatter, 'shared-secret'
-        )
-        is None
+    principal = validate_passthrough_auth(
+        _passthrough_request('shared-secret'), 'shared-secret'
     )
 
-
-def test_validate_passthrough_auth_sets_service_session():
-    request = _passthrough_request('shared-secret')
-
-    validate_passthrough_auth(request, MagicMock(), 'shared-secret')
-
-    assert request.state.session.user_id == 'passthrough'
+    assert principal.is_service
+    assert principal.user_id == 'passthrough'
+    assert principal.role_id == SERVICE_AUTH_ROLE_ID
 
 
 def test_validate_passthrough_auth_mismatch():
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with pytest.raises(AuthenticationError) as exc:
+        validate_passthrough_auth(_passthrough_request('wrong'), 'shared-secret')
 
-    response = validate_passthrough_auth(
-        _passthrough_request('wrong'), formatter, 'shared-secret'
-    )
-
-    assert response is not None
-    assert response.status_code == 401
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.parametrize('secret', [None, ''])
 def test_validate_passthrough_auth_unconfigured(secret):
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with pytest.raises(AuthenticationError) as exc:
+        validate_passthrough_auth(_passthrough_request('anything'), secret)
 
-    response = validate_passthrough_auth(
-        _passthrough_request('anything'), formatter, secret
-    )
-
-    assert response is not None
-    assert response.status_code == 500
+    assert exc.value.status_code == 500
 
 
 _MTLS_NAMESPACES = ('client-applications', 'gpu-processing')
@@ -311,8 +292,7 @@ def _xfcc_request(xfcc: str):
     return request
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_uses_the_last_xfcc_entry():
+def test_validate_mtls_auth_uses_the_last_xfcc_entry():
     # The first entry came in as a request header; the sidecar appended the last
     request = _xfcc_request(
         'By=spiffe://cluster.local/ns/floware/sa/floware;'
@@ -321,31 +301,30 @@ async def test_validate_mtls_auth_uses_the_last_xfcc_entry():
         'URI=spiffe://cluster.local/ns/client-applications/sa/call-processing'
     )
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is True
-    assert request.state.session.user_id == 'service'
+    principal = validate_mtls_auth(request, CLIENT_APPS_PREFIXES)
+    assert principal is not None
+    assert principal.user_id == 'service'
+    assert principal.attributes['spiffe_id'].endswith('/sa/call-processing')
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_ignores_a_spoofed_first_xfcc_entry():
+def test_validate_mtls_auth_ignores_a_spoofed_first_xfcc_entry():
     request = _xfcc_request(
         'URI=spiffe://cluster.local/ns/client-applications/sa/forged,'
         'By=spiffe://cluster.local/ns/floware/sa/floware;'
         'URI=spiffe://cluster.local/ns/evil/sa/real'
     )
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is False
-    assert not hasattr(request.state, 'session')
+    assert validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is None
 
 
-@pytest.mark.asyncio
-async def test_validate_mtls_auth_accepts_a_bare_spiffe_header():
+def test_validate_mtls_auth_accepts_a_bare_spiffe_header():
     request = _xfcc_request('spiffe://cluster.local/ns/client-applications/sa/app')
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is True
-    assert request.state.session.user_id == 'service'
+    principal = validate_mtls_auth(request, CLIENT_APPS_PREFIXES)
+    assert principal is not None
+    assert principal.user_id == 'service'
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     'principal',
     [
@@ -353,10 +332,10 @@ async def test_validate_mtls_auth_accepts_a_bare_spiffe_header():
         'spiffe://cluster.local/ns/client-applications',
     ],
 )
-async def test_validate_mtls_auth_requires_a_namespace_boundary(principal):
+def test_validate_mtls_auth_requires_a_namespace_boundary(principal):
     request = _xfcc_request(f'URI={principal}')
 
-    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is False
+    assert validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is None
 
 
 # ---- secret access ----------------------------------------------------------
@@ -391,7 +370,50 @@ def _jwt_deps():
     return {'token_service': token_service, 'cache_manager': cache_manager}
 
 
-async def _secret_access_after_dispatch(middleware, request, **deps):
+def _middleware(
+    app_env='production',
+    passthrough_secret=None,
+    *,
+    token_service=None,
+    session_repository=None,
+    cache_manager=None,
+    auth_secrets_repository=None,
+    secret_cipher=None,
+):
+    """A middleware whose authenticator uses these dependencies, not the containers."""
+    middleware = RequireAuthMiddleware(
+        app=MagicMock(),
+        app_env=app_env,
+        passthrough_secret=passthrough_secret,
+        mtls_allowed_namespaces=_MTLS_NAMESPACES,
+    )
+    session_deps = {
+        'token_service': token_service or add_async_token_methods(MagicMock()),
+        'session_repository': session_repository or AsyncMock(),
+        'cache_manager': cache_manager or add_async_cache_methods(MagicMock()),
+    }
+    authenticate = middleware.authenticator.authenticate
+    validate_session_token = authenticator_module.validate_session_token
+
+    async def authenticate_with_deps(request):
+        original = authenticator_module.validate_session_token
+        authenticator_module.validate_session_token = (
+            lambda req, token: validate_session_token(req, token, **session_deps)
+        )
+        try:
+            return await authenticate(
+                request,
+                auth_secrets_repository=auth_secrets_repository or AsyncMock(),
+                secret_cipher=secret_cipher or _cipher(False),
+            )
+        finally:
+            authenticator_module.validate_session_token = original
+
+    middleware.authenticator.authenticate = authenticate_with_deps
+    return middleware
+
+
+async def _secret_access_after_dispatch(middleware, request):
     """Run the middleware and return request.state.secret_access as the route sees it,
     or None when the request never reaches the route."""
     seen = {}
@@ -400,28 +422,8 @@ async def _secret_access_after_dispatch(middleware, request, **deps):
         seen['secret_access'] = req.state.secret_access
         return Response('ok')
 
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'x'}
-    deps = {
-        'token_service': add_async_token_methods(MagicMock()),
-        'response_formatter': formatter,
-        'session_repository': AsyncMock(),
-        'cache_manager': add_async_cache_methods(MagicMock()),
-        'auth_secrets_repository': AsyncMock(),
-        'secret_cipher': _cipher(False),
-        **deps,
-    }
-    await middleware.dispatch(request, call_next, **deps)
+    await middleware.dispatch(request, call_next)
     return seen.get('secret_access')
-
-
-def _middleware(app_env='production', passthrough_secret=None):
-    return RequireAuthMiddleware(
-        app=MagicMock(),
-        app_env=app_env,
-        passthrough_secret=passthrough_secret,
-        mtls_allowed_namespaces=_MTLS_NAMESPACES,
-    )
 
 
 @pytest.mark.asyncio
@@ -429,7 +431,7 @@ async def test_secret_access_granted_to_a_valid_mtls_caller():
     request = _http_request(headers={'X-Forwarded-Client-Cert': _SERVICE_XFCC})
 
     assert await _secret_access_after_dispatch(_middleware(), request) is True
-    assert request.state.session.user_id == 'service'
+    assert request.state.principal.user_id == 'service'
 
 
 @pytest.mark.asyncio
@@ -471,11 +473,11 @@ async def test_secret_access_denied_to_passthrough_in_production():
 
     assert (
         await _secret_access_after_dispatch(
-            _middleware(passthrough_secret='shared-secret'), request, **_jwt_deps()
+            _middleware(passthrough_secret='shared-secret', **_jwt_deps()), request
         )
         is False
     )
-    assert request.state.session.user_id == 'u1'
+    assert request.state.principal.user_id == 'u1'
 
 
 @pytest.mark.asyncio
@@ -483,7 +485,7 @@ async def test_secret_access_denied_to_jwt_callers():
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     assert (
-        await _secret_access_after_dispatch(_middleware(), request, **_jwt_deps())
+        await _secret_access_after_dispatch(_middleware(**_jwt_deps()), request)
         is False
     )
 
@@ -499,7 +501,7 @@ async def test_secret_access_denied_to_jwt_callers_presenting_xfcc():
     )
 
     assert (
-        await _secret_access_after_dispatch(_middleware(), request, **_jwt_deps())
+        await _secret_access_after_dispatch(_middleware(**_jwt_deps()), request)
         is False
     )
 
@@ -516,11 +518,11 @@ async def test_secret_access_denied_to_hmac_callers():
 
     assert (
         await _secret_access_after_dispatch(
-            _middleware(), request, auth_secrets_repository=repo
+            _middleware(auth_secrets_repository=repo), request
         )
         is False
     )
-    assert request.state.session.user_id == 'hmac-service'
+    assert request.state.principal.user_id == 'hmac-service'
 
 
 # ---- session cache: async, with a database fallback --------------------------
@@ -537,10 +539,10 @@ async def test_session_cache_hit_skips_the_database():
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     await _secret_access_after_dispatch(
-        _middleware(), request, session_repository=session_repository, **deps
+        _middleware(session_repository=session_repository, **deps), request
     )
 
-    assert request.state.session.user_id == 'u1'
+    assert request.state.principal.user_id == 'u1'
     deps['cache_manager'].read_through.assert_awaited_once()
     session_repository.find_one.assert_not_awaited()
 
@@ -555,11 +557,11 @@ async def test_session_cache_outage_falls_back_to_the_database():
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     secret_access = await _secret_access_after_dispatch(
-        _middleware(), request, session_repository=session_repository, **deps
+        _middleware(session_repository=session_repository, **deps), request
     )
 
     assert secret_access is False  # reached the route
-    assert request.state.session.user_id == 'u1'
+    assert request.state.principal.user_id == 'u1'
     session_repository.find_one.assert_awaited_once_with(id='s1')
     deps['cache_manager'].add.assert_not_called()  # no fill while Redis is down
 
@@ -573,7 +575,7 @@ async def test_cache_miss_loads_from_the_database_and_fills():
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     secret_access = await _secret_access_after_dispatch(
-        _middleware(), request, session_repository=session_repository, **deps
+        _middleware(session_repository=session_repository, **deps), request
     )
 
     assert secret_access is False
@@ -594,7 +596,7 @@ async def test_session_of_another_user_is_rejected(redis_down):
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     secret_access = await _secret_access_after_dispatch(
-        _middleware(), request, session_repository=session_repository, **deps
+        _middleware(session_repository=session_repository, **deps), request
     )
 
     assert secret_access is None  # rejected: never reached the route
@@ -609,10 +611,14 @@ async def test_unknown_session_is_rejected():
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
     secret_access = await _secret_access_after_dispatch(
-        _middleware(), request, session_repository=session_repository, **deps
+        _middleware(session_repository=session_repository, **deps), request
     )
 
     assert secret_access is None
+
+
+async def _must_not_reach_the_route(_req):
+    raise AssertionError('must not reach the route')
 
 
 @pytest.mark.asyncio
@@ -626,22 +632,9 @@ async def test_busy_kms_pool_answers_503(monkeypatch):
     deps['token_service'].decode_token_async = AsyncMock(
         side_effect=BlockingPoolBusyError('kms', 10)
     )
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'busy'}
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
-    async def call_next(_req):
-        raise AssertionError('must not reach the route')
-
-    response = await _middleware().dispatch(
-        request,
-        call_next,
-        response_formatter=formatter,
-        session_repository=AsyncMock(),
-        auth_secrets_repository=AsyncMock(),
-        secret_cipher=_cipher(False),
-        **deps,
-    )
+    response = await _middleware(**deps).dispatch(request, _must_not_reach_the_route)
 
     assert response.status_code == 503
     assert response.headers['Retry-After'] == '10'
@@ -662,22 +655,9 @@ async def test_invalid_token_answers_401_not_500(error):
     """Junk from an unauthenticated caller is their mistake: 401, never 500."""
     deps = _jwt_deps()
     deps['token_service'].decode_token_async = AsyncMock(side_effect=error)
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'Invalid token'}
     request = _http_request(headers={'Authorization': 'Bearer junk'})
 
-    async def call_next(_req):
-        raise AssertionError('must not reach the route')
-
-    response = await _middleware().dispatch(
-        request,
-        call_next,
-        response_formatter=formatter,
-        session_repository=AsyncMock(),
-        auth_secrets_repository=AsyncMock(),
-        secret_cipher=_cipher(False),
-        **deps,
-    )
+    response = await _middleware(**deps).dispatch(request, _must_not_reach_the_route)
 
     assert response.status_code == 401
 
@@ -691,22 +671,9 @@ async def test_unreachable_kms_answers_503_not_401():
     deps['token_service'].decode_token_async = AsyncMock(
         side_effect=PublicKeyUnavailableError('KMS down')
     )
-    formatter = MagicMock()
-    formatter.buildErrorResponse.return_value = {'error': 'unavailable'}
     request = _http_request(headers={'Authorization': 'Bearer token'})
 
-    async def call_next(_req):
-        raise AssertionError('must not reach the route')
-
-    response = await _middleware().dispatch(
-        request,
-        call_next,
-        response_formatter=formatter,
-        session_repository=AsyncMock(),
-        auth_secrets_repository=AsyncMock(),
-        secret_cipher=_cipher(False),
-        **deps,
-    )
+    response = await _middleware(**deps).dispatch(request, _must_not_reach_the_route)
 
     assert response.status_code == 503
     assert 'Retry-After' in response.headers

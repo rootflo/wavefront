@@ -5,6 +5,7 @@ from floconsole.controllers.app_user_controller import app_user_router
 from floconsole.controllers.auth_controller import auth_router
 from floconsole.controllers.floware_proxy_controller import floware_proxy_router
 from floconsole.controllers.health_controller import health_router
+from floconsole.controllers.settings_controller import settings_router
 from floconsole.controllers.user_controller import user_router
 
 FLOCONSOLE_PREFIX = '/floconsole'
@@ -16,6 +17,7 @@ FLOCONSOLE_ROUTERS = [
     user_router,
     app_router,
     app_user_router,
+    settings_router,
 ]
 
 

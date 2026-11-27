@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import asyncio
 
 from common_module.common_container import CommonContainer
@@ -19,26 +20,8 @@ from guardrails_module.services.guardrails_service import (
     GuardrailsService,
     build_resolved_policy,
 )
-from user_management_module.utils.user_utils import check_is_admin
 
 guardrails_router = APIRouter()
-
-
-async def _require_admin(request: Request, response_formatter: ResponseFormatter):
-    """Guardrail policy is a security control, so reads are admin-only too.
-
-    Its contents disclose exactly which checks are running and at what
-    thresholds, which is a map of how to get past them.
-    """
-    role_id = request.state.session.role_id
-    if not await check_is_admin(role_id):
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Admin access required to manage guardrail policies'
-            ),
-        )
-    return None
 
 
 async def _effective_stream_mode(guardrails_engine, namespace: str) -> str:
@@ -66,7 +49,18 @@ async def _effective_stream_mode(guardrails_engine, namespace: str) -> str:
         return 'UNKNOWN'
 
 
-@guardrails_router.get('/v1/guardrails/adapters')
+@guardrails_router.get(
+    '/v1/guardrails/adapters',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:ListAdapters',
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def list_supported_adapters(
     request: Request,
@@ -84,10 +78,6 @@ async def list_supported_adapters(
     and fails closed, so offering an unavailable provider in the UI would let
     an admin block all traffic for their namespace in one click.
     """
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     guardrails_cfg = (config or {}).get('guardrails', {})
     is_enabled = cfg_bool(guardrails_cfg.get('enabled'), False)
     if not is_enabled:
@@ -118,7 +108,18 @@ def _pii_adapter(guardrails_engine):
     return getter(PII_ADAPTER)
 
 
-@guardrails_router.get('/v1/guardrails/pii/entities')
+@guardrails_router.get(
+    '/v1/guardrails/pii/entities',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:ListPiiEntities',
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def list_pii_entities(
     request: Request,
@@ -135,10 +136,6 @@ async def list_pii_entities(
     would offer checkboxes that detect nothing, and selecting one fails the
     namespace closed.
     """
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     adapter = _pii_adapter(guardrails_engine)
     if adapter is None:
         return JSONResponse(
@@ -196,7 +193,19 @@ async def list_pii_entities(
         )
 
 
-@guardrails_router.post('/v1/guardrails/pii/preview')
+@guardrails_router.post(
+    '/v1/guardrails/pii/preview',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:PreviewPolicy',
+                resource=from_path('guardrail_policy'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def preview_pii_policy(
     request: Request,
@@ -214,10 +223,6 @@ async def preview_pii_policy(
     keeping the adapter's "types and counts, never values" rule intact even
     though the admin supplied the text.
     """
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     adapter = _pii_adapter(guardrails_engine)
     if adapter is None:
         return JSONResponse(
@@ -284,7 +289,19 @@ def _serialise_decision(decision, stage: str) -> dict:
     }
 
 
-@guardrails_router.post('/v1/guardrails/policies/preview')
+@guardrails_router.post(
+    '/v1/guardrails/policies/preview',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:PreviewPolicy',
+                resource=from_path('guardrail_policy'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def preview_guardrail_policy(
     request: Request,
@@ -308,10 +325,6 @@ async def preview_guardrail_policy(
     """
     from flo_ai.guardrails import Principal, WorkflowStage
     from flo_ai.guardrails.contracts import DISABLED_POLICY
-
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
 
     try:
         if payload.is_enabled:
@@ -380,7 +393,19 @@ async def preview_guardrail_policy(
         )
 
 
-@guardrails_router.get('/v1/guardrails/policies')
+@guardrails_router.get(
+    '/v1/guardrails/policies',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:ListPolicies',
+                resource=from_path('guardrail_policy'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def list_guardrail_policies(
     request: Request,
@@ -391,10 +416,6 @@ async def list_guardrail_policies(
         Provide[GuardrailsContainer.guardrails_service]
     ),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     try:
         policies = await guardrails_service.list_policies()
         return JSONResponse(
@@ -415,7 +436,19 @@ async def list_guardrail_policies(
         )
 
 
-@guardrails_router.get('/v1/guardrails/policies/{namespace}')
+@guardrails_router.get(
+    '/v1/guardrails/policies/{namespace}',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:GetPolicy',
+                resource=from_path('guardrail_policy', 'namespace'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def get_guardrail_policy(
     request: Request,
@@ -432,10 +465,6 @@ async def get_guardrail_policy(
     The UI needs something to render either way, and "no policy" and "policy
     that is switched off" are the same state as far as enforcement goes.
     """
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     try:
         policy = await guardrails_service.get_policy_response(namespace)
         return JSONResponse(
@@ -450,7 +479,19 @@ async def get_guardrail_policy(
         )
 
 
-@guardrails_router.put('/v1/guardrails/policies/{namespace}')
+@guardrails_router.put(
+    '/v1/guardrails/policies/{namespace}',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:UpdatePolicy',
+                resource=from_path('guardrail_policy', 'namespace'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def update_guardrail_policy(
     request: Request,
@@ -465,10 +506,6 @@ async def update_guardrail_policy(
     guardrails_engine=Depends(Provide[GuardrailsContainer.guardrails_engine]),
 ):
     """Create or replace a namespace's policy, including the master switch."""
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     # Reject adapters this deployment cannot run, rather than storing them and
     # failing closed on every subsequent request.
     #
@@ -536,7 +573,19 @@ async def update_guardrail_policy(
         )
 
 
-@guardrails_router.delete('/v1/guardrails/policies/{namespace}')
+@guardrails_router.delete(
+    '/v1/guardrails/policies/{namespace}',
+    dependencies=[
+        Depends(
+            requires(
+                'guardrails:DeletePolicy',
+                resource=from_path('guardrail_policy', 'namespace'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage guardrail policies',
+            )
+        )
+    ],
+)
 @inject
 async def delete_guardrail_policy(
     request: Request,
@@ -548,10 +597,6 @@ async def delete_guardrail_policy(
         Provide[GuardrailsContainer.guardrails_service]
     ),
 ):
-    denied = await _require_admin(request, response_formatter)
-    if denied:
-        return denied
-
     try:
         await guardrails_service.delete_policy(namespace)
         return JSONResponse(

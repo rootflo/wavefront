@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import uuid
 
 from common_module.common_container import CommonContainer
@@ -16,12 +17,23 @@ from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
 from user_management_module.authorization.secret_access import require_secret_access
-from user_management_module.utils.user_utils import check_is_admin
 
 llm_inference_config_router = APIRouter()
 
 
-@llm_inference_config_router.post('/v1/llm-inference-configs')
+@llm_inference_config_router.post(
+    '/v1/llm-inference-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'models:CreateModelConfig',
+                resource=from_path('llm_inference_config'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage models in the Model Hub',
+            )
+        )
+    ],
+)
 @inject
 async def create_llm_inference_config(
     request: Request,
@@ -33,16 +45,6 @@ async def create_llm_inference_config(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Admin access required to manage models in the Model Hub'
-            ),
-        )
-
     try:
         config_dict = await llm_inference_config_service.create_config(
             llm_model=payload.llm_model,
@@ -70,7 +72,19 @@ async def create_llm_inference_config(
         )
 
 
-@llm_inference_config_router.get('/v1/llm-inference-configs')
+@llm_inference_config_router.get(
+    '/v1/llm-inference-configs',
+    dependencies=[
+        Depends(
+            requires(
+                'models:ListModelConfigs',
+                resource=from_path('llm_inference_config'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage models in the Model Hub',
+            )
+        )
+    ],
+)
 @inject
 async def get_llm_inference_configs(
     request: Request,
@@ -81,16 +95,6 @@ async def get_llm_inference_configs(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Admin access required to manage models in the Model Hub'
-            ),
-        )
-
     try:
         configs_list = await llm_inference_config_service.list_configs()
 
@@ -105,7 +109,18 @@ async def get_llm_inference_configs(
         )
 
 
-@llm_inference_config_router.get('/v1/llm-inference-configs/{config_id}')
+@llm_inference_config_router.get(
+    '/v1/llm-inference-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'models:GetModelConfig',
+                resource=from_path('llm_inference_config', 'config_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_llm_inference_config(
     request: Request,
@@ -150,7 +165,19 @@ async def get_llm_inference_config(
         )
 
 
-@llm_inference_config_router.patch('/v1/llm-inference-configs/{config_id}')
+@llm_inference_config_router.patch(
+    '/v1/llm-inference-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'models:UpdateModelConfig',
+                resource=from_path('llm_inference_config', 'config_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage models in the Model Hub',
+            )
+        )
+    ],
+)
 @inject
 async def update_llm_inference_config(
     request: Request,
@@ -163,16 +190,6 @@ async def update_llm_inference_config(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Admin access required to manage models in the Model Hub'
-            ),
-        )
-
     try:
         # Validate payload fields before update
         update_data = {}
@@ -275,7 +292,19 @@ async def update_llm_inference_config(
         )
 
 
-@llm_inference_config_router.delete('/v1/llm-inference-configs/{config_id}')
+@llm_inference_config_router.delete(
+    '/v1/llm-inference-configs/{config_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'models:DeleteModelConfig',
+                resource=from_path('llm_inference_config', 'config_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required to manage models in the Model Hub',
+            )
+        )
+    ],
+)
 @inject
 async def delete_llm_inference_config(
     request: Request,
@@ -287,16 +316,6 @@ async def delete_llm_inference_config(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
 ):
-    role_id = request.state.session.role_id
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Admin access required to manage models in the Model Hub'
-            ),
-        )
-
     try:
         deleted = await llm_inference_config_service.delete_config(config_id)
         if not deleted:

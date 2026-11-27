@@ -25,6 +25,7 @@ RUN apk upgrade --no-cache && \
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
+COPY wavefront/server/modules/authz_module /app/modules/authz_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud

@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import yaml
+from authz_module import Legacy, user_principal
+from authz_module.routes import declarations
 from fastapi import HTTPException
 from flo_testing import add_async_cache_methods
 
@@ -560,14 +562,13 @@ async def test_delete_api_service_removes_cache_key():
 
 
 @pytest.fixture
-def admin(monkeypatch):
-    is_admin = AsyncMock(return_value=True)
-    monkeypatch.setattr(secret_controller, 'check_is_admin', is_admin)
-    return is_admin
+def admin():
+    """The admin gate is the route's declaration (see
+    test_routes_declare_admin_actions), so handlers called directly need none."""
 
 
 def _request():
-    return SimpleNamespace(state=SimpleNamespace(session=SimpleNamespace(role_id='r')))
+    return SimpleNamespace(state=SimpleNamespace(principal=user_principal('u')))
 
 
 def _body(response):
@@ -684,14 +685,11 @@ async def test_create_returns_metadata_and_400_on_bad_name(admin):
     assert bad.status_code == 400
 
 
-async def test_non_admin_is_forbidden(monkeypatch):
-    monkeypatch.setattr(
-        secret_controller, 'check_is_admin', AsyncMock(return_value=False)
-    )
-    store, _ = _store()
-
-    response = await secret_controller.list_secrets(
-        _request(), response_formatter=ResponseFormatter(), secret_store=store
-    )
-
-    assert response.status_code == 403
+def test_routes_declare_admin_actions():
+    """Every secrets route is admin-only, enforced before the handler runs."""
+    routes = [r for r in secret_controller.secret_router.routes]
+    assert routes
+    for route in routes:
+        [declaration] = declarations(route)
+        assert declaration.action.name.startswith('secrets:')
+        assert declaration.action.legacy == Legacy.ADMIN

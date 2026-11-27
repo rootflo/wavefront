@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 import httpx
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
@@ -16,7 +17,13 @@ from fastapi.responses import JSONResponse
 image_controller = APIRouter()
 
 
-@image_controller.post('/analyse', deprecated=True)
+@image_controller.post(
+    '/analyse',
+    deprecated=True,
+    dependencies=[
+        Depends(requires('images:AnalyzeImage', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def process_image(
     request: Request,

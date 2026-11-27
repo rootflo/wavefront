@@ -1,338 +1,65 @@
-from dataclasses import dataclass
-import json
-from typing import Optional
-import hashlib
-import hmac
-import time
-import re
+"""Floware's request authentication and authorization middleware.
+
+Authentication is ``FlowareAuthenticator``; authorization is whatever the route
+declares with ``requires``/``public_route``, decided by the provider that
+``AUTHZ_PROVIDER`` selects (by default: each action's legacy rule).
+"""
+
+from __future__ import annotations
+
 from collections.abc import Sequence
 
-from auth_module.auth_container import AuthContainer
-from auth_module.services.token_service import TokenService
+import jwt
+from authz_module import AuthzProvider, install, load_provider
+from authz_module.default import DefaultAuthorizer
+from authz_module.middleware import AuthzMiddleware
 from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
-from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.public_key_cache import PublicKeyUnavailableError
-from common_module.security.secret_cipher import SecretCipher
-from db_repo_module.cache.cache_manager import CacheManager
-from db_repo_module.models.session import Session
-from db_repo_module.models.auth_secrets import AuthSecrets
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from dependency_injector.wiring import inject
-from dependency_injector.wiring import Provide
-from fastapi import Request
 from fastapi import status
-from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID, RootfloHeaders
 from fastapi.responses import JSONResponse
-import jwt
-from starlette.datastructures import Headers
-from starlette.middleware.base import BaseHTTPMiddleware
-from user_management_module.user_container import UserContainer
-from user_management_module.utils.user_utils import check_is_admin
-from user_management_module.constants.cache import get_session_cache_key
+from starlette.requests import Request
 
-optional_auth_apis = [
-    '/floware/v1/health',
-    '/floware/v1/authenticate',
-    '/',
-    '/google/login',
-    '/google/login/callback',
-    '/azure/login',
-    '/floware/oauth/azure/callback',
-    '/docs',
-    '/openapi.json',
-    '/floware/v1/user/send-reset-password-email',
-    '/floware/v1/user/reset-password',
-    '/floware/v1/plugin-auth/authenticate',
-    '/floware/v1/oauth/google/callback',
-    '/floware/v1/oauth/microsoft/callback',
-    '/floware/v1/oauth/adfs/callback',
-    '/floware/v1/plugin-auth/oauth/init',
-    # The user arrives here from the provider's consent screen, so there is no
-    # session to check; the OAuth state binds the callback to its connection.
-    '/floware/v1/email-connections/oauth/callback',
-    '/floware/v1/triggers/{trigger_id}/{agentic_id}/invoke',
-]
+from user_management_module.authorization.authenticator import (
+    BASE_HMAC_APIS,
+    TOKEN_EXPIRED,
+    FlowareAuthenticator,
+    is_request_hmac,
+    matches_any_route,
+    matches_dynamic_route,
+    mtls_principal_prefixes,
+    validate_hmac_signature,
+    validate_mtls_auth,
+    validate_passthrough_auth,
+)
+from user_management_module.authorization.legacy_resolver import (
+    FlowareLegacyResolver,
+)
 
-# Always HMAC-authenticated, on top of any routes the app configures.
-BASE_HMAC_APIS = ('/floware/v1/image/analyse',)
+# Framework routes that cannot declare anything themselves.
+PUBLIC_PATHS = ('/', '/docs', '/openapi.json')
 
 
-def mtls_principal_prefixes(namespaces: Sequence[str]) -> tuple[str, ...]:
-    """SPIFFE ID prefixes a caller in one of ``namespaces`` presents."""
-    return tuple(f'spiffe://cluster.local/ns/{namespace}' for namespace in namespaces)
-
-
-admin_apis = [
-    '/floware/v1/agent-management',
-    '/floware/v1/workflow-management',
-]
-
-
-def matches_dynamic_route(path: str, route_pattern: str) -> bool:
-    """
-    Check if a path matches a dynamic route pattern.
-
-    Args:
-        path: The actual request path (e.g., '/floware/v1/workflow-runs/123')
-        route_pattern: The route pattern with placeholders (e.g., '/floware/v1/workflow-runs/{workflow_run_id}')
-
-    Returns:
-        bool: True if the path matches the pattern, False otherwise
-    """
-    # Convert route pattern to regex
-    # First replace {param} with a placeholder, then escape, then replace placeholder
-    regex_pattern = route_pattern
-    # Replace {param} with a temporary placeholder
-    regex_pattern = re.sub(r'\{[^}]+\}', 'PLACEHOLDER', regex_pattern)
-    # Escape the pattern
-    regex_pattern = re.escape(regex_pattern)
-    # Replace the placeholder with the actual regex pattern
-    regex_pattern = regex_pattern.replace('PLACEHOLDER', r'[^/]+')
-    regex_pattern = f'^{regex_pattern}$'
-
-    return bool(re.match(regex_pattern, path))
-
-
-def matches_any_route(path: str, route_patterns: list[str]) -> bool:
-    """Check if a path matches any route in the list (supports {param} placeholders)."""
-    return any(
-        path == pattern if '{' not in pattern else matches_dynamic_route(path, pattern)
-        for pattern in route_patterns
+def render_error(
+    status_code: int, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        headers=headers,
+        content=ResponseFormatter().buildErrorResponse(error=message),
     )
 
 
-def is_request_hmac(headers: Headers) -> bool:
-    """Check whether a request is attempting HMAC authentication.
-
-    Any of the HMAC headers counts: a caller that sends a signature but omits the
-    timestamp is still attempting HMAC, and should get the HMAC error rather than
-    falling through to another auth path.
-    """
-    return any(
-        headers.get(header)
-        for header in (
-            RootfloHeaders.SIGNATURE,
-            RootfloHeaders.CLIENT_KEY,
-            RootfloHeaders.TIMESTAMP,
-        )
+def default_provider(authenticator: FlowareAuthenticator) -> AuthzProvider:
+    return AuthzProvider(
+        authenticator=authenticator,
+        authorizer=DefaultAuthorizer(FlowareLegacyResolver()),
     )
 
 
-async def validate_hmac_signature(
-    request: Request,
-    auth_secrets_repository: SQLAlchemyRepository[AuthSecrets],
-    secret_cipher: SecretCipher,
-) -> bool:
-    """Validate HMAC signature from request headers."""
-    try:
-        # Get required headers
-        client_key = request.headers.get(RootfloHeaders.CLIENT_KEY)
-        signature = request.headers.get(RootfloHeaders.SIGNATURE)
-        timestamp = request.headers.get(RootfloHeaders.TIMESTAMP)
-
-        if not all([client_key, signature, timestamp]):
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.warning(
-                f'Missing HMAC headers: client_key={bool(client_key)}, signature={bool(signature)}, timestamp={bool(timestamp)} [Request ID: {request_id}]'
-            )
-            return False
-
-        # Validate timestamp to prevent replay attacks (5 minute window)
-        try:
-            request_timestamp = int(timestamp)
-            current_timestamp = int(time.time())
-            if abs(current_timestamp - request_timestamp) > 300:  # 5 minutes
-                request_id = getattr(
-                    request.state, 'request_id', get_current_request_id()
-                )
-                logger.warning(
-                    f'Request timestamp too old or in future: {timestamp}, current: {current_timestamp} [Request ID: {request_id}]'
-                )
-                return False
-        except ValueError:
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.warning(
-                f'Invalid timestamp format: {timestamp} [Request ID: {request_id}]'
-            )
-            return False
-
-        # Find the client secret
-        auth_secret = await auth_secrets_repository.find_one(client_key=client_key)
-        if not auth_secret:
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.warning(
-                f'Invalid client_key: {client_key} [Request ID: {request_id}]'
-            )
-            return False
-
-        nonce = request.headers.get(RootfloHeaders.NONCE)
-        if not nonce:
-            body = await request.body()
-
-            # Parse JSON body to extract nonce
-            try:
-                parsed_body = json.loads(body.decode('utf-8'))
-                nonce = parsed_body.get('nonce')
-                if not nonce:
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.warning(
-                        f"Missing 'nonce' field in request body [Request ID: {request_id}]"
-                    )
-                    return False
-                if len(nonce) < 32:
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.warning(
-                        f"Minimum 'nonce' length required is 32 [Request ID: {request_id}]"
-                    )
-                    return False
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                request_id = getattr(
-                    request.state, 'request_id', get_current_request_id()
-                )
-                logger.warning(
-                    f'Invalid JSON in request body [Request ID: {request_id}]'
-                )
-                return False
-
-        # Create the message to sign: nonce:timestamp
-        message_to_sign = f'{nonce}:{timestamp}'
-
-        # Generate expected signature
-        client_secret = await secret_cipher.areveal(auth_secret.client_secret)
-        expected_signature = hmac.new(
-            client_secret.encode('utf-8'),
-            message_to_sign.encode('utf-8'),
-            hashlib.sha256,
-        ).hexdigest()
-
-        # Compare signatures
-        if not hmac.compare_digest(signature, expected_signature):
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.warning(f'Invalid HMAC signature [Request ID: {request_id}]')
-            return False
-
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.info(f'Valid HMAC signature [Request ID: {request_id}]')
-        return True
-
-    except Exception as e:
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(
-            f'Error validating HMAC signature: {str(e)} [Request ID: {request_id}]'
-        )
-        return False
-
-
-async def validate_mtls_auth(
-    request: Request, allowed_principal_prefixes: tuple[str, ...]
-) -> bool:
-    """Validate mTLS authentication using X-Forwarded-Client-Cert header"""
-    try:
-        xfcc = request.headers.get('X-Forwarded-Client-Cert')
-        if not xfcc:
-            return False
-
-        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID.
-        # The sidecar appends the peer it authenticated as the last entry; earlier
-        # entries arrived as request headers and can be forged.
-        principal = None
-        uris = re.findall(r'URI=(spiffe://[^;,"]+)', xfcc)
-        if uris:
-            principal = uris[-1]
-        elif xfcc.startswith('spiffe://'):
-            principal = xfcc
-
-        if principal:
-            if not principal.startswith(
-                tuple(f'{prefix}/' for prefix in allowed_principal_prefixes)
-            ):
-                logger.error(f'Invalid mTLS authentication. Principal: {principal}')
-                return False
-
-            # Create a service session
-            request.state.session = UserSession(
-                role_id=SERVICE_AUTH_ROLE_ID,
-                user_id='service',
-                session_id='service-token',
-            )
-
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.info(
-                f'Valid mTLS authentication. Principal: {principal} [Request ID: {request_id}]'
-            )
-            return True
-
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.warning(
-            f'mTLS header present but no valid principal found: {xfcc} [Request ID: {request_id}]'
-        )
-        return False
-
-    except Exception as e:
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(
-            f'Error validating mTLS authentication: {str(e)} [Request ID: {request_id}]'
-        )
-        return False
-
-
-def validate_passthrough_auth(
-    request: Request,
-    response_formatter: ResponseFormatter,
-    passthrough_secret: str | None,
-) -> JSONResponse | None:
-    """Validate the passthrough secret and attach a service session.
-
-    Returns an error response when validation fails, or None when the caller is
-    authenticated.
-    """
-    passthrough = request.headers.get(RootfloHeaders.PASSTHROUGH)
-    logger.info(f'PASSTHROUGH header present: {passthrough}')
-
-    if not passthrough_secret:
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(f'passthrough secret is not configured [Request ID: {request_id}]')
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                error='passthrough is not configured'
-            ),
-        )
-
-    if passthrough != passthrough_secret:
-        request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(f'Invalid passthrough secret provided [Request ID: {request_id}]')
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse(
-                error='Invalid passthrough secret'
-            ),
-        )
-
-    # Create a service session for passthrough auth
-    request.state.session = UserSession(
-        role_id=SERVICE_AUTH_ROLE_ID,
-        user_id='passthrough',
-        session_id='passthrough-token',
-    )
-    return None
-
-
-@dataclass
-class UserSession:
-    role_id: str
-    user_id: str
-    session_id: str
-
-
-class RequireAuthMiddleware(BaseHTTPMiddleware):
+class RequireAuthMiddleware(AuthzMiddleware):
     def __init__(
         self,
         app,
@@ -341,6 +68,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
         passthrough_secret: str | None = None,
         hmac_routes: Sequence[str] = (),
         mtls_allowed_namespaces: Sequence[str],
+        provider: AuthzProvider | None = None,
     ):
         """
         Args:
@@ -351,250 +79,102 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             hmac_routes: Extra routes authenticated by HMAC signature.
             mtls_allowed_namespaces: Namespaces whose SPIFFE identities are
                 accepted for mTLS auth.
+            provider: Use this provider instead of the one ``AUTHZ_PROVIDER``
+                selects.
         """
-        super().__init__(app)
-        self.app_env = app_env
-        self.passthrough_secret = passthrough_secret
-        self.required_hmac_apis = [*BASE_HMAC_APIS, *hmac_routes]
-        self.mtls_allowed_principal_prefixes = mtls_principal_prefixes(
-            mtls_allowed_namespaces
+        self.authenticator = FlowareAuthenticator(
+            app_env=app_env,
+            passthrough_secret=passthrough_secret,
+            hmac_routes=hmac_routes,
+            mtls_allowed_namespaces=mtls_allowed_namespaces,
+        )
+        if provider is None:
+            provider = load_provider(
+                service='floware', default=default_provider(self.authenticator)
+            )
+        install(provider)
+        super().__init__(
+            app,
+            provider=provider,
+            render_error=render_error,
+            public_paths=PUBLIC_PATHS,
         )
 
-    @inject
-    async def dispatch(
-        self,
-        request: Request,
-        call_next,
-        token_service: TokenService = Provide[AuthContainer.token_service],
-        response_formatter: ResponseFormatter = Provide[
-            CommonContainer.response_formatter
-        ],
-        session_repository: SQLAlchemyRepository[Session] = Provide[
-            UserContainer.session_repository
-        ],
-        cache_manager: CacheManager = Provide[UserContainer.cache_manager],
-        auth_secrets_repository: SQLAlchemyRepository[AuthSecrets] = Provide[
-            UserContainer.auth_secrets_repository
-        ],
-        secret_cipher: SecretCipher = Provide[CommonContainer.secret_cipher],
-    ):
-        # Whether the caller may receive plaintext secrets (?include_secrets=true).
-        # Only internal service callers (mTLS, or passthrough outside production).
-        request.state.secret_access = False
+    @property
+    def app_env(self) -> str:
+        return self.authenticator.app_env
+
+    @property
+    def passthrough_secret(self) -> str | None:
+        return self.authenticator.passthrough_secret
+
+    @property
+    def required_hmac_apis(self) -> list[str]:
+        return self.authenticator.required_hmac_apis
+
+    @property
+    def mtls_allowed_principal_prefixes(self) -> tuple[str, ...]:
+        return self.authenticator.mtls_allowed_principal_prefixes
+
+    async def dispatch(self, request: Request, call_next):
+        # An expired token surfacing from inside a handler has always been
+        # answered as an expired session, not a server error.
         try:
-            if request.method == 'OPTIONS':
-                return await call_next(request)
-
-            authorization = request.headers.get('Authorization')
-            token = None
-            if authorization and authorization.startswith('Bearer '):
-                token = authorization.split(' ')[1]
-
-            # Skip authentication for optional APIs (supports {param} placeholders)
-            if matches_any_route(request.url.path, optional_auth_apis):
-                return await call_next(request)
-
-            # For non-production environments: Check passthrough authentication globally
-            if self.app_env != 'production' and request.headers.get(
-                RootfloHeaders.PASSTHROUGH
-            ):
-                error_response = validate_passthrough_auth(
-                    request, response_formatter, self.passthrough_secret
-                )
-                if error_response:
-                    return error_response
-                request.state.secret_access = True
-                return await call_next(request)
-
-            # Check for mTLS authentication if the caller is presenting neither a
-            # token nor HMAC headers
-            mtls_header = request.headers.get('X-Forwarded-Client-Cert')
-            if mtls_header and not token and not is_request_hmac(request.headers):
-                logger.info(f'mTLS authentication by {mtls_header}')
-                if await validate_mtls_auth(
-                    request, self.mtls_allowed_principal_prefixes
-                ):
-                    request.state.secret_access = True
-                    return await call_next(request)
-                else:
-                    logger.error(f'Invalid mTLS authentication for {request.url.path}')
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content=response_formatter.buildErrorResponse(
-                            error='Invalid mTLS authentication'
-                        ),
-                    )
-
-            # Check if this endpoint requires HMAC validation (skip JWT validation then)
-            if not authorization and matches_any_route(
-                request.url.path, self.required_hmac_apis
-            ):
-                if not await validate_hmac_signature(
-                    request, auth_secrets_repository, secret_cipher
-                ):
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.error(
-                        f'HMAC validation failed for {request.url.path} [Request ID: {request_id}]'
-                    )
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content=response_formatter.buildErrorResponse(
-                            'Invalid HMAC signature'
-                        ),
-                    )
-                request.state.session = UserSession(
-                    role_id=SERVICE_AUTH_ROLE_ID,
-                    user_id='hmac-service',
-                    session_id='hmac-token',
-                )
-            else:
-                # Normal auth token flow
-                if not token:
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.error(
-                        f'Token missing in request for {request.url.path} [Request ID: {request_id}]'
-                    )
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content=response_formatter.buildErrorResponse(
-                            error='Token missing in request'
-                        ),
-                    )
-                decoded = await token_service.decode_token_async(token)
-                if 'session_id' not in decoded:
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.error(
-                        f'Invalid token: missing session_id [Request ID: {request_id}]'
-                    )
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content=response_formatter.buildErrorResponse(
-                            error='Invalid token: session not found'
-                        ),
-                    )
-
-                # Session lookup through the generation-checked cache. A slow or
-                # unreachable Redis falls back to the database (the source of
-                # truth) instead of failing the request, and a fill that raced a
-                # logout or revocation can never bring the session back.
-                session_cache_key = get_session_cache_key(decoded['session_id'])
-
-                async def load_session() -> Optional[str]:
-                    session = await session_repository.find_one(
-                        id=decoded['session_id']
-                    )
-                    if not session:
-                        return None
-                    return json.dumps(
-                        {
-                            'id': str(session.id),
-                            'user_id': str(session.user_id),
-                            'device_info': session.device_info,
-                        }
-                    )
-
-                session_json = await cache_manager.read_through(
-                    session_cache_key, load_session, ttl=token_service.token_expiry
-                )
-                try:
-                    session_data = json.loads(session_json) if session_json else None
-                except json.JSONDecodeError:
-                    session_data = None
-                if (
-                    not session_data
-                    or session_data.get('user_id') != decoded['user_id']
-                ):
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.error(
-                        f"Invalid session: not found or not this user's [Request ID: {request_id}]"
-                    )
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content=response_formatter.buildErrorResponse(
-                            error='Invalid session'
-                        ),
-                    )
-
-                session_obj = UserSession(
-                    role_id=decoded['role_id'],
-                    user_id=decoded['user_id'],
-                    session_id=decoded['session_id'],
-                )
-                request.state.session = session_obj
-
-                # Check for admin-only APIs
-                for admin_api_prefix in admin_apis:
-                    if request.url.path.startswith(admin_api_prefix):
-                        is_admin = await check_is_admin(session_obj.role_id)
-                        if not is_admin:
-                            logger.warning(
-                                f'Non-admin user {session_obj.user_id} attempted to access admin API: {request.url.path}'
-                            )
-                            return JSONResponse(
-                                status_code=status.HTTP_403_FORBIDDEN,
-                                content=response_formatter.buildErrorResponse(
-                                    'Admin access required'
-                                ),
-                            )
-                        break
-
-            response = await call_next(request)
-            return response
-
+            return await super().dispatch(request, call_next)
         except BlockingPoolBusyError as exc:
             # Middleware errors skip the app's exception handlers, so answer here.
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.warning(
-                f'Auth busy on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
+                f'Auth busy on {request.method} {request.url.path!r}: {exc} '
+                f'[Request ID: {request_id}]'
             )
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'The server is busy. Please try again shortly.',
                 headers={'Retry-After': str(retry_after_seconds())},
-                content=response_formatter.buildErrorResponse(
-                    error='The server is busy. Please try again shortly.'
-                ),
             )
         except PublicKeyUnavailableError as exc:
             # KMS is down: the token may be valid, so 503 (retry), never 401,
             # which clients treat as "logged out".
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(
-                f'Token key unavailable on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
+                f'Token key unavailable on {request.method} {request.url.path!r}: '
+                f'{exc} [Request ID: {request_id}]'
             )
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'Authentication is temporarily unavailable. Please try again shortly.',
                 headers={'Retry-After': str(retry_after_seconds())},
-                content=response_formatter.buildErrorResponse(
-                    error='Authentication is temporarily unavailable. Please try again shortly.'
-                ),
             )
         except jwt.ExpiredSignatureError as exc:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(
-                f'ExpiredSignatureError in require_auth middleware: {exc} [Request ID: {request_id}]'
+                f'ExpiredSignatureError in require_auth middleware: {exc} '
+                f'[Request ID: {request_id}]'
             )
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content=response_formatter.buildErrorResponse(
-                    error='Token has expired. Please log in again.'
-                ),
-            )
+            return render_error(status.HTTP_401_UNAUTHORIZED, TOKEN_EXPIRED)
         except jwt.InvalidTokenError as exc:
             # Malformed token, wrong algorithm, issuer or audience: the caller's
             # mistake, so 401 and a warning, never a 500.
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.warning(
-                f'Invalid token in require_auth middleware: {type(exc).__name__} [Request ID: {request_id}]'
+                f'Invalid token in require_auth middleware: {type(exc).__name__} '
+                f'[Request ID: {request_id}]'
             )
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content=response_formatter.buildErrorResponse(error='Invalid token'),
-            )
+            return render_error(status.HTTP_401_UNAUTHORIZED, 'Invalid token')
+
+
+__all__ = [
+    'BASE_HMAC_APIS',
+    'PUBLIC_PATHS',
+    'RequireAuthMiddleware',
+    'default_provider',
+    'is_request_hmac',
+    'matches_any_route',
+    'matches_dynamic_route',
+    'mtls_principal_prefixes',
+    'render_error',
+    'validate_hmac_signature',
+    'validate_mtls_auth',
+    'validate_passthrough_auth',
+]

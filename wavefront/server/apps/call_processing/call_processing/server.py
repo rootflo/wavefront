@@ -58,7 +58,12 @@ app = FastAPI(
 )
 
 # Middlewares & Routers
-add_middlewares(app, runtime.allowed_origins, runtime.app_env)
+add_middlewares(
+    app,
+    runtime.allowed_origins,
+    runtime.app_env,
+    passthrough_secret=runtime.passthrough_secret,
+)
 include_routers(app)
 
 

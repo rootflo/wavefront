@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
+from inference_app.authorization import InferenceAuthMiddleware
 from common_module.middleware.security_headers import SecurityHeadersMiddleware
 
 
@@ -17,6 +18,7 @@ def add_middlewares(
     app: FastAPI, *, allowed_origins: Sequence[str], environment: str
 ) -> None:
     # Order matters: last added runs first on incoming requests.
+    app.add_middleware(_middleware(InferenceAuthMiddleware))
     app.add_middleware(_middleware(RequestIdMiddleware))
     # Strict default-src 'none' CSP plus the rest of the security headers; /docs
     # and /redoc get their own relaxed policy when APP_ENV=dev.

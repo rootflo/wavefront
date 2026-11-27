@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 from typing import Annotated
 
 from fastapi import APIRouter, Request
@@ -9,7 +10,6 @@ from fastapi.params import Depends
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from floware.services.config_service import ConfigService
-from user_management_module.utils.user_utils import get_current_user, check_is_admin
 from fastapi import HTTPException
 from fastapi import Form
 import json
@@ -20,7 +20,19 @@ config_router = APIRouter(prefix='/v1')
 
 
 # this can also receive a app_config dict with key and value
-@config_router.put('/settings/config/app-icon')
+@config_router.put(
+    '/settings/config/app-icon',
+    dependencies=[
+        Depends(
+            requires(
+                'settings:UpdateAppConfig',
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Unauthorized',
+            )
+        )
+    ],
+)
 @inject
 async def set_config(
     request: Request,
@@ -43,11 +55,6 @@ async def set_config(
     The config_file_name is a constant value in the config.ini file.
     """
     # checking if the user is admin
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-    if not is_admin:
-        raise HTTPException(status_code=401, detail='Unauthorized')
-
     # Parse the app_config JSON string to dict
     app_config_dict = {}
     if app_config:
@@ -67,7 +74,12 @@ async def set_config(
     )
 
 
-@config_router.get('/settings/config')
+@config_router.get(
+    '/settings/config',
+    dependencies=[
+        Depends(requires('settings:GetAppConfig', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def get_config(
     config_service: Annotated[

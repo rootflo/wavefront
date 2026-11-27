@@ -1,3 +1,4 @@
+from authz_module import Legacy, define_action, from_path, is_allowed, requires
 from uuid import UUID
 from typing import Dict, Optional
 
@@ -24,13 +25,19 @@ from agents_module.utils.celery_backpressure import QueueBackpressure
 from agents_module.utils.celery_broker import BrokerUnavailable
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
 from agents_module.utils.validation_utils import validate_variable_filters
-from user_management_module.utils.user_utils import check_is_admin
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
 
 async_router = APIRouter()
+
+define_action(
+    'agents:GetExecutionError',
+    legacy=Legacy.ADMIN,
+    resource_type='agent_execution',
+    description="Read an execution's stored error text (show_error=true)",
+)
 
 _SHOW_ERROR_DESCRIPTION = (
     'Return the stored error text instead of a generic message. Honoured for '
@@ -97,20 +104,21 @@ async def _may_see_error(request: Request, show_error: bool) -> bool:
     if not show_error:
         return False
 
-    return await _is_admin(request)
-
-
-async def _is_admin(request: Request) -> bool:
-    """No session means not an admin."""
-    session = getattr(request.state, 'session', None)
-    if session is None:
-        return False
-
-    return await check_is_admin(session.role_id)
+    return await is_allowed(request, 'agents:GetExecutionError')
 
 
 @async_router.post(
-    '/v3/agents/{agent_id}/inference', status_code=status.HTTP_202_ACCEPTED
+    '/v3/agents/{agent_id}/inference',
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(
+            requires(
+                'agents:InvokeAgent',
+                resource=from_path('agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def async_agent_inference(
@@ -211,7 +219,17 @@ async def async_agent_inference(
 
 
 @async_router.post(
-    '/v3/workflows/{workflow_id}/inference', status_code=status.HTTP_202_ACCEPTED
+    '/v3/workflows/{workflow_id}/inference',
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(
+            requires(
+                'workflows:InvokeWorkflow',
+                resource=from_path('workflow', 'workflow_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def async_workflow_inference(
@@ -289,7 +307,18 @@ async def async_workflow_inference(
     )
 
 
-@async_router.get('/v1/agentic-executions/{execution_id}')
+@async_router.get(
+    '/v1/agentic-executions/{execution_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:GetExecution',
+                resource=from_path('agent_execution', 'execution_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_execution_status(
     request: Request,
@@ -325,7 +354,19 @@ async def get_execution_status(
     )
 
 
-@async_router.post('/v1/agentic-executions/{execution_id}/cancel')
+@async_router.post(
+    '/v1/agentic-executions/{execution_id}/cancel',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:CancelExecution',
+                resource=from_path('agent_execution', 'execution_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def cancel_execution(
     request: Request,
@@ -338,12 +379,6 @@ async def cancel_execution(
     ),
 ):
     """Admin only. Cancel a pending execution that no worker has picked up."""
-    if not await _is_admin(request):
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
-
     logger.info(f'Cancelling pending execution: {execution_id}')
 
     try:
@@ -394,6 +429,15 @@ async def cancel_execution(
 @async_router.post(
     '/v1/agentic-executions/{execution_id}/retry',
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(
+            requires(
+                'agents:RetryExecution',
+                resource=from_path('agent_execution', 'execution_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def retry_execution(
@@ -500,7 +544,18 @@ async def retry_execution(
     )
 
 
-@async_router.get('/v1/agentic-executions')
+@async_router.get(
+    '/v1/agentic-executions',
+    dependencies=[
+        Depends(
+            requires(
+                'agents:ListExecutions',
+                resource=from_path('agent_execution'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_executions(
     request: Request,

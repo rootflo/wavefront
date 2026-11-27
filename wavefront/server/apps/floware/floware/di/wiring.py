@@ -28,9 +28,9 @@ def wire_containers() -> None:
             'plugins_module.controllers',
             'user_management_module.controllers',
             'user_management_module.authorization',
-            # Helpers in utils (check_is_admin and its callers) resolve container
-            # providers themselves, so the package needs wiring too — otherwise only
-            # the copies imported into wired controller modules get patched.
+            # Helpers in utils (check_is_admin, which the default authorizer's
+            # legacy resolver calls) resolve container providers themselves, so
+            # the package needs wiring too.
             'user_management_module.utils',
             'plugins_module.controllers',
         ],

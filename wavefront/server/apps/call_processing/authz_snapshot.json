@@ -1,0 +1,291 @@
+{
+  "access": {
+    "GET /health": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "PATCH /api/webrtc/offer": {
+      "resolves_to": [
+        "calls:ConnectWebRtc"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /api/cache/invalidate": {
+      "resolves_to": [
+        "calls:InvalidateCache"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /api/calls/prepare": {
+      "resolves_to": [
+        "calls:PrepareCall"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /api/webrtc/offer": {
+      "resolves_to": [
+        "calls:ConnectWebRtc"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /api/webrtc/rooms": {
+      "resolves_to": [
+        "calls:CreateWebRtcRoom"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /webhooks/inbound": {
+      "resolves_to": [
+        "calls:HandleTelephonyWebhook"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /webhooks/twiml": {
+      "resolves_to": [
+        "calls:HandleTelephonyWebhook"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    }
+  },
+  "actions": [
+    {
+      "action": "calls:ConnectWebRtc",
+      "description": "",
+      "legacy": "PUBLIC",
+      "resource_type": null,
+      "service": "calls"
+    },
+    {
+      "action": "calls:CreateWebRtcRoom",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": "voice_agent",
+      "service": "calls"
+    },
+    {
+      "action": "calls:HandleTelephonyWebhook",
+      "description": "",
+      "legacy": "PUBLIC",
+      "resource_type": null,
+      "service": "calls"
+    },
+    {
+      "action": "calls:InvalidateCache",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "calls"
+    },
+    {
+      "action": "calls:PrepareCall",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "calls"
+    },
+    {
+      "action": "calls:StreamCallAudio",
+      "description": "",
+      "legacy": "PUBLIC",
+      "resource_type": null,
+      "service": "calls"
+    }
+  ],
+  "routes": [
+    {
+      "actions": [
+        "calls:InvalidateCache"
+      ],
+      "endpoint": "call_processing.controllers.cache_controller.invalidate_cache",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/cache/invalidate",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:PrepareCall"
+      ],
+      "endpoint": "call_processing.controllers.context_controller.prepare_call",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/calls/prepare",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:ConnectWebRtc"
+      ],
+      "endpoint": "call_processing.controllers.webrtc_controller.ice_candidates",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/webrtc/offer",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:ConnectWebRtc"
+      ],
+      "endpoint": "call_processing.controllers.webrtc_controller.offer",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/webrtc/offer",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:CreateWebRtcRoom"
+      ],
+      "endpoint": "call_processing.controllers.webrtc_controller.create_room",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/webrtc/rooms",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:StreamCallAudio"
+      ],
+      "endpoint": "call_processing.controllers.webhook_controller.exotel_inbound_websocket",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "WEBSOCKET"
+      ],
+      "path": "/exotel/inbound/ws",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "call_processing.controllers.health_controller.health_check",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/health",
+      "public": true
+    },
+    {
+      "actions": [
+        "calls:HandleTelephonyWebhook"
+      ],
+      "endpoint": "call_processing.controllers.webhook_controller.inbound_webhook",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/webhooks/inbound",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:HandleTelephonyWebhook"
+      ],
+      "endpoint": "call_processing.controllers.webhook_controller.twiml_endpoint",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/webhooks/twiml",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:StreamCallAudio"
+      ],
+      "endpoint": "call_processing.controllers.webhook_controller.websocket_endpoint",
+      "legacy": [
+        "PUBLIC"
+      ],
+      "methods": [
+        "WEBSOCKET"
+      ],
+      "path": "/ws",
+      "public": false
+    }
+  ],
+  "unannotated": []
+}

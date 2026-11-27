@@ -87,22 +87,19 @@ async def test_list_supported_adapters_disabled():
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
 
-    with patch(
-        'guardrails_module.controllers.guardrails_controller._require_admin',
-        return_value=None,
-    ):
-        response = await list_supported_adapters(
-            request=mock_request,
-            guardrails_engine=mock_engine,
-            response_formatter=mock_formatter,
-            config={'guardrails': {'enabled': 'false'}},
-        )
-        import json
+    # The admin gate is the route declaration, not part of the handler.
+    response = await list_supported_adapters(
+        request=mock_request,
+        guardrails_engine=mock_engine,
+        response_formatter=mock_formatter,
+        config={'guardrails': {'enabled': 'false'}},
+    )
+    import json
 
-        data = json.loads(response.body)
-        assert data['data']['enabled'] is False
-        assert data['data']['adapters'] == []
-        assert data['data']['unavailable'] == []
+    data = json.loads(response.body)
+    assert data['data']['enabled'] is False
+    assert data['data']['adapters'] == []
+    assert data['data']['unavailable'] == []
 
 
 @pytest.mark.asyncio
@@ -113,22 +110,19 @@ async def test_list_supported_adapters_enabled():
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
 
-    with patch(
-        'guardrails_module.controllers.guardrails_controller._require_admin',
-        return_value=None,
-    ):
-        response = await list_supported_adapters(
-            request=mock_request,
-            guardrails_engine=mock_engine,
-            response_formatter=mock_formatter,
-            config={'guardrails': {'enabled': 'true'}},
-        )
-        import json
+    # The admin gate is the route declaration, not part of the handler.
+    response = await list_supported_adapters(
+        request=mock_request,
+        guardrails_engine=mock_engine,
+        response_formatter=mock_formatter,
+        config={'guardrails': {'enabled': 'true'}},
+    )
+    import json
 
-        data = json.loads(response.body)
-        assert data['data']['enabled'] is True
-        assert data['data']['adapters'] == ['presidio_pii']
-        assert 'azure_content_safety' in data['data']['unavailable']
+    data = json.loads(response.body)
+    assert data['data']['enabled'] is True
+    assert data['data']['adapters'] == ['presidio_pii']
+    assert 'azure_content_safety' in data['data']['unavailable']
 
 
 @pytest.mark.asyncio
@@ -139,25 +133,22 @@ async def test_list_supported_adapters_enabled_without_adapters():
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
 
-    with patch(
-        'guardrails_module.controllers.guardrails_controller._require_admin',
-        return_value=None,
-    ):
-        response = await list_supported_adapters(
-            request=mock_request,
-            guardrails_engine=mock_engine,
-            response_formatter=mock_formatter,
-            config={'guardrails': {'enabled': 'true'}},
-        )
-        import json
+    # The admin gate is the route declaration, not part of the handler.
+    response = await list_supported_adapters(
+        request=mock_request,
+        guardrails_engine=mock_engine,
+        response_formatter=mock_formatter,
+        config={'guardrails': {'enabled': 'true'}},
+    )
+    import json
 
-        data = json.loads(response.body)
-        assert data['data']['enabled'] is True
-        assert data['data']['adapters'] == []
-        assert set(data['data']['unavailable']) == {
-            'presidio_pii',
-            'azure_content_safety',
-        }
+    data = json.loads(response.body)
+    assert data['data']['enabled'] is True
+    assert data['data']['adapters'] == []
+    assert set(data['data']['unavailable']) == {
+        'presidio_pii',
+        'azure_content_safety',
+    }
 
 
 def test_build_guardrails_engine_raises_when_model_download_fails():

@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
 COPY wavefront/server/modules/auth_module /app/modules/auth_module
+COPY wavefront/server/modules/authz_module /app/modules/authz_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/guardrails_module /app/modules/guardrails_module

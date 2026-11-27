@@ -1,3 +1,4 @@
+from authz_module import Legacy, public_route, requires
 from uuid import uuid4
 
 from common_module.common_container import CommonContainer
@@ -28,7 +29,7 @@ class AuthRequest(BaseModel):
     password: str
 
 
-@auth_router.post('/authenticate')
+@auth_router.post('/authenticate', dependencies=[Depends(public_route)])
 @inject
 async def authenticate(
     request: Request,
@@ -110,7 +111,10 @@ async def authenticate(
     )
 
 
-@auth_router.post('/logout')
+@auth_router.post(
+    '/logout',
+    dependencies=[Depends(requires('console:Logout', legacy=Legacy.CONSOLE_USER))],
+)
 @inject
 async def logout(
     request: Request,
@@ -121,8 +125,8 @@ async def logout(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    # Get the current session from request state
-    current_session = request.state.session
+    # The caller's session, as the authentication middleware found it
+    current_session = request.state.principal
 
     # Delete the session from database
     await session_repository.delete_all(id=current_session.session_id)

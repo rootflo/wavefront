@@ -95,6 +95,23 @@ class UserService:
         resolved.update(str(role_id) for role_id in group_role_ids)
         return resolved
 
+    async def includes_admin_role(self, role_ids: set[str]) -> bool:
+        """Whether the admin role is among ``role_ids``.
+
+        Decided by the role's name, not by comparing against the caller's role:
+        a service identity creating an admin, or a non-admin allowed to create
+        users, would otherwise get the wrong answer.
+        """
+        if not role_ids:
+            return False
+        async with self.resource_repository.session() as session:
+            admin_role_id = await session.scalar(
+                select(Role.id)
+                .where(Role.id.in_(role_ids))
+                .where(Role.name == ADMIN_ROLE_NAME)
+            )
+        return admin_role_id is not None
+
     @staticmethod
     async def lock_role(session, role_id: str) -> None:
         """Serialize last-admin checks against each other.
@@ -389,14 +406,13 @@ class UserService:
         self,
         existing_user: User,
         new_user_data: NewUser,
-        current_admin_role_id: str,
         response_formatter: ResponseFormatter,
     ) -> JSONResponse:
         # Groups can carry the admin role, so resolve both paths before deciding.
         assignment_role_ids = await self.resolve_assignment_role_ids(
             role_ids=new_user_data.role_id, group_ids=new_user_data.group_ids
         )
-        is_reactivating_admin = current_admin_role_id in assignment_role_ids
+        is_reactivating_admin = await self.includes_admin_role(assignment_role_ids)
 
         try:
             async with self.user_repository.session() as session:

@@ -8,6 +8,7 @@ from common_module.middleware.request_id_middleware import get_current_request_i
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.public_key_cache import PublicKeyUnavailableError
 from common_module.telemetry import record_exception_on_span
+from authz_module import AccessDenied
 from datasource.executor import DatasourceBusyError, limits
 from db_repo_module.cache.cache_manager import CacheUnavailableError
 from fastapi import FastAPI, HTTPException, Request
@@ -131,6 +132,21 @@ def register_exception_handlers(app: FastAPI, *, is_dev: bool) -> None:
         return JSONResponse(
             status_code=500,
             content=ResponseFormatter().buildErrorResponse(error=str(exc)),
+        )
+
+    @app.exception_handler(AccessDenied)
+    async def access_denied_handler(request: Request, exc: AccessDenied):
+        """A refusal from an authorization check made inside a handler or hook."""
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.warning(
+            f'Access denied for {request.method} {request.url.path}'
+            f' ({exc.action or "unspecified action"}): {exc} [Request ID: {request_id}]'
+        )
+        return JSONResponse(
+            status_code=exc.decision.status_code or 403,
+            content=ResponseFormatter().buildErrorResponse(
+                error=exc.decision.reason or 'Access denied'
+            ),
         )
 
     @app.exception_handler(Exception)

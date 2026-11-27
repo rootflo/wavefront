@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.11"
 
 dependencies = [
+    "authz-module",
     "common-module",
     "flo-cloud",
     "fastapi>=0.115.2,<1.0.0",
@@ -27,6 +28,7 @@ dependencies = [
 dev = ["flo-testing"]
 
 [tool.uv.sources]
+authz-module = { workspace = true }
 common-module = { workspace = true }
 flo-cloud = { workspace = true }
 flo-lib = { workspace = true }

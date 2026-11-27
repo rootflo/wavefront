@@ -6,6 +6,7 @@ A value is write-only: no route returns it.
 from typing import Optional
 from uuid import UUID
 
+from authz_module import Legacy, from_path, requires
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -13,7 +14,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from user_management_module.utils.user_utils import check_is_admin
 
 from ..api_services_container import ApiServicesContainer
 from ..config.registry import ServiceRegistry
@@ -32,17 +32,6 @@ class CreateSecretPayload(BaseModel):
 class UpdateSecretPayload(BaseModel):
     value: Optional[str] = None
     description: Optional[str] = None
-
-
-async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
-    """None when the caller is an admin, otherwise the 403 to return."""
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if is_admin:
-        return None
-    return JSONResponse(
-        status_code=status.HTTP_403_FORBIDDEN,
-        content=response_formatter.buildErrorResponse('Admin access required'),
-    )
 
 
 def _error(response_formatter: ResponseFormatter, status_code: int, message: str):
@@ -74,7 +63,19 @@ def _reload_referencing_services(
     return service_ids
 
 
-@secret_router.post('/v1/secrets')
+@secret_router.post(
+    '/v1/secrets',
+    dependencies=[
+        Depends(
+            requires(
+                'secrets:CreateSecret',
+                resource=from_path('secret'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_secret(
     request: Request,
@@ -93,10 +94,6 @@ async def create_secret(
     ),
 ):
     """Create a secret. The value is stored and never returned."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         secret = await secret_store.create(
             name=payload.name, value=payload.value, description=payload.description
@@ -119,7 +116,19 @@ async def create_secret(
     )
 
 
-@secret_router.get('/v1/secrets')
+@secret_router.get(
+    '/v1/secrets',
+    dependencies=[
+        Depends(
+            requires(
+                'secrets:ListSecrets',
+                resource=from_path('secret'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_secrets(
     request: Request,
@@ -131,10 +140,6 @@ async def list_secrets(
     ),
 ):
     """List secrets, without their values."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         secrets = await secret_store.list()
     except Exception:
@@ -150,7 +155,19 @@ async def list_secrets(
     )
 
 
-@secret_router.get('/v1/secrets/{secret_id}')
+@secret_router.get(
+    '/v1/secrets/{secret_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'secrets:GetSecret',
+                resource=from_path('secret', 'secret_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_secret(
     request: Request,
@@ -166,10 +183,6 @@ async def get_secret(
     ),
 ):
     """One secret, without its value, and the services that reference it."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         secret = await secret_store.get(secret_id)
     except SecretNotFound as e:
@@ -188,7 +201,19 @@ async def get_secret(
     )
 
 
-@secret_router.put('/v1/secrets/{secret_id}')
+@secret_router.put(
+    '/v1/secrets/{secret_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'secrets:UpdateSecret',
+                resource=from_path('secret', 'secret_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def update_secret(
     request: Request,
@@ -211,10 +236,6 @@ async def update_secret(
 
     A new value reloads, on every pod, the services that reference the secret.
     """
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         secret = await secret_store.update(
             secret_id, value=payload.value, description=payload.description
@@ -241,7 +262,19 @@ async def update_secret(
     )
 
 
-@secret_router.delete('/v1/secrets/{secret_id}')
+@secret_router.delete(
+    '/v1/secrets/{secret_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'secrets:DeleteSecret',
+                resource=from_path('secret', 'secret_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_secret(
     request: Request,
@@ -257,10 +290,6 @@ async def delete_secret(
     ),
 ):
     """Delete a secret. Refused with 409 while an API service references it."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         secret = await secret_store.get(secret_id)
     except SecretNotFound as e:

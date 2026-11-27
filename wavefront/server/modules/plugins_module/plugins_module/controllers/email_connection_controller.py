@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, public_route, requires
 from typing import Optional
 from urllib.parse import urlencode, urlparse
 from uuid import UUID
@@ -27,7 +28,7 @@ from plugins_module.utils.email_helper import (
     SendEmailPayload,
     is_allowed_client_redirect,
 )
-from user_management_module.utils.user_utils import check_is_admin, get_current_user
+from user_management_module.utils.user_utils import get_current_user
 
 email_connection_router = APIRouter(prefix='/v1/email-connections', tags=['email'])
 
@@ -47,20 +48,6 @@ def _client_redirect(
     return url
 
 
-async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
-    """None when the caller is an admin, otherwise the 403 to return.
-
-    Email connection APIs are admin-only for now; finer RBAC comes later.
-    """
-    is_admin = await check_is_admin(request.state.session.role_id)
-    if is_admin:
-        return None
-    return JSONResponse(
-        status_code=status.HTTP_403_FORBIDDEN,
-        content=response_formatter.buildErrorResponse('Admin access required'),
-    )
-
-
 # Unauthenticated OAuth callback: never echo exception text (mailbox addresses,
 # state details) to the browser. Map failures to fixed public messages; details
 # stay in server logs.
@@ -74,7 +61,7 @@ _OAUTH_STATE_PUBLIC_ERROR = 'Invalid or expired authorization request.'
 
 # Declared before '/{connection_id}': FastAPI matches in declaration order, so
 # the dynamic route would otherwise swallow this with connection_id='oauth'.
-@email_connection_router.get('/oauth/callback')
+@email_connection_router.get('/oauth/callback', dependencies=[Depends(public_route)])
 @inject
 async def email_oauth_callback(
     state: str = Query(...),
@@ -166,7 +153,20 @@ def _callback_failure(
     )
 
 
-@email_connection_router.post('', status_code=status.HTTP_201_CREATED)
+@email_connection_router.post(
+    '',
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(
+            requires(
+                'email:CreateConnection',
+                resource=from_path('email_connection'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def create_email_connection(
     request: Request,
@@ -180,10 +180,6 @@ async def create_email_connection(
     config: dict = Depends(Provide[PluginsContainer.config]),
 ):
     """Start connecting a mailbox: returns the consent URL to send the user to."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     web_url = ((config.get('web') or {}).get('url') or '').strip()
     for field_name, redirect_url in (
         ('success_redirect_url', payload.success_redirect_url),
@@ -232,7 +228,19 @@ async def create_email_connection(
     )
 
 
-@email_connection_router.get('')
+@email_connection_router.get(
+    '',
+    dependencies=[
+        Depends(
+            requires(
+                'email:ListConnections',
+                resource=from_path('email_connection'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_email_connections(
     request: Request,
@@ -247,10 +255,6 @@ async def list_email_connections(
     ),
 ):
     """List connections. Admin-only until email RBAC is configured."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         connections = await email_connection_service.list_connections(
             provider=provider, status=status_filter, limit=limit
@@ -271,7 +275,19 @@ async def list_email_connections(
         )
 
 
-@email_connection_router.get('/{connection_id}')
+@email_connection_router.get(
+    '/{connection_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'email:GetConnection',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_email_connection(
     request: Request,
@@ -284,10 +300,6 @@ async def get_email_connection(
     ),
 ):
     """Fetch one connection. Admin-only until email RBAC is configured."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         connection = await email_connection_service.get_connection(connection_id)
         return JSONResponse(
@@ -301,7 +313,19 @@ async def get_email_connection(
         )
 
 
-@email_connection_router.post('/{connection_id}/authorize')
+@email_connection_router.post(
+    '/{connection_id}/authorize',
+    dependencies=[
+        Depends(
+            requires(
+                'email:AuthorizeConnection',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def authorize_email_connection(
     request: Request,
@@ -320,10 +344,6 @@ async def authorize_email_connection(
     Already-granted capabilities are included automatically, so upgrading never
     costs the connection its existing permissions.
     """
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     web_url = ((config.get('web') or {}).get('url') or '').strip()
     for field_name, redirect_url in (
         ('success_redirect_url', payload.success_redirect_url),
@@ -369,7 +389,19 @@ async def authorize_email_connection(
     )
 
 
-@email_connection_router.post('/{connection_id}/verify')
+@email_connection_router.post(
+    '/{connection_id}/verify',
+    dependencies=[
+        Depends(
+            requires(
+                'email:VerifyConnection',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def verify_email_connection(
     request: Request,
@@ -386,10 +418,6 @@ async def verify_email_connection(
     Updates `status` / `last_error` so admins can tell a revoked grant from a
     still-working connection without waiting for the next send or trigger.
     """
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         connection = await email_connection_service.verify_connection(connection_id)
     except ConnectionNotFound as exc:
@@ -425,7 +453,19 @@ async def verify_email_connection(
     )
 
 
-@email_connection_router.post('/{connection_id}/set-primary')
+@email_connection_router.post(
+    '/{connection_id}/set-primary',
+    dependencies=[
+        Depends(
+            requires(
+                'email:UpdateConnection',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def set_primary_email_connection(
     request: Request,
@@ -439,10 +479,6 @@ async def set_primary_email_connection(
 ):
     """Make this connection the platform sender used by password reset mail and
     by any job that does not name its own sender."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         connection = await email_connection_service.set_primary(connection_id)
     except ConnectionNotFound as exc:
@@ -472,7 +508,19 @@ async def set_primary_email_connection(
     )
 
 
-@email_connection_router.post('/{connection_id}/send')
+@email_connection_router.post(
+    '/{connection_id}/send',
+    dependencies=[
+        Depends(
+            requires(
+                'email:SendEmail',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def send_from_email_connection(
     request: Request,
@@ -490,10 +538,6 @@ async def send_from_email_connection(
     Admin-only until email RBAC is configured. The agent email tool posts here
     so it never handles tokens itself.
     """
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         await email_send_service.send(
             subject=payload.subject,
@@ -530,7 +574,19 @@ async def send_from_email_connection(
     )
 
 
-@email_connection_router.delete('/{connection_id}')
+@email_connection_router.delete(
+    '/{connection_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'email:DeleteConnection',
+                resource=from_path('email_connection', 'connection_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def delete_email_connection(
     request: Request,
@@ -543,10 +599,6 @@ async def delete_email_connection(
     ),
 ):
     """Delete a connection and discard its tokens."""
-    forbidden = await _forbid_non_admin(request, response_formatter)
-    if forbidden:
-        return forbidden
-
     try:
         await email_connection_service.delete_connection(connection_id)
     except ConnectionNotFound as exc:

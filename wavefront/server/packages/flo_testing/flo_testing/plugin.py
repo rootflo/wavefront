@@ -21,6 +21,7 @@ enable_pgvector_test_standins()
 from flo_testing.app import build_app
 from flo_testing.app import make_test_client
 from flo_testing.auth import patch_auth  # noqa: F401
+from flo_testing.authz import authz_fallback_provider  # noqa: F401
 from flo_testing.auth import patch_current_user  # noqa: F401
 from flo_testing.auth import patch_feature_flag  # noqa: F401
 from flo_testing.auth import patch_is_admin  # noqa: F401

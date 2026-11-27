@@ -3,6 +3,8 @@ would keep a session alive."""
 
 import json
 from types import SimpleNamespace
+
+from authz_module import user_principal
 from unittest.mock import AsyncMock, MagicMock
 
 from flo_testing import add_async_cache_methods
@@ -78,9 +80,7 @@ async def test_lockout_cache_write_is_tolerant():
 
 def logout_request(session_id='s1', user_id='u1'):
     return SimpleNamespace(
-        state=SimpleNamespace(
-            session=SimpleNamespace(session_id=session_id, user_id=user_id)
-        )
+        state=SimpleNamespace(principal=user_principal(user_id, session_id=session_id))
     )
 
 

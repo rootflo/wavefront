@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import Request
@@ -15,7 +16,18 @@ from floconsole.services.floware_proxy_service import FlowareProxyService
 floware_proxy_router = APIRouter(prefix='/v1')
 
 
-@floware_proxy_router.get('/{app_id}/floware/{path:path}')
+@floware_proxy_router.get(
+    '/{app_id}/floware/{path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:InvokeAppApi',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_get_request(
     app_id: str,
@@ -45,7 +57,18 @@ async def proxy_get_request(
         )
 
 
-@floware_proxy_router.post('/{app_id}/floware/{path:path}')
+@floware_proxy_router.post(
+    '/{app_id}/floware/{path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:InvokeAppApi',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_post_request(
     app_id: str,
@@ -77,7 +100,18 @@ async def proxy_post_request(
         )
 
 
-@floware_proxy_router.put('/{app_id}/floware/{path:path}')
+@floware_proxy_router.put(
+    '/{app_id}/floware/{path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:InvokeAppApi',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_put_request(
     app_id: str,
@@ -107,7 +141,18 @@ async def proxy_put_request(
         )
 
 
-@floware_proxy_router.patch('/{app_id}/floware/{path:path}')
+@floware_proxy_router.patch(
+    '/{app_id}/floware/{path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:InvokeAppApi',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_patch_request(
     app_id: str,
@@ -139,7 +184,18 @@ async def proxy_patch_request(
         )
 
 
-@floware_proxy_router.delete('/{app_id}/floware/{path:path}')
+@floware_proxy_router.delete(
+    '/{app_id}/floware/{path:path}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:InvokeAppApi',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def proxy_delete_request(
     app_id: str,

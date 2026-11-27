@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from authz_module import user_principal
+from user_management_module.utils import user_utils
 from datasource import (
     DATASOURCE_SECRET_FIELDS,
     BigQueryConfig,
@@ -90,13 +92,16 @@ def formatter():
 
 @pytest.fixture
 def request_obj():
-    return SimpleNamespace(state=SimpleNamespace(session=SimpleNamespace(role_id='r')))
+    return SimpleNamespace(
+        state=SimpleNamespace(principal=user_principal('u', role_id='r'))
+    )
 
 
 @pytest.fixture(autouse=True)
 def _admin_and_cache():
     with (
-        patch.object(controller, 'check_is_admin', AsyncMock(return_value=True)),
+        # Handlers ask for an action; the default authorizer asks user_utils.
+        patch.object(user_utils, 'check_is_admin', AsyncMock(return_value=True)),
         patch.object(controller, 'invalidate_datasources_cache'),
     ):
         yield

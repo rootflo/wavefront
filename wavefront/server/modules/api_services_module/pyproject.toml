@@ -8,6 +8,7 @@ authors = [
 
 requires-python = ">=3.11"
 dependencies = [
+    "authz-module",
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "flo-lib",
@@ -27,6 +28,7 @@ package = true
 exclude-newer = "7 days"
 
 [tool.uv.sources]
+authz-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 flo-lib = { workspace = true }

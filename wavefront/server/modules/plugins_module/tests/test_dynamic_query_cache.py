@@ -1,9 +1,12 @@
 """Dynamic-query execute caching, and export failures giving the slot back."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from authz_module import user_principal
+from starlette.requests import Request
+from user_management_module.authorization import legacy_resolver
+from user_management_module.utils import user_utils
 from datasource import PostgresConfig
 from datasource.executor import DatasourceBusyError
 from datasource.types import DataSourceType
@@ -21,12 +24,26 @@ FAILED = {
 }
 
 
+def _request() -> Request:
+    request = Request(
+        {
+            'type': 'http',
+            'method': 'POST',
+            'path': '/',
+            'headers': [],
+            'query_string': b'',
+        }
+    )
+    request.state.principal = user_principal('u', role_id='r', session_id='s')
+    return request
+
+
 @pytest.fixture
 def plugin():
     with (
-        patch.object(
-            datasource_controller, 'check_is_admin', AsyncMock(return_value=True)
-        ),
+        # Handlers ask for an action; the default authorizer asks user_utils.
+        patch.object(user_utils, 'check_is_admin', AsyncMock(return_value=True)),
+        patch.object(legacy_resolver, '_flag_enabled', return_value=False),
         patch.object(
             datasource_controller,
             'get_datasource_config',
@@ -41,11 +58,7 @@ async def _execute(cache_manager):
     query_service = MagicMock()
     query_service.get_dynamic_yaml_query = AsyncMock(return_value=([{'id': 'q'}], None))
     return await datasource_controller.execute_dynamic_query(
-        request=SimpleNamespace(
-            state=SimpleNamespace(
-                session=SimpleNamespace(role_id='r', user_id='u', session_id='s')
-            )
-        ),
+        request=_request(),
         datasource_id='ds',
         query_id='q',
         filter=None,
@@ -56,7 +69,6 @@ async def _execute(cache_manager):
         dynamic_query_yaml_service=query_service,
         user_service=MagicMock(),
         cache_manager=cache_manager,
-        feature_flags=MagicMock(),
         force_fetch=1,
     )
 
@@ -90,11 +102,7 @@ async def _export(cache_manager, query_service=None):
             return_value=([{'id': 'q'}], None)
         )
     return await datasource_controller.export_dynamic_query_csv(
-        request=SimpleNamespace(
-            state=SimpleNamespace(
-                session=SimpleNamespace(role_id='r', user_id='u', session_id='s')
-            )
-        ),
+        request=_request(),
         datasource_id='ds',
         query_id='q',
         filter=None,

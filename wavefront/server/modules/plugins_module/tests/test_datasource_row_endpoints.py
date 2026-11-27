@@ -1,6 +1,5 @@
 """Role guard on the row update and delete endpoints (admin, manager, editor until RBAC)."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +11,9 @@ from flo_cloud.postgres import RowMutationResult
 
 from common_module.common_container import CommonContainer
 from dependency_injector import providers
+from authz_module import user_principal
 from plugins_module.controllers import datasource_controller
+from user_management_module.utils import user_utils
 from plugins_module.plugins_container import PluginsContainer
 
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
@@ -40,7 +41,7 @@ def client():
 
     @app.middleware('http')
     async def session(request: Request, call_next):
-        request.state.session = SimpleNamespace(role_id='role', user_id='user')
+        request.state.principal = user_principal('user', role_id='role')
         return await call_next(request)
 
     app.include_router(datasource_controller.datasource_router)
@@ -51,8 +52,9 @@ def client():
 
 @pytest.fixture
 def admin():
+    # Routes declare an action; the default authorizer asks user_utils.
     with patch.object(
-        datasource_controller, 'can_write_datasource_rows', AsyncMock(return_value=True)
+        user_utils, 'can_write_datasource_rows', AsyncMock(return_value=True)
     ) as mock:
         yield mock
 

@@ -1,0 +1,748 @@
+{
+  "access": {
+    "DELETE /floconsole/v1/apps/{app_id}": {
+      "resolves_to": [
+        "console:DeleteApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floconsole/v1/apps/{app_id}/users/{user_id}": {
+      "resolves_to": [
+        "console:RevokeAppAccess"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floconsole/v1/users/{user_id}": {
+      "resolves_to": [
+        "console:DeleteUser"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "DELETE /floconsole/v1/{app_id}/floware/{path:path}": {
+      "resolves_to": [
+        "console:InvokeAppApi"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/apps": {
+      "resolves_to": [
+        "console:ListApps"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/apps/{app_id}": {
+      "resolves_to": [
+        "console:GetApp"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/apps/{app_id}/users": {
+      "resolves_to": [
+        "console:ListAppUsers"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/health": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "GET /floconsole/v1/settings/extensions": {
+      "resolves_to": [
+        "console:ListExtensions"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/users": {
+      "resolves_to": [
+        "console:ListUsers"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/users/{user_id}/apps": {
+      "resolves_to": [
+        "console:ListUserApps"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/whoami": {
+      "resolves_to": [
+        "console:GetCurrentUser"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "GET /floconsole/v1/{app_id}/floware/{path:path}": {
+      "resolves_to": [
+        "console:InvokeAppApi"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floconsole/v1/apps/{app_id}": {
+      "resolves_to": [
+        "console:UpdateApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floconsole/v1/users/{user_id}": {
+      "resolves_to": [
+        "console:UpdateUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PATCH /floconsole/v1/{app_id}/floware/{path:path}": {
+      "resolves_to": [
+        "console:InvokeAppApi"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floconsole/v1/apps": {
+      "resolves_to": [
+        "console:CreateApp"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floconsole/v1/apps/{app_id}/users/{user_id}": {
+      "resolves_to": [
+        "console:GrantAppAccess"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floconsole/v1/authenticate": {
+      "resolves_to": [
+        "public"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 200,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
+    "POST /floconsole/v1/logout": {
+      "resolves_to": [
+        "console:Logout"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floconsole/v1/users": {
+      "resolves_to": [
+        "console:CreateUser"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 403,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "POST /floconsole/v1/{app_id}/floware/{path:path}": {
+      "resolves_to": [
+        "console:InvokeAppApi"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    },
+    "PUT /floconsole/v1/{app_id}/floware/{path:path}": {
+      "resolves_to": [
+        "console:InvokeAppApi"
+      ],
+      "status": {
+        "admin": 403,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 403,
+        "user": 403,
+        "user_with_flags": 403
+      }
+    }
+  },
+  "actions": [
+    {
+      "action": "console:CreateApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:CreateUser",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "console_user",
+      "service": "console"
+    },
+    {
+      "action": "console:DeleteApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:DeleteOwnerUser",
+      "description": "Delete a user who is an owner",
+      "legacy": "ADMIN",
+      "resource_type": "console_user",
+      "service": "console"
+    },
+    {
+      "action": "console:DeleteUser",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": "console_user",
+      "service": "console"
+    },
+    {
+      "action": "console:GetApp",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:GetCurrentUser",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": null,
+      "service": "console"
+    },
+    {
+      "action": "console:GrantAppAccess",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:InvokeAppApi",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:ListAppUsers",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:ListApps",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:ListExtensions",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": null,
+      "service": "console"
+    },
+    {
+      "action": "console:ListUserApps",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "console_user",
+      "service": "console"
+    },
+    {
+      "action": "console:ListUsers",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": "console_user",
+      "service": "console"
+    },
+    {
+      "action": "console:Logout",
+      "description": "",
+      "legacy": "CONSOLE_USER",
+      "resource_type": null,
+      "service": "console"
+    },
+    {
+      "action": "console:RevokeAppAccess",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:UpdateApp",
+      "description": "",
+      "legacy": "ADMIN",
+      "resource_type": "app",
+      "service": "console"
+    },
+    {
+      "action": "console:UpdateUser",
+      "description": "",
+      "legacy": "CUSTOM(self_or_owner)",
+      "resource_type": "console_user",
+      "service": "console"
+    }
+  ],
+  "routes": [
+    {
+      "actions": [
+        "console:ListApps"
+      ],
+      "endpoint": "floconsole.controllers.app_controller.get_apps",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/apps",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:CreateApp"
+      ],
+      "endpoint": "floconsole.controllers.app_controller.create_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/apps",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:DeleteApp"
+      ],
+      "endpoint": "floconsole.controllers.app_controller.delete_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:GetApp"
+      ],
+      "endpoint": "floconsole.controllers.app_controller.get_app",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:UpdateApp"
+      ],
+      "endpoint": "floconsole.controllers.app_controller.update_app",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:ListAppUsers"
+      ],
+      "endpoint": "floconsole.controllers.app_user_controller.list_app_users",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:RevokeAppAccess"
+      ],
+      "endpoint": "floconsole.controllers.app_user_controller.revoke_app_access",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}/users/{user_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:GrantAppAccess"
+      ],
+      "endpoint": "floconsole.controllers.app_user_controller.grant_app_access",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/apps/{app_id}/users/{user_id}",
+      "public": false
+    },
+    {
+      "actions": [],
+      "endpoint": "floconsole.controllers.auth_controller.authenticate",
+      "legacy": [],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/authenticate",
+      "public": true
+    },
+    {
+      "actions": [],
+      "endpoint": "floconsole.controllers.health_controller.health_check",
+      "legacy": [],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/health",
+      "public": true
+    },
+    {
+      "actions": [
+        "console:Logout"
+      ],
+      "endpoint": "floconsole.controllers.auth_controller.logout",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/logout",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:ListExtensions"
+      ],
+      "endpoint": "floconsole.controllers.settings_controller.list_extensions",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/settings/extensions",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:ListUsers"
+      ],
+      "endpoint": "floconsole.controllers.user_controller.list_users",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:CreateUser"
+      ],
+      "endpoint": "floconsole.controllers.user_controller.create_user",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/users",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:DeleteUser"
+      ],
+      "endpoint": "floconsole.controllers.user_controller.delete_user",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floconsole/v1/users/{user_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:UpdateUser"
+      ],
+      "endpoint": "floconsole.controllers.user_controller.update_user",
+      "legacy": [
+        "CUSTOM(self_or_owner)"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floconsole/v1/users/{user_id}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:ListUserApps"
+      ],
+      "endpoint": "floconsole.controllers.app_user_controller.list_user_apps",
+      "legacy": [
+        "ADMIN"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/users/{user_id}/apps",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:GetCurrentUser"
+      ],
+      "endpoint": "floconsole.controllers.user_controller.get_resources",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/whoami",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:InvokeAppApi"
+      ],
+      "endpoint": "floconsole.controllers.floware_proxy_controller.proxy_delete_request",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/floconsole/v1/{app_id}/floware/{path:path}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:InvokeAppApi"
+      ],
+      "endpoint": "floconsole.controllers.floware_proxy_controller.proxy_get_request",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "path": "/floconsole/v1/{app_id}/floware/{path:path}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:InvokeAppApi"
+      ],
+      "endpoint": "floconsole.controllers.floware_proxy_controller.proxy_patch_request",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/floconsole/v1/{app_id}/floware/{path:path}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:InvokeAppApi"
+      ],
+      "endpoint": "floconsole.controllers.floware_proxy_controller.proxy_post_request",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/floconsole/v1/{app_id}/floware/{path:path}",
+      "public": false
+    },
+    {
+      "actions": [
+        "console:InvokeAppApi"
+      ],
+      "endpoint": "floconsole.controllers.floware_proxy_controller.proxy_put_request",
+      "legacy": [
+        "CONSOLE_USER"
+      ],
+      "methods": [
+        "PUT"
+      ],
+      "path": "/floconsole/v1/{app_id}/floware/{path:path}",
+      "public": false
+    }
+  ],
+  "unannotated": []
+}

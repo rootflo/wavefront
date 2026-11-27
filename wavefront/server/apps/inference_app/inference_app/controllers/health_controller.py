@@ -1,3 +1,5 @@
+from authz_module import public_route
+from fastapi import Depends
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -8,7 +10,7 @@ from inference_app.models.mock import use_mock_models
 health_router = APIRouter()
 
 
-@health_router.get('/v1/health')
+@health_router.get('/v1/health', dependencies=[Depends(public_route)])
 async def health_check():
     mock_models = use_mock_models(
         application_container.config()['models']['mock_models']

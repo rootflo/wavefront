@@ -27,7 +27,7 @@ def add_middlewares(
     # order (outer -> inner) here is:
     #   OTel -> CORS -> SecurityHeaders -> RequireAuth -> RequestId -> Baggage
     # BaggageMiddleware is added first (innermost) so it runs after
-    # RequireAuthMiddleware has set request.state.session and RequestIdMiddleware
+    # RequireAuthMiddleware has set request.state.principal and RequestIdMiddleware
     # has set the request-id context var.
     app.add_middleware(_middleware(BaggageMiddleware))
     app.add_middleware(_middleware(RequestIdMiddleware))

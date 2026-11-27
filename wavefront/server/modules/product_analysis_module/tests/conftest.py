@@ -14,6 +14,9 @@ from product_analysis_module.product_analysis_container import (
 )
 
 CONTROLLERS = 'product_analysis_module.controllers.product_anaysis_controllers'
+# Admin and manager rules are decided by the default authorizer, which asks
+# user_utils for the role on every call.
+USER_UTILS = 'user_management_module.utils.user_utils'
 
 
 @pytest.fixture
@@ -72,8 +75,8 @@ def mock_admin_functions(monkeypatch):
     async def mock_check_is_manager(role_id, role_repository=None):
         return False
 
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_manager', mock_check_is_manager)
 
 
 @pytest.fixture
@@ -86,8 +89,8 @@ def mock_manager_functions(monkeypatch):
     async def mock_check_is_manager(role_id, role_repository=None):
         return True
 
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_manager', mock_check_is_manager)
 
 
 @pytest.fixture
@@ -100,5 +103,5 @@ def mock_non_admin_functions(monkeypatch):
     async def mock_check_is_manager(role_id, role_repository=None):
         return False
 
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
-    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{USER_UTILS}.check_is_manager', mock_check_is_manager)

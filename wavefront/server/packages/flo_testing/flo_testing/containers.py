@@ -39,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 RESET_CODE = 'mock_reset_code'
+LEGACY_RESOLVER = 'user_management_module.authorization.legacy_resolver'
 PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
@@ -250,6 +251,11 @@ def core_containers(db_client, test_user_id, test_session_id, user_config):
         user_id=test_user_id,
         session_id=test_session_id,
     )
+
+    # The default authorizer's legacy resolver answers role and flag questions
+    # through these containers, whichever module's routes are under test.
+    containers.wire(common_container, modules=[LEGACY_RESOLVER])
+    containers.wire(user_container, modules=[LEGACY_RESOLVER])
 
     yield containers
 

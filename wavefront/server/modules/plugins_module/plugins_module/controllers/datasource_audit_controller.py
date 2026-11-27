@@ -9,6 +9,7 @@ declaration order — which is the same hazard the comment above
 ``update_rows_json_multi`` in datasource_controller.py documents.
 """
 
+from authz_module import Legacy, from_path, requires
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
@@ -20,7 +21,6 @@ from fastapi.routing import APIRouter
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
@@ -28,7 +28,6 @@ from common_module.utils.validators import is_valid_uuid
 from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from plugins_module.plugins_container import PluginsContainer
-from user_management_module.utils.user_utils import check_is_admin, get_current_user
 
 datasource_audit_router = APIRouter()
 
@@ -53,25 +52,6 @@ def _extract_filter_params(request: Request) -> Dict[str, str]:
         for key, value in request.query_params.items()
         if key.startswith(FILTER_PARAM_PREFIX) and key != FILTER_PARAM_PREFIX
     }
-
-
-@inject
-async def _can_read_audit_logs(
-    request: Request,
-    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
-) -> bool:
-    """Read access to the audit trail: admin only, by default.
-
-    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG lifts the same gate off the datasource
-    read paths, and the trail is a record of those rows, so it follows them —
-    a deployment that lets every authenticated user read the data has no reason
-    to hide what was done to it.
-    """
-    if feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
-        return True
-
-    role_id, _, _ = get_current_user(request)
-    return await check_is_admin(role_id)
 
 
 # Every column, `changes` included. It is what a listing is usually for — a UI
@@ -141,7 +121,19 @@ def _build_where(filters: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     return where, params
 
 
-@datasource_audit_router.get('/v1/datasource-audit-logs')
+@datasource_audit_router.get(
+    '/v1/datasource-audit-logs',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:ListAuditLogs',
+                resource=from_path('datasource_audit_log'),
+                legacy=Legacy.ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG),
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def list_datasource_audit_logs(
     request: Request,
@@ -171,12 +163,6 @@ async def list_datasource_audit_logs(
     targeted by one of its columns is not findable by another, even though the
     row carries both.
     """
-    if not await _can_read_audit_logs(request):
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
-
     # Checked before the query rather than after: these columns are uuid, so a
     # malformed value raises InvalidTextRepresentation and surfaces as a 500
     # with a SQL traceback instead of the 400 it should have been.
@@ -244,7 +230,19 @@ async def list_datasource_audit_logs(
     )
 
 
-@datasource_audit_router.get('/v1/datasource-audit-logs/{audit_log_id}')
+@datasource_audit_router.get(
+    '/v1/datasource-audit-logs/{audit_log_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'datasources:GetAuditLog',
+                resource=from_path('datasource_audit_log', 'audit_log_id'),
+                legacy=Legacy.ADMIN_OR_FLAG(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG),
+                deny_message='Admin access required',
+            )
+        )
+    ],
+)
 @inject
 async def get_datasource_audit_log(
     request: Request,
@@ -262,12 +260,6 @@ async def get_datasource_audit_log(
     record you already have the id of, typically from a `batch_id` or
     `request_id` you followed from somewhere else.
     """
-    if not await _can_read_audit_logs(request):
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse('Admin access required'),
-        )
-
     if not is_valid_uuid(audit_log_id):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

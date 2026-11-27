@@ -260,7 +260,6 @@ async def test_cache_invalidation_refresh_writes_public_data_only(
     await invalidate_cache(
         InvalidateCacheRequest(config_type=config_type, config_id=str(config_id)),
         voice_agent_cache_service=service,
-        _auth=None,
     )
 
     public = dict(floware_configs()[config_type])
@@ -282,7 +281,6 @@ async def test_cache_invalidation_refresh_feeds_the_memo():
             config_type='llm_inference_config', config_id=str(LLM_ID)
         ),
         voice_agent_cache_service=service,
-        _auth=None,
     )
     floware.fetched.clear()
 

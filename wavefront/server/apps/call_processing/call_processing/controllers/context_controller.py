@@ -18,6 +18,7 @@ import re
 from typing import Dict, Optional
 from uuid import UUID
 
+from authz_module import Legacy, requires
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -143,7 +144,13 @@ class PrepareCallRequest(BaseModel):
         return context
 
 
-@context_router.post('/prepare', status_code=status.HTTP_202_ACCEPTED)
+@context_router.post(
+    '/prepare',
+    status_code=status.HTTP_202_ACCEPTED,
+    # The middleware authenticates the caller as a service; verify_internal_caller
+    # further narrows production to the allowed mTLS namespaces.
+    dependencies=[Depends(requires('calls:PrepareCall', legacy=Legacy.AUTHENTICATED))],
+)
 @inject
 async def prepare_call(
     request: PrepareCallRequest,

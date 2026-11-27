@@ -1,11 +1,6 @@
 from datetime import datetime
 from typing import Optional
 
-from common_module.common_container import CommonContainer
-from common_module.feature.feature_flag import (
-    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    FeatureFlags,
-)
 from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -35,13 +30,9 @@ def normalize_email(email: str) -> str:
 
 
 def get_current_user(req: Request):
-    return (
-        req.state.session.role_id,
-        req.state.session.user_id,
-        req.state.session.session_id
-        if hasattr(req.state, 'session') and req.state.session
-        else None,
-    )
+    """(role_id, user_id, session_id) of the authenticated caller."""
+    principal = req.state.principal
+    return principal.role_id, principal.id, principal.session_id
 
 
 async def _role_name(
@@ -58,10 +49,12 @@ async def check_is_admin(
         Provide[UserContainer.role_repository]
     ),
 ) -> bool:
-    """Single source of truth for admin checks based on the session role_id.
+    """Whether ``role_id`` is the admin role.
 
-    Service identities (mTLS/passthrough/service-to-service) carry the
-    SERVICE_AUTH_ROLE_ID and are always treated as admins.
+    Only the default authorizer's legacy resolver calls this: routes and
+    handlers ask for an action instead. Service identities
+    (mTLS/passthrough/service-to-service) carry the SERVICE_AUTH_ROLE_ID and are
+    always treated as admins.
     """
     if role_id == SERVICE_AUTH_ROLE_ID:
         return True
@@ -113,30 +106,6 @@ async def can_write_datasource_rows(
         return True
 
     return await _role_name(role_id, role_repository) in ROW_WRITE_ROLE_NAMES
-
-
-@inject
-async def can_read_users(
-    req: Request,
-    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
-) -> bool:
-    """Read access for the fetch-by-id user endpoint.
-
-    Admin-only by default. Deployments where every authenticated user needs to
-    resolve a user id to a name — a quotation's assignee, say — can open the
-    read endpoints up by setting ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG=true.
-    The flag covers reads only; create/update/delete stay admin-gated
-    regardless.
-
-    The listing endpoint applies the same rule but inlines it, because there the
-    admin bit also selects which payload shape to build, not just whether to
-    answer at all.
-    """
-    if feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
-        return True
-
-    role_id, _, _ = get_current_user(req)
-    return await check_is_admin(role_id)
 
 
 def create_account_lockout_response(

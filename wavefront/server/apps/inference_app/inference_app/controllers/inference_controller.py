@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 import base64
 import binascii
 import math
@@ -60,7 +61,12 @@ inference_app_router = APIRouter(dependencies=[Depends(enforce_rate_limit)])
 # synchronous and slow, so FastAPI must run it in its threadpool rather than on
 # the event loop, where it would stall every other request, health checks
 # included.
-@inference_app_router.post('/v1/query/embeddings')
+@inference_app_router.post(
+    '/v1/query/embeddings',
+    dependencies=[
+        Depends(requires('inference:CreateEmbeddings', legacy=Legacy.PUBLIC))
+    ],
+)
 @inject
 def image_embedding(
     payload: ImagePayload,
@@ -99,7 +105,12 @@ def image_embedding(
     )
 
 
-@inference_app_router.post('/v1/query/embeddings/batch')
+@inference_app_router.post(
+    '/v1/query/embeddings/batch',
+    dependencies=[
+        Depends(requires('inference:CreateEmbeddings', legacy=Legacy.PUBLIC))
+    ],
+)
 @inject
 def image_embedding_batch(
     payload: ImageBatchPayload,
@@ -163,7 +174,12 @@ def image_embedding_batch(
 TEXT_MODEL_LOADING_RETRY_AFTER_S = 10
 
 
-@inference_app_router.post('/v1/query/text-embeddings')
+@inference_app_router.post(
+    '/v1/query/text-embeddings',
+    dependencies=[
+        Depends(requires('inference:CreateEmbeddings', legacy=Legacy.PUBLIC))
+    ],
+)
 @inject
 def text_embedding(
     payload: TextEmbeddingPayload,

@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import flo_lib.http as http
 
 from typing import Optional
@@ -17,11 +18,7 @@ from pydantic import BaseModel
 
 from floconsole.services.app_service import AppService
 from floconsole.di.application_container import ApplicationContainer
-from floconsole.authorization.require_auth import UserSession
-from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from floconsole.db.models.user import User
 from floconsole.constants.app import AppDeploymentType, AppStatus
-from floconsole.constants.user import UserRole
 
 app_router = APIRouter(prefix='/v1')
 
@@ -69,7 +66,18 @@ class AppResponse(BaseModel):
         )
 
 
-@app_router.get('/apps')
+@app_router.get(
+    '/apps',
+    dependencies=[
+        Depends(
+            requires(
+                'console:ListApps',
+                resource=from_path('app'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def get_apps(
     response_formatter: ResponseFormatter = Depends(
@@ -88,7 +96,19 @@ async def get_apps(
     )
 
 
-@app_router.post('/apps')
+@app_router.post(
+    '/apps',
+    dependencies=[
+        Depends(
+            requires(
+                'console:CreateApp',
+                resource=from_path('app'),
+                legacy=Legacy.ADMIN,
+                deny_message='You are not authorized to create apps',
+            )
+        )
+    ],
+)
 @inject
 async def create_app(
     app_data: CreateAppRequest,
@@ -98,25 +118,8 @@ async def create_app(
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
     config: dict = Depends(Provide[ApplicationContainer.config]),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[ApplicationContainer.user_repository]
-    ),
 ):
     try:
-        session: UserSession = request.state.session
-        user_id = session.user_id
-
-        user = await user_repository.find_one(id=user_id)
-
-        # Only owners can create apps
-        if not user or user.role != UserRole.OWNER.value:
-            return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content=response_formatter.buildErrorResponse(
-                    'You are not authorized to create apps'
-                ),
-            )
-
         app = await app_service.get_app_by_name(app_data.app_name)
         if app:
             return JSONResponse(
@@ -201,7 +204,18 @@ async def create_app(
         )
 
 
-@app_router.get('/apps/{app_id}')
+@app_router.get(
+    '/apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:GetApp',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.CONSOLE_USER,
+            )
+        )
+    ],
+)
 @inject
 async def get_app(
     app_id: UUID,
@@ -229,7 +243,19 @@ async def get_app(
     )
 
 
-@app_router.patch('/apps/{app_id}')
+@app_router.patch(
+    '/apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:UpdateApp',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='You are not authorized to update apps',
+            )
+        )
+    ],
+)
 @inject
 async def update_app(
     app_id: UUID,
@@ -239,25 +265,8 @@ async def update_app(
         Provide[CommonContainer.response_formatter]
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[ApplicationContainer.user_repository]
-    ),
 ):
     try:
-        session: UserSession = request.state.session
-        user_id = session.user_id
-
-        user = await user_repository.find_one(id=user_id)
-
-        # Only owners can update apps
-        if not user or user.role != UserRole.OWNER.value:
-            return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content=response_formatter.buildErrorResponse(
-                    'You are not authorized to update apps'
-                ),
-            )
-
         # Prepare update data, filtering out None values
         update_data = {k: v for k, v in app_data.model_dump().items() if v is not None}
         if not update_data:
@@ -293,7 +302,19 @@ async def update_app(
         )
 
 
-@app_router.delete('/apps/{app_id}')
+@app_router.delete(
+    '/apps/{app_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'console:DeleteApp',
+                resource=from_path('app', 'app_id'),
+                legacy=Legacy.ADMIN,
+                deny_message='You are not authorized to delete this app',
+            )
+        )
+    ],
+)
 @inject
 async def delete_app(
     app_id: UUID,
@@ -306,25 +327,8 @@ async def delete_app(
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
     config: dict = Depends(Provide[ApplicationContainer.config]),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[ApplicationContainer.user_repository]
-    ),
 ):
     try:
-        session: UserSession = request.state.session
-        user_id = session.user_id
-
-        user = await user_repository.find_one(id=user_id)
-
-        # Only owners can delete apps
-        if not user or user.role != UserRole.OWNER.value:
-            return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content=response_formatter.buildErrorResponse(
-                    'You are not authorized to delete this app'
-                ),
-            )
-
         app = await app_service.get_app_by_id(app_id)
 
         if not app:

@@ -8,18 +8,19 @@ authors = [
 requires-python = ">=3.11"
 
 dependencies = [
+    "authz-module",
     "auth-module",
     "db-repo-module",
 
     "pydantic[email]>=2.9.2,<3.0.0",
     "dependency-injector>=4.42.0,<5.0.0",
     "fastapi>=0.115.2,<1.0.0",
-    "authlib>=1.3.2,<2.0.0",
     "bcrypt>=4.2.1,<5.0.0",
     "google-cloud-recaptcha-enterprise>=1.22.0,<2.0.0",
 ]
 
 [tool.uv.sources]
+authz-module = { workspace = true }
 flo-testing = { workspace = true }
 auth-module = { workspace = true }
 db-repo-module = { workspace = true }

@@ -1,3 +1,4 @@
+from authz_module import Legacy, define_action, is_allowed, requires
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -10,8 +11,6 @@ from product_analysis_module.models.product_analysis import (
     ProductAnalysis,
 )
 from user_management_module.utils.user_utils import (
-    check_is_admin,
-    check_is_manager,
     get_current_user,
 )
 from product_analysis_module.product_analysis_container import ProductAnalysisContainer
@@ -19,6 +18,12 @@ from product_analysis_module.product_analysis_service import ProductAnalysisServ
 
 
 product_analysis_router = APIRouter(prefix='/v1')
+
+define_action(
+    'analytics:GetAllLoginStats',
+    legacy=Legacy.ADMIN,
+    description="Login stats for every user, not only the caller's groups",
+)
 
 MAX_LOGIN_STATS_SPAN_DAYS = 366
 
@@ -72,15 +77,12 @@ async def _authorize_login_stats(
     the groups they belong to, so a manager in no group sees nobody rather than
     everybody.
     """
-    role_id, user_id, _ = get_current_user(request)
+    _, user_id, _ = get_current_user(request)
     if not user_id:
         return None, _access_denied(response_formatter)
 
-    is_admin = await check_is_admin(role_id)
-    if not (is_admin or await check_is_manager(role_id)):
-        return None, _forbidden(response_formatter)
-
-    if is_admin:
+    # Reaching here already took analytics:GetLoginStats (managers and admins).
+    if await is_allowed(request, 'analytics:GetAllLoginStats'):
         return ([group_id] if group_id else None), None
 
     accessible_group_ids = await product_analysis_service.get_accessible_group_ids(
@@ -94,7 +96,12 @@ async def _authorize_login_stats(
     return accessible_group_ids, None
 
 
-@product_analysis_router.post('/product-analysis')
+@product_analysis_router.post(
+    '/product-analysis',
+    dependencies=[
+        Depends(requires('analytics:CreateEvent', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def create_product_analysis(
     request: Request,
@@ -142,7 +149,19 @@ async def create_product_analysis(
     )
 
 
-@product_analysis_router.get('/product-analysis')
+@product_analysis_router.get(
+    '/product-analysis',
+    dependencies=[
+        Depends(
+            requires(
+                'analytics:ListEvents',
+                legacy=Legacy.ADMIN,
+                deny_status=status.HTTP_401_UNAUTHORIZED,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_product_analysis(
     request: Request,
@@ -156,10 +175,8 @@ async def get_product_analysis(
     """
     This endpoint is used to get the product analysis events if the user is an admin.
     """
-    user_role_id, user_id, _ = get_current_user(request)
-    user_role = await check_is_admin(user_role_id)
-
-    if not user_id or not user_role:
+    _, user_id, _ = get_current_user(request)
+    if not user_id:
         return _access_denied(response_formatter)
 
     product_analysis = await product_analysis_service.get_product_analysis()
@@ -173,7 +190,18 @@ async def get_product_analysis(
     )
 
 
-@product_analysis_router.get('/product-analysis/stats/login/summary')
+@product_analysis_router.get(
+    '/product-analysis/stats/login/summary',
+    dependencies=[
+        Depends(
+            requires(
+                'analytics:GetLoginStats',
+                legacy=Legacy.MANAGER_OR_ADMIN,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_product_login_stats_summary(
     request: Request,
@@ -214,7 +242,18 @@ async def get_product_login_stats_summary(
     )
 
 
-@product_analysis_router.get('/product-analysis/stats/login')
+@product_analysis_router.get(
+    '/product-analysis/stats/login',
+    dependencies=[
+        Depends(
+            requires(
+                'analytics:GetLoginStats',
+                legacy=Legacy.MANAGER_OR_ADMIN,
+                deny_message='Access denied',
+            )
+        )
+    ],
+)
 @inject
 async def get_product_login_stats(
     request: Request,

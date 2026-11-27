@@ -1,3 +1,4 @@
+from authz_module import Legacy, requires
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from dependency_injector.wiring import inject, Provide
@@ -11,7 +12,12 @@ from agents_module.services.namespace_service import NamespaceService
 namespace_router = APIRouter()
 
 
-@namespace_router.get('/v1/namespaces')
+@namespace_router.get(
+    '/v1/namespaces',
+    dependencies=[
+        Depends(requires('agents:ListNamespaces', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def list_namespaces(
     namespace_service: NamespaceService = Depends(

@@ -8,6 +8,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from authz_module import ANONYMOUS, Legacy, RequestContext, user_principal
+from authz_module.default import DefaultAuthorizer
+from authz_module.routes import declarations
+from user_management_module.authorization.legacy_resolver import (
+    FlowareLegacyResolver,
+)
+from user_management_module.utils import user_utils
 from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 
@@ -287,7 +294,7 @@ async def test_row_no_longer_pending_after_removal_leaves_the_cache_alone():
 
 def _request(session):
     req = MagicMock()
-    req.state.session = session
+    req.state.principal = session
     return req
 
 
@@ -314,8 +321,7 @@ def _ok_result():
         (CancellationIncomplete('removed, row not updated'), 500),
     ],
 )
-async def test_route_status_codes(side_effect, expected, monkeypatch):
-    monkeypatch.setattr(controller, 'check_is_admin', AsyncMock(return_value=True))
+async def test_route_status_codes(side_effect, expected):
     service = MagicMock()
     service.cancel_execution = AsyncMock(
         side_effect=side_effect, return_value=_ok_result()
@@ -331,8 +337,7 @@ async def test_route_status_codes(side_effect, expected, monkeypatch):
     assert response.status_code == expected
 
 
-async def test_route_returns_only_the_cancel_fields(monkeypatch):
-    monkeypatch.setattr(controller, 'check_is_admin', AsyncMock(return_value=True))
+async def test_route_returns_only_the_cancel_fields():
     service = MagicMock()
     service.cancel_execution = AsyncMock(return_value=_ok_result())
 
@@ -350,24 +355,30 @@ async def test_route_returns_only_the_cancel_fields(monkeypatch):
     }
 
 
+def test_route_declares_an_admin_action():
+    """The admin gate is the route's declaration, enforced before the handler."""
+    route = next(
+        r for r in controller.async_router.routes if r.path.endswith('/cancel')
+    )
+    [declaration] = declarations(route)
+    assert declaration.action.name == 'agents:CancelExecution'
+    assert declaration.action.legacy == Legacy.ADMIN
+
+
 @pytest.mark.parametrize(
-    'session, is_admin',
+    'principal, is_admin, allowed',
     [
-        (SimpleNamespace(role_id='user-role'), False),
-        (None, True),  # no session never reaches the role check
+        (user_principal('u', role_id='user-role'), False, False),
+        (user_principal('u', role_id='admin-role'), True, True),
+        (ANONYMOUS, True, False),  # no session never reaches the role check
     ],
 )
-async def test_route_refuses_non_admins(session, is_admin, monkeypatch):
-    monkeypatch.setattr(controller, 'check_is_admin', AsyncMock(return_value=is_admin))
-    service = MagicMock()
-    service.cancel_execution = AsyncMock()
+async def test_route_refuses_non_admins(principal, is_admin, allowed, monkeypatch):
+    monkeypatch.setattr(user_utils, 'check_is_admin', AsyncMock(return_value=is_admin))
+    authorizer = DefaultAuthorizer(FlowareLegacyResolver())
 
-    response = await controller.cancel_execution(
-        request=_request(session),
-        execution_id=uuid.uuid4(),
-        async_agentic_execution_service=service,
-        response_formatter=ResponseFormatter(),
+    decision = await authorizer.authorize(
+        principal, 'agents:CancelExecution', None, RequestContext()
     )
 
-    assert response.status_code == 403
-    service.cancel_execution.assert_not_awaited()
+    assert decision.allowed is allowed

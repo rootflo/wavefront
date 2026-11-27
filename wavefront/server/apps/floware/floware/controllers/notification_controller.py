@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 from uuid import UUID
 
 from common_module.common_container import CommonContainer
@@ -17,7 +18,14 @@ from floware.services.notification_service import NotificationService
 notification_router = APIRouter()
 
 
-@notification_router.get('/v1/notifications')
+@notification_router.get(
+    '/v1/notifications',
+    dependencies=[
+        Depends(
+            requires('notifications:ListNotifications', legacy=Legacy.AUTHENTICATED)
+        )
+    ],
+)
 @inject
 async def get_notifications(
     request: Request,
@@ -37,7 +45,7 @@ async def get_notifications(
     mutating datasource request, so the unbounded listing this replaced would
     have grown without limit.
     """
-    current_id = request.state.session.user_id
+    current_id = request.state.principal.id
     notification_res = await notification_service.fetch_notification(
         user_id=current_id, limit=limit, offset=offset, unseen_only=unseen_only
     )
@@ -74,7 +82,18 @@ async def get_notifications(
     )
 
 
-@notification_router.patch('/v1/notifications/{notification_id}')
+@notification_router.patch(
+    '/v1/notifications/{notification_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'notifications:UpdateNotification',
+                resource=from_path('notification', 'notification_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def updateNotification(
     notification_id: str,
@@ -113,7 +132,7 @@ async def updateNotification(
         )
 
     updated = await notification_service.mark_seen(
-        notification_id=canonical_id, user_id=request.state.session.user_id
+        notification_id=canonical_id, user_id=request.state.principal.id
     )
     if not updated:
         return JSONResponse(

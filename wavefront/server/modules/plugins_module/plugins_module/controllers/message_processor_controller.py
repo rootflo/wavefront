@@ -3,6 +3,7 @@ Controller for message processor endpoints.
 Handles creation, execution, and management of functions stored in cloud storage.
 """
 
+from authz_module import Legacy, from_path, requires
 from dependency_injector.wiring import inject, Provide
 from fastapi import Depends, status, APIRouter
 from pydantic import BaseModel
@@ -42,7 +43,18 @@ class ExecuteMessageProcessorPayload(BaseModel):
     execution_context: Optional[Dict[str, Any]] = None
 
 
-@message_processor_router.post('/v1/message-processors')
+@message_processor_router.post(
+    '/v1/message-processors',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:CreateMessageProcessor',
+                resource=from_path('message_processor'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_message_processor(
     payload: CreateMessageProcessorPayload,
@@ -87,7 +99,18 @@ async def create_message_processor(
     )
 
 
-@message_processor_router.get('/v1/message-processors')
+@message_processor_router.get(
+    '/v1/message-processors',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:ListMessageProcessors',
+                resource=from_path('message_processor'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_message_processors(
     response_formatter: ResponseFormatter = Depends(
@@ -112,7 +135,18 @@ async def list_message_processors(
     )
 
 
-@message_processor_router.get('/v1/message-processors/{processor_id}')
+@message_processor_router.get(
+    '/v1/message-processors/{processor_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:GetMessageProcessor',
+                resource=from_path('message_processor', 'processor_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_message_processor(
     processor_id: str,
@@ -149,7 +183,18 @@ async def get_message_processor(
     )
 
 
-@message_processor_router.put('/v1/message-processors/{processor_id}')
+@message_processor_router.put(
+    '/v1/message-processors/{processor_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:UpdateMessageProcessor',
+                resource=from_path('message_processor', 'processor_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_message_processor(
     processor_id: str,
@@ -205,7 +250,18 @@ async def update_message_processor(
     )
 
 
-@message_processor_router.delete('/v1/message-processors/{processor_id}')
+@message_processor_router.delete(
+    '/v1/message-processors/{processor_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:DeleteMessageProcessor',
+                resource=from_path('message_processor', 'processor_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_message_processor(
     processor_id: str,
@@ -239,7 +295,18 @@ async def delete_message_processor(
     )
 
 
-@message_processor_router.post('/v1/message-processors/{processor_id}/execute')
+@message_processor_router.post(
+    '/v1/message-processors/{processor_id}/execute',
+    dependencies=[
+        Depends(
+            requires(
+                'message_processors:InvokeMessageProcessor',
+                resource=from_path('message_processor', 'processor_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def execute_message_processor(
     processor_id: str,

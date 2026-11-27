@@ -1,3 +1,4 @@
+from authz_module import Legacy, from_path, requires
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -67,7 +68,18 @@ def _room_agent_choices(
     return choices
 
 
-@voice_agent_router.post('/v1/voice-agents')
+@voice_agent_router.post(
+    '/v1/voice-agents',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:CreateVoiceAgent',
+                resource=from_path('voice_agent'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def create_voice_agent(
     request: Request,
@@ -121,7 +133,18 @@ async def create_voice_agent(
     )
 
 
-@voice_agent_router.get('/v1/voice-agents')
+@voice_agent_router.get(
+    '/v1/voice-agents',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:ListVoiceAgents',
+                resource=from_path('voice_agent'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def list_voice_agents(
     response_formatter: ResponseFormatter = Depends(
@@ -146,8 +169,30 @@ async def list_voice_agents(
     )
 
 
-@voice_agent_router.get('/v1/voice-agents/{agent_id}')
-@voice_agent_router.get('/v1/voice-agents/{agent_id}/details')
+@voice_agent_router.get(
+    '/v1/voice-agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetVoiceAgent',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
+@voice_agent_router.get(
+    '/v1/voice-agents/{agent_id}/details',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetVoiceAgent',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_voice_agent(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -180,7 +225,18 @@ async def get_voice_agent(
     )
 
 
-@voice_agent_router.patch('/v1/voice-agents/{agent_id}')
+@voice_agent_router.patch(
+    '/v1/voice-agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:UpdateVoiceAgent',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def update_voice_agent(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -290,7 +346,18 @@ async def update_voice_agent(
     )
 
 
-@voice_agent_router.delete('/v1/voice-agents/{agent_id}')
+@voice_agent_router.delete(
+    '/v1/voice-agents/{agent_id}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:DeleteVoiceAgent',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def delete_voice_agent(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -333,7 +400,18 @@ async def delete_voice_agent(
     )
 
 
-@voice_agent_router.post('/v1/voice-agents/{agent_id}/initiate')
+@voice_agent_router.post(
+    '/v1/voice-agents/{agent_id}/initiate',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:InitiateCall',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def initiate_call(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -542,7 +620,18 @@ async def initiate_call(
     )
 
 
-@voice_agent_router.get('/v1/voice-agents/by-inbound-number/{phone_number}')
+@voice_agent_router.get(
+    '/v1/voice-agents/by-inbound-number/{phone_number}',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetVoiceAgent',
+                resource=from_path('voice_agent'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_voice_agent_by_inbound_number(
     phone_number: str = Path(..., description='Inbound phone number (E.164 format)'),
@@ -581,7 +670,18 @@ async def get_voice_agent_by_inbound_number(
     )
 
 
-@voice_agent_router.get('/v1/voice-agents/{agent_id}/welcome-audio-url')
+@voice_agent_router.get(
+    '/v1/voice-agents/{agent_id}/welcome-audio-url',
+    dependencies=[
+        Depends(
+            requires(
+                'voice:GetVoiceAgent',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
 @inject
 async def get_welcome_audio_url(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -625,7 +725,17 @@ async def get_welcome_audio_url(
 
 
 @voice_agent_router.post(
-    '/v1/voice-agents/{agent_id}/rooms', status_code=status.HTTP_201_CREATED
+    '/v1/voice-agents/{agent_id}/rooms',
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(
+            requires(
+                'voice:CreateWebRtcRoom',
+                resource=from_path('voice_agent', 'agent_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
 )
 @inject
 async def create_webrtc_room(
@@ -732,7 +842,12 @@ async def _proxy_webrtc_signaling(
     return response
 
 
-@voice_agent_router.post('/v1/webrtc/offer')
+@voice_agent_router.post(
+    '/v1/webrtc/offer',
+    dependencies=[
+        Depends(requires('voice:ConnectWebRtc', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def proxy_webrtc_offer(
     request: Request,
@@ -749,7 +864,12 @@ async def proxy_webrtc_offer(
     )
 
 
-@voice_agent_router.patch('/v1/webrtc/offer')
+@voice_agent_router.patch(
+    '/v1/webrtc/offer',
+    dependencies=[
+        Depends(requires('voice:ConnectWebRtc', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def proxy_webrtc_ice_candidates(
     request: Request,

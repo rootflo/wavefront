@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -53,17 +53,13 @@ def _repository():
 async def test_stores_protected_and_returns_plaintext_once(enabled):
     cipher = _cipher(enabled)
     repository = _repository()
-    request = SimpleNamespace(
-        state=SimpleNamespace(session=SimpleNamespace(role_id='admin'))
+    # The admin gate is the route's declaration, enforced before the handler.
+    response = await hmac_controller.generate_hmac_secret(
+        request=SimpleNamespace(state=SimpleNamespace()),
+        auth_secrets_repository=repository,
+        response_formatter=ResponseFormatter(),
+        secret_cipher=cipher,
     )
-
-    with patch.object(hmac_controller, 'check_is_admin', AsyncMock(return_value=True)):
-        response = await hmac_controller.generate_hmac_secret(
-            request=request,
-            auth_secrets_repository=repository,
-            response_formatter=ResponseFormatter(),
-            secret_cipher=cipher,
-        )
 
     assert response.status_code == 201
     returned = json.loads(response.body)['data']['client_secret']

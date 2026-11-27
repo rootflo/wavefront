@@ -215,7 +215,7 @@ class InferenceProxyService:
         #
         # 'authorization' is always dropped here rather than per provider: on
         # this route it can only hold the caller's Floware credential (the
-        # route is not in optional_auth_apis, and the mTLS branch only applies
+        # route is not public (models:InvokeModel), and the mTLS branch only applies
         # when no bearer token was sent), so forwarding it upstream would leak
         # that credential to the provider. Each provider re-adds its own
         # credential below. Comparing on key.lower() also means an inbound

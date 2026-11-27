@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -11,10 +10,12 @@ from datasource import PostgresConfig
 from datasource.types import DataSourceType
 from fastapi import FastAPI, Request
 
+from authz_module import user_principal
 from common_module.common_container import CommonContainer
 from dependency_injector import providers
 from plugins_module.controllers import datasource_controller
 from plugins_module.plugins_container import PluginsContainer
+from user_management_module.utils import user_utils
 
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
 RESOURCES_URL = f'/v1/datasources/{DATASOURCE_ID}/resources'
@@ -36,7 +37,7 @@ def app():
 
     @app.middleware('http')
     async def session(request: Request, call_next):
-        request.state.session = SimpleNamespace(role_id='role', user_id='user')
+        request.state.principal = user_principal('user', role_id='role')
         return await call_next(request)
 
     app.include_router(datasource_controller.datasource_router)
@@ -55,9 +56,8 @@ def slow_plugin():
         return call
 
     with (
-        patch.object(
-            datasource_controller, 'check_is_admin', AsyncMock(return_value=True)
-        ),
+        # Routes declare an action; the default authorizer asks user_utils.
+        patch.object(user_utils, 'check_is_admin', AsyncMock(return_value=True)),
         patch.object(
             datasource_controller,
             'get_datasource_config',

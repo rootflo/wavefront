@@ -91,7 +91,7 @@ def _services(inference):
 
     return {
         'request': SimpleNamespace(
-            state=SimpleNamespace(session=SimpleNamespace(user_id=str(USER_ID)))
+            state=SimpleNamespace(principal=SimpleNamespace(id=str(USER_ID)))
         ),
         'response_formatter': ResponseFormatter(),
         'chatbot_service': chatbot_service,
