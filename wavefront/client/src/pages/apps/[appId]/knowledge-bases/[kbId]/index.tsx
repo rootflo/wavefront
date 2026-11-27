@@ -1,7 +1,7 @@
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+} from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import {
   getKnowledgeBaseDocumentsKey,
   useDeleteKnowledgeBaseDocument,

@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
 import { FlaskConical, Save } from 'lucide-react';
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import {
@@ -8,12 +8,12 @@ import {
   StreamPreference,
   WorkflowStage,
 } from '@app/types/guardrails';
-import { Button } from '@app/components/ui/button';
-import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Separator } from '@app/components/ui/separator';
-import { Skeleton } from '@app/components/ui/skeleton';
-import { Switch } from '@app/components/ui/switch';
+import { Button } from '@wavefront/ui/button';
+import { Label } from '@wavefront/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Separator } from '@wavefront/ui/separator';
+import { Skeleton } from '@wavefront/ui/skeleton';
+import { Switch } from '@wavefront/ui/switch';
 import {
   useGetGuardrailAdapters,
   useGetGuardrailPiiEntities,

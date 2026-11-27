@@ -1,4 +1,4 @@
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { cn } from '@app/lib/utils';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import React, { useMemo } from 'react';

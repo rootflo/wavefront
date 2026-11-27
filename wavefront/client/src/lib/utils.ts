@@ -1,7 +1,2 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-// Kept here because shadcn/ui components import `cn` from @app/lib/utils
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// shadcn/ui components and app code import `cn` from here; it lives in the UI kit.
+export { cn } from '@wavefront/ui/lib/utils';

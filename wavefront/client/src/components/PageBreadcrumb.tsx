@@ -5,7 +5,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@app/components/ui/breadcrumb';
+} from '@wavefront/ui/breadcrumb';
 import { cn } from '@app/lib/utils';
 import React from 'react';
 import { useNavigate } from 'react-router';

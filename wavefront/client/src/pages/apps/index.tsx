@@ -5,7 +5,7 @@ import AppsHero from './AppsHero';
 import ColumnsToggle from './ColumnsToggle';
 import { FilterSelect } from '@app/components/ListHeader';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { useDeleteApp, useGetAllApps, useGetCurrentUser } from '@app/hooks';
 import { useDashboardStore } from '@app/store';

@@ -1,11 +1,11 @@
 import { FailureMode, GuardrailAdapterConfig, PiiEntityGroup, WorkflowStage } from '@app/types/guardrails';
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Separator } from '@app/components/ui/separator';
-import { Slider } from '@app/components/ui/slider';
-import { Switch } from '@app/components/ui/switch';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Label } from '@wavefront/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Separator } from '@wavefront/ui/separator';
+import { Slider } from '@wavefront/ui/slider';
+import { Switch } from '@wavefront/ui/switch';
 import React, { useState } from 'react';
 import PiiEntitySelector from './PiiEntitySelector';
 import PiiPreviewDialog from './PiiPreviewDialog';

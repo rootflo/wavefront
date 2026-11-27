@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,8 +6,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Checkbox } from '@app/components/ui/checkbox';
+} from '@wavefront/ui/dialog';
+import { Checkbox } from '@wavefront/ui/checkbox';
 import { formatAppName } from '@app/utils/string-formatting';
 import { IUser } from '@app/types/user';
 import { App } from '@app/types/app';

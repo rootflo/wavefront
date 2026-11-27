@@ -4,9 +4,9 @@ import ResourceCard from '@app/components/ResourceCard';
 import { Zap, Play, Pause, RotateCcw } from 'lucide-react';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { TRIGGER_STATUS_BADGE_CLASS, TRIGGER_STATUS_OPTIONS } from '@app/constants/trigger';
 import {
   useDeleteTrigger,

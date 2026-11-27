@@ -1,5 +1,5 @@
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -7,9 +7,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+} from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { EMAIL_CAPABILITIES, getEmailProviderOptions } from '@app/config/email-providers';
 import { useCreateEmailConnection, useGetOAuthApps } from '@app/hooks';
 import { useNotifyStore } from '@app/store';

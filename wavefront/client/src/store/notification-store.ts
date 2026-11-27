@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
-export type TToastType = 'success' | 'error' | 'warning' | null;
+import type { TToastType } from '@wavefront/ui/lib/toast-type';
+
+export type { TToastType };
 
 type State = {
   visible: boolean;

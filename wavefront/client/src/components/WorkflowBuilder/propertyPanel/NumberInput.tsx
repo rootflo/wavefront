@@ -1,5 +1,5 @@
 import React from 'react';
-import { Input } from '@app/components/ui/input';
+import { Input } from '@wavefront/ui/input';
 
 interface NumberInputProps {
   value: unknown;

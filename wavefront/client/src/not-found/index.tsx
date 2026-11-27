@@ -1,5 +1,5 @@
-import { Button } from '@app/components/ui/button';
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@app/components/ui/empty';
+import { Button } from '@wavefront/ui/button';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@wavefront/ui/empty';
 import { useAuthStore } from '@app/store';
 import { useNavigate } from 'react-router';
 

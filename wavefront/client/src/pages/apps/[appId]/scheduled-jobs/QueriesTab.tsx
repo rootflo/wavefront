@@ -1,5 +1,5 @@
 import { FormInputField, FormSelectField, FormTextareaField } from '@app/components/FormFields';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import { COLUMN_STYLES_PLACEHOLDER, QUERY_PARAMS_PLACEHOLDER } from '@app/constants/scheduled-job';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';

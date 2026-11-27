@@ -1,8 +1,8 @@
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Label } from '@app/components/ui/label';
-import { Textarea } from '@app/components/ui/textarea';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Label } from '@wavefront/ui/label';
+import { Textarea } from '@wavefront/ui/textarea';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
 import { useFormContext } from 'react-hook-form';
 import { MAX_LANGUAGE_PROMPT_CHARS, readLanguagePrompts, withLanguagePrompt } from './language-prompts';

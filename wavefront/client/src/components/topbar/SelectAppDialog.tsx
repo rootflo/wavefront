@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
 import { isLiveStatus, shortAgo } from '@app/lib/app-status';
 import { cn } from '@app/lib/utils';
 import { formatAppName } from '@app/utils/string-formatting';

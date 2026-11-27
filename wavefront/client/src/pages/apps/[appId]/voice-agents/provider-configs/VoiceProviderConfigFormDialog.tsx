@@ -1,5 +1,5 @@
-import { Alert, AlertDescription } from '@app/components/ui/alert';
-import { Button } from '@app/components/ui/button';
+import { Alert, AlertDescription } from '@wavefront/ui/alert';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,11 +7,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
+} from '@wavefront/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Textarea } from '@wavefront/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig } from '@app/config/voice-providers';
 import {
   UpdateVoiceProviderConfigRequest,

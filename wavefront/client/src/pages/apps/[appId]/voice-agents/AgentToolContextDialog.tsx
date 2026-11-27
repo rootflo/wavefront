@@ -1,5 +1,5 @@
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,11 +7,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Switch } from '@app/components/ui/switch';
-import { Textarea } from '@app/components/ui/textarea';
+} from '@wavefront/ui/dialog';
+import { Label } from '@wavefront/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Switch } from '@wavefront/ui/switch';
+import { Textarea } from '@wavefront/ui/textarea';
 import { useSetAgentToolOverrides } from '@app/hooks';
 import { toneClass } from '@app/lib/tones';
 import { VoiceAgentToolWithAssociation } from '@app/types/tool';

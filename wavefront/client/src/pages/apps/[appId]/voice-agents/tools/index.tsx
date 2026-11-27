@@ -5,9 +5,9 @@ import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/compone
 import { useListView } from '@app/lib/list-view';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { Badge } from '@app/components/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
+import { Badge } from '@wavefront/ui/badge';
 import { useDeleteTool, useGetVoiceAgentTools } from '@app/hooks';
 import { extractErrorMessage } from '@app/lib/errors';
 import { VoiceAgentTool } from '@app/types/tool';

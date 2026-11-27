@@ -1,6 +1,6 @@
 import { CheckCircle2, Star } from 'lucide-react';
 import { Node } from '@xyflow/react';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 
 interface EntryAgentStatusProps {
   selectedNode: Node;

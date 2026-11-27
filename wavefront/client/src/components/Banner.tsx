@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, AlertTitle } from '@app/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@wavefront/ui/alert';
 import { cn } from '@app/lib/utils';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 

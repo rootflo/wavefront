@@ -1,17 +1,10 @@
 import { Check, ChevronsUpDown, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { Button } from '@app/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
-import { Input } from '@app/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { Button } from '@wavefront/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@wavefront/ui/command';
+import { Input } from '@wavefront/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
 import { findModelPreset, getModelGroups, type ModelTag } from '@app/config/llm-models';
 import type { InferenceEngineType } from '@app/config/llm-providers';
 import { cn } from '@app/lib/utils';

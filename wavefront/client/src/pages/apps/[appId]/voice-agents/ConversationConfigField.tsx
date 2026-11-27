@@ -1,10 +1,10 @@
 import FieldHelp from '@app/components/FieldHelp';
-import { Button } from '@app/components/ui/button';
-import { FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Switch } from '@app/components/ui/switch';
-import { Textarea } from '@app/components/ui/textarea';
+import { Button } from '@wavefront/ui/button';
+import { FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Switch } from '@wavefront/ui/switch';
+import { Textarea } from '@wavefront/ui/textarea';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName, getLanguageName } from '@app/constants/languages';
 import { cn } from '@app/lib/utils';
 import { ChevronDown, RotateCcw, X } from 'lucide-react';

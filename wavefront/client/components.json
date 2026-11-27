@@ -13,8 +13,8 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@app/components",
-    "utils": "@app/lib/utils",
-    "ui": "@app/components/ui",
+    "utils": "@wavefront/ui/lib/utils",
+    "ui": "@wavefront/ui",
     "lib": "@app/lib",
     "hooks": "@app/hooks"
   },

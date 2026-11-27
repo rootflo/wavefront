@@ -1,13 +1,6 @@
-import { Badge } from '@app/components/ui/badge';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { Badge } from '@wavefront/ui/badge';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@wavefront/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@wavefront/ui/popover';
 import { cn } from '@app/lib/utils';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';

@@ -1,7 +1,7 @@
 import { toneClass } from '@app/lib/tones';
-import { Button } from '@app/components/ui/button';
-import { Switch } from '@app/components/ui/switch';
-import { Badge } from '@app/components/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Switch } from '@wavefront/ui/switch';
+import { Badge } from '@wavefront/ui/badge';
 import {
   useAttachToolToAgent,
   useDetachToolFromAgent,

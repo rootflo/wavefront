@@ -1,11 +1,11 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@app/components/ui/dropdown-menu';
+} from '@wavefront/ui/dropdown-menu';
 import { cn } from '@app/lib/utils';
 import { copyToClipboard } from '@app/utils/clipboard';
 import { useNotifyStore } from '@app/store';

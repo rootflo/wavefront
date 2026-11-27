@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@wavefront/ui/dialog';
 
 export interface IntentPromptState {
   sourceId: string;

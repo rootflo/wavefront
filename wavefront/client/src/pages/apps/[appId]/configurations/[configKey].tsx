@@ -1,8 +1,8 @@
 import MobileBackButton from '@app/components/MobileBackButton';
 import DetailActions from '@app/components/DetailActions';
 import PageTitle from '@app/components/PageTitle';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
 import { useGetConfiguration, useGetConfigurations, useSaveConfiguration } from '@app/hooks';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeEditor from '@app/components/CodeEditor';

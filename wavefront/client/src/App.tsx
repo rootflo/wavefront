@@ -1,5 +1,5 @@
 import { TOKEN_KEY } from '@app/lib/constants';
-import Toast from './components/ui/toast';
+import Toast from '@wavefront/ui/toast';
 import AppRouter from './router';
 import { useAuthStore, useNotifyStore } from './store';
 import { useMountEffect } from '@app/hooks/use-mount-effect';

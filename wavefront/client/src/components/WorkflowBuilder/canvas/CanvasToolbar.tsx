@@ -11,8 +11,8 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
 } from 'lucide-react';
-import { Button } from '@app/components/ui/button';
-import { Badge } from '@app/components/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Badge } from '@wavefront/ui/badge';
 import { LayoutDirection } from '../layoutDirection';
 
 const LAYOUT_DIRECTION_OPTIONS = [

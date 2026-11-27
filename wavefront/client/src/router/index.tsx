@@ -6,6 +6,11 @@ import { useAuthStore } from '@app/store';
 import { ReactNode } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import routes from './routes';
+import { ExtensionBoundary, useExtensionRoutes, useLoadExtensions } from '@app/extensions';
+
+const APP_ROUTE_PATH = 'apps/:app';
+
+const extensionFallback = <div className="frost-text-muted p-6 text-sm">This page could not be loaded.</div>;
 
 interface ChildrenRoute {
   index?: boolean;
@@ -57,6 +62,37 @@ const AppRouter = () => {
   const { data: user } = useGetCurrentUser(authenticated);
   const { data: apps = [] } = useGetAllApps(authenticated);
 
+  // Pages contributed by remotes: app pages join the app layout's children,
+  // console pages sit beside the other console pages.
+  useLoadExtensions(authenticated);
+  const extensionAppRoutes = useExtensionRoutes('app');
+  const extensionConsoleRoutes = useExtensionRoutes('console');
+  const isolate = (source: string, element: ReactNode) => (
+    <ExtensionBoundary source={source} fallback={extensionFallback}>
+      {element}
+    </ExtensionBoundary>
+  );
+  const privateRoutes: Routes[] = [
+    ...routes.private.map((route) =>
+      route.path === APP_ROUTE_PATH
+        ? {
+            ...route,
+            children: [
+              ...(route.children ?? []),
+              ...extensionAppRoutes.map(({ source, value }) => ({
+                path: value.path,
+                element: isolate(source, value.element),
+              })),
+            ],
+          }
+        : route
+    ),
+    ...extensionConsoleRoutes.map(({ source, value }) => ({
+      path: `/${value.path}`,
+      element: isolate(source, value.element),
+    })),
+  ];
+
   return (
     <BrowserRouter>
       <Routes>
@@ -73,7 +109,7 @@ const AppRouter = () => {
               />
             }
           >
-            {routes.private.map((route) => renderChildren(route))}
+            {privateRoutes.map((route) => renderChildren(route))}
             {routes.admin.map((route) => renderChildren(route))}
           </Route>
           {routes.fullscreen.map((route) => renderChildren(route))}

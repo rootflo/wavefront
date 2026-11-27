@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
+} from '@wavefront/ui/dialog';
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 

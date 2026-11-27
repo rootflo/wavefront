@@ -1,9 +1,9 @@
 import AppsBackdrop from '@app/components/AppsBackdrop';
 import floConsoleService from '@app/api';
-import { Button } from '@app/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Button } from '@wavefront/ui/button';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { useNotifyStore } from '@app/store';
 import { CreateAppRequest } from '@app/types/app';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,7 +12,7 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { createAppSchema } from './schemas';
-import { Checkbox } from '@app/components/ui/checkbox';
+import { Checkbox } from '@wavefront/ui/checkbox';
 import { appEnv } from '@app/config/env';
 import { useCreateApp } from '@app/hooks';
 

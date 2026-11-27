@@ -1,5 +1,5 @@
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
+import { Button } from '@wavefront/ui/button';
+import { Input } from '@wavefront/ui/input';
 import { Plus, X } from 'lucide-react';
 import React, { useId } from 'react';
 import { ValuePair } from './values';

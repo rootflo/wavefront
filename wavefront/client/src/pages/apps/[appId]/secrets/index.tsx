@@ -10,8 +10,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@app/components/ui/alert-dialog';
-import { Button } from '@app/components/ui/button';
+} from '@wavefront/ui/alert-dialog';
+import { Button } from '@wavefront/ui/button';
 import { useDeleteConfirm, useDeleteSecret, useGetSecrets } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
 import { Secret, SecretInUseData, secretRef } from '@app/types/secret';

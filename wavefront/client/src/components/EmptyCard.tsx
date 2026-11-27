@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import { Plus, Search, Sparkles } from 'lucide-react';
 import React from 'react';
 

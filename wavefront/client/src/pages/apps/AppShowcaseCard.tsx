@@ -1,11 +1,11 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@app/components/ui/dropdown-menu';
+} from '@wavefront/ui/dropdown-menu';
 import { isLiveStatus, shortAgo } from '@app/lib/app-status';
 import { tintFor } from '@app/lib/app-tints';
 import { cn } from '@app/lib/utils';

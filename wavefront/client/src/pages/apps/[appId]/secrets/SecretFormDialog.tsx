@@ -1,4 +1,4 @@
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,8 +6,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
+} from '@wavefront/ui/dialog';
+import { Input } from '@wavefront/ui/input';
 import { useCreateSecret, useUpdateSecret } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { SECRET_NAME_PATTERN, Secret, secretRef } from '@app/types/secret';

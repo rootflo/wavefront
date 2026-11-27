@@ -1,9 +1,9 @@
 import { NamespaceItem } from '@app/types/namespace';
-import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Switch } from '@app/components/ui/switch';
-import { Textarea } from '@app/components/ui/textarea';
+import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Switch } from '@wavefront/ui/switch';
+import { Textarea } from '@wavefront/ui/textarea';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import React from 'react';
 import { UseFormReturn } from 'react-hook-form';

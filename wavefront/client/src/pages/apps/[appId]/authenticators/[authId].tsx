@@ -2,14 +2,14 @@ import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
 import PageTitle from '@app/components/PageTitle';
-import { Badge } from '@app/components/ui/badge';
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Switch } from '@app/components/ui/switch';
-import { Textarea } from '@app/components/ui/textarea';
+import { Badge } from '@wavefront/ui/badge';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Input } from '@wavefront/ui/input';
+import { Label } from '@wavefront/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Switch } from '@wavefront/ui/switch';
+import { Textarea } from '@wavefront/ui/textarea';
 import {
   cleanParameters,
   getProviderBadge,

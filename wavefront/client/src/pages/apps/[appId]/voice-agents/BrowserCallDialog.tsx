@@ -1,10 +1,10 @@
 import floConsoleService from '@app/api';
-import { Alert, AlertDescription, AlertTitle } from '@app/components/ui/alert';
-import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Switch } from '@app/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@wavefront/ui/alert';
+import { Button } from '@wavefront/ui/button';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Label } from '@wavefront/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Switch } from '@wavefront/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@app/components/ui/dialog';
+} from '@wavefront/ui/dialog';
 import { appEnv } from '@app/config/env';
 import { useGetVoiceAgents } from '@app/hooks';
 import { TOKEN_KEY } from '@app/lib/constants';

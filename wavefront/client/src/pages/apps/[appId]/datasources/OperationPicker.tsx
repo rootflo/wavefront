@@ -1,4 +1,4 @@
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@wavefront/ui/tooltip';
 import { cn } from '@app/lib/utils';
 import { OPERATION_GROUPS } from './operations';
 import { DatasourceOperationState } from './useDatasourceOperation';

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { Form } from '@app/components/ui/form';
+import { Form } from '@wavefront/ui/form';
 import { getLanguageDisplayName } from '@app/constants/languages';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

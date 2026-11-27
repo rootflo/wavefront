@@ -1,4 +1,4 @@
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@wavefront/ui/tooltip';
 import { cn } from '@app/lib/utils';
 import { Info } from 'lucide-react';
 import React from 'react';

@@ -7,9 +7,9 @@ import {
   PolicyPreviewResult,
   StreamPreference,
 } from '@app/types/guardrails';
-import { Button } from '@app/components/ui/button';
-import { Label } from '@app/components/ui/label';
-import { Textarea } from '@app/components/ui/textarea';
+import { Button } from '@wavefront/ui/button';
+import { Label } from '@wavefront/ui/label';
+import { Textarea } from '@wavefront/ui/textarea';
 import { cn } from '@app/lib/utils';
 import { extractErrorMessage } from '@app/lib/errors';
 import { useNotifyStore } from '@app/store';

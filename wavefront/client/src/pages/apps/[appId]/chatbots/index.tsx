@@ -4,9 +4,9 @@ import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/compone
 import { useListView } from '@app/lib/list-view';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Button } from '@app/components/ui/button';
-import { Switch } from '@app/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { Button } from '@wavefront/ui/button';
+import { Switch } from '@wavefront/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@wavefront/ui/table';
 import { useDeleteChatbot, useGetChatbots, useGetLLMConfigs, useGetNamespaces, useSetChatbotEnabled } from '@app/hooks';
 import { copyToClipboard } from '@app/utils/clipboard';
 import { useDashboardStore, useNotifyStore } from '@app/store';

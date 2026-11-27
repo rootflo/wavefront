@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
-import { Input } from '@app/components/ui/input';
+import { Input } from '@wavefront/ui/input';
 import { AGENT_ID_PATTERN, AGENT_ID_PATTERN_MESSAGE } from '@app/constants/workflow-builder';
 import { useCreateWorkflow, useGetWorkflowVersions } from '@app/hooks';
 import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';

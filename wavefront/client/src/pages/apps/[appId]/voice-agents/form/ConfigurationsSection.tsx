@@ -1,5 +1,5 @@
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
 import { useGetLLMConfigs, useGetSttConfigs, useGetTelephonyConfigs, useGetTtsConfigs } from '@app/hooks';
 import FieldHelp from '@app/components/FieldHelp';
 import { VoiceIdsSection } from '../VoiceIdsSection';

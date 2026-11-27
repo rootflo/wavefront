@@ -1,4 +1,4 @@
-import { SelectGroup, SelectItem, SelectLabel, SelectSeparator } from '@app/components/ui/select';
+import { SelectGroup, SelectItem, SelectLabel, SelectSeparator } from '@wavefront/ui/select';
 import React from 'react';
 import { isFileStorageType } from './datasource-types';
 

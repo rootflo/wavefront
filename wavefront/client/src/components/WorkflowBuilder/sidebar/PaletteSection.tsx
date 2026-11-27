@@ -1,7 +1,7 @@
 import { NODE_TYPES } from '@app/constants/workflow-builder';
 import React from 'react';
 import { Bot, GitBranch, Plus, Cpu, ArrowRight, Layers } from 'lucide-react';
-import { Button } from '@app/components/ui/button';
+import { Button } from '@wavefront/ui/button';
 
 interface PaletteSectionProps {
   onAddAgent?: () => void;

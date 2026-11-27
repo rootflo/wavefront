@@ -1,4 +1,12 @@
-@import 'tailwindcss';
+/*
+ * Scan only the app's sources and the shared UI kit for classes. Left to scan the
+ * whole project root, Tailwind registers config and server files (eslint.config.js,
+ * server.cjs) as dependencies of this stylesheet, and the dev server's dependency
+ * pre-bundling then tries to bundle their Node-only imports.
+ */
+@import 'tailwindcss' source('.');
+@source '../index.html';
+@source '../packages/ui/src';
 @plugin 'tailwindcss-animate';
 
 @custom-variant dark (&:where(.dark, .dark *));

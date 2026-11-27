@@ -1,8 +1,8 @@
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Checkbox } from '@app/components/ui/checkbox';
-import { Label } from '@app/components/ui/label';
-import { Slider } from '@app/components/ui/slider';
+import { Input } from '@wavefront/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wavefront/ui/select';
+import { Checkbox } from '@wavefront/ui/checkbox';
+import { Label } from '@wavefront/ui/label';
+import { Slider } from '@wavefront/ui/slider';
 import { getProviderConfig } from '@app/config/voice-providers';
 import {
   getBooleanParameterWithDefault,

@@ -1,6 +1,6 @@
 import { FormInputField, FormSelectField, FormTextareaField } from '@app/components/FormFields';
 import MultiSelect from '@app/components/MultiSelect';
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@wavefront/ui/form';
 import { EMAIL_CONTENT_PLACEHOLDER } from '@app/constants/scheduled-job';
 import { FIELD_STYLE, getUserId, getUserSearchValue, selectedUsersCountLabel } from './scheduled-job-form';
 import { formatUserLabel, normalizeUserId } from './scheduled-job-utils';
