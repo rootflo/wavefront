@@ -164,7 +164,9 @@ async def validate_hmac_signature(
         if not auth_secret:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.warning(
-                f'Invalid client_key: {client_key} [Request ID: {request_id}]'
+                # A prefix is enough to tell which client is misconfigured.
+                f'Invalid client_key: {(client_key or "")[:4]}... '
+                f'({len(client_key or "")} chars) [Request ID: {request_id}]'
             )
             return False
 
@@ -253,7 +255,7 @@ async def validate_mtls_auth(
             if not principal.startswith(
                 tuple(f'{prefix}/' for prefix in allowed_principal_prefixes)
             ):
-                logger.error(f'Invalid mTLS authentication. Principal: {principal}')
+                logger.warning(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
             # Create a service session
@@ -270,8 +272,10 @@ async def validate_mtls_auth(
             return True
 
         request_id = getattr(request.state, 'request_id', get_current_request_id())
+        # Not the raw header: it carries the client certificate's identity.
         logger.warning(
-            f'mTLS header present but no valid principal found: {xfcc} [Request ID: {request_id}]'
+            f'mTLS header present but no valid principal found '
+            f'({len(xfcc)} chars) [Request ID: {request_id}]'
         )
         return False
 
@@ -294,7 +298,8 @@ def validate_passthrough_auth(
     authenticated.
     """
     passthrough = request.headers.get(RootfloHeaders.PASSTHROUGH)
-    logger.info(f'PASSTHROUGH header present: {passthrough}')
+    # Never log the value: the header carries the shared secret.
+    logger.info(f'PASSTHROUGH header present: {passthrough is not None}')
 
     if not passthrough_secret:
         request_id = getattr(request.state, 'request_id', get_current_request_id())
@@ -308,7 +313,9 @@ def validate_passthrough_auth(
 
     if passthrough != passthrough_secret:
         request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(f'Invalid passthrough secret provided [Request ID: {request_id}]')
+        logger.warning(
+            f'Invalid passthrough secret provided [Request ID: {request_id}]'
+        )
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse(
@@ -410,14 +417,16 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             # token nor HMAC headers
             mtls_header = request.headers.get('X-Forwarded-Client-Cert')
             if mtls_header and not token and not is_request_hmac(request.headers):
-                logger.info(f'mTLS authentication by {mtls_header}')
+                logger.info('mTLS authentication attempt')
                 if await validate_mtls_auth(
                     request, self.mtls_allowed_principal_prefixes
                 ):
                     request.state.secret_access = True
                     return await call_next(request)
                 else:
-                    logger.error(f'Invalid mTLS authentication for {request.url.path}')
+                    logger.warning(
+                        f'Invalid mTLS authentication for {request.url.path}'
+                    )
                     return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
                         content=response_formatter.buildErrorResponse(
@@ -435,7 +444,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
                     )
-                    logger.error(
+                    logger.warning(
                         f'HMAC validation failed for {request.url.path} [Request ID: {request_id}]'
                     )
                     return JSONResponse(
@@ -455,7 +464,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
                     )
-                    logger.error(
+                    logger.warning(
                         f'Token missing in request for {request.url.path} [Request ID: {request_id}]'
                     )
                     return JSONResponse(
@@ -469,7 +478,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
                     )
-                    logger.error(
+                    logger.warning(
                         f'Invalid token: missing session_id [Request ID: {request_id}]'
                     )
                     return JSONResponse(
@@ -513,7 +522,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
                     )
-                    logger.error(
+                    logger.warning(
                         f"Invalid session: not found or not this user's [Request ID: {request_id}]"
                     )
                     return JSONResponse(
@@ -578,7 +587,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             )
         except jwt.ExpiredSignatureError as exc:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.error(
+            logger.warning(
                 f'ExpiredSignatureError in require_auth middleware: {exc} [Request ID: {request_id}]'
             )
             return JSONResponse(

@@ -49,7 +49,8 @@ async def authenticate(
         auth_data.password, user.password
     ):
         # Handle failed login attempt
-        logger.error(f'Authentication failed for email: {auth_data.email}')
+        # No email in logs: it is personal data, and failed logins are routine.
+        logger.warning('Authentication failed: unknown email or wrong password')
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse(
@@ -57,7 +58,7 @@ async def authenticate(
             ),
         )
     if user.deleted:
-        logger.error(f'Authentication attempt for disabled user: {auth_data.email}')
+        logger.warning(f'Authentication attempt for disabled user {user.id}')
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse('User account is disabled'),
@@ -84,7 +85,7 @@ async def authenticate(
     current = await user_repository.find_one(id=user.id)
     if current is None or current.deleted or current.password != user.password:
         logger.warning(
-            f'Login for {auth_data.email} rejected: account changed during login'
+            f'Login for user {user.id} rejected: account changed during login'
         )
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,

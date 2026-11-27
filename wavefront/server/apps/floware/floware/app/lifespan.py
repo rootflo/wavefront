@@ -7,6 +7,11 @@ from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
 from common_module.blocking_io import configure_blocking_io, shutdown_blocking_io
+from common_module.error_reporting import (
+    shutdown_error_reporting,
+    start_loop_block_reporting,
+    stop_loop_block_reporting,
+)
 from common_module.log.logger import logger
 from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
 from common_module.telemetry.loop_monitor import start_event_loop_monitor
@@ -164,9 +169,17 @@ async def lifespan(app: FastAPI):
         proxy_router.set_app(app, prefix='/floware')
         logger.info('App reference set in proxy router for dynamic route registration')
 
+        # Last before serving: blocking start-up work is expected, not a finding.
+        # Only with the monitor running ([event_loop_monitor] enabled), which
+        # is what produces the blocks.
+        if loop_monitor is not None:
+            start_loop_block_reporting()
+
         yield  # This is where the application runs
 
         # Shutdown code
+        # First: shutdown blocks the loop on purpose (scheduler, consumers).
+        stop_loop_block_reporting()
         scheduler_manager.shutdown()
         # Drop queued datasource calls so the worker is not held up running a
         # backlog nobody is waiting for any more.
@@ -208,8 +221,12 @@ async def lifespan(app: FastAPI):
             await application_container.db.cache_manager().aclose()
         except Exception as exc:
             logger.warning(f'Closing the async cache client failed: {exc}')
+        stop_loop_block_reporting()
         if loop_monitor is not None:
             await loop_monitor.stop()
+        # Sends pending Sentry events, waiting up to 2s. Blocking is fine here:
+        # serving has stopped, and shutdown_telemetry() below does the same.
+        shutdown_error_reporting()
         # In a `finally` so buffered spans and metrics are still flushed when
         # shutdown takes an error path or startup fails before `yield`.
         shutdown_telemetry()

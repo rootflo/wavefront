@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
+from common_module.error_reporting import ErrorReportingContextMiddleware
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
 from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from common_module.runtime_settings import RuntimeSettings
@@ -25,11 +26,14 @@ def add_middlewares(
 ) -> None:
     # Order matters: last added runs first on incoming requests, so execution
     # order (outer -> inner) here is:
-    #   OTel -> CORS -> SecurityHeaders -> RequireAuth -> RequestId -> Baggage
-    # BaggageMiddleware is added first (innermost) so it runs after
-    # RequireAuthMiddleware has set request.state.session and RequestIdMiddleware
-    # has set the request-id context var.
+    #   OTel -> CORS -> SecurityHeaders -> RequireAuth -> RequestId
+    #     -> ErrorReportingContext -> Baggage
+    # BaggageMiddleware and ErrorReportingContextMiddleware are added first
+    # (innermost) so they run after RequireAuthMiddleware has set
+    # request.state.session and RequestIdMiddleware has set the request-id
+    # context var.
     app.add_middleware(_middleware(BaggageMiddleware))
+    app.add_middleware(_middleware(ErrorReportingContextMiddleware))
     app.add_middleware(_middleware(RequestIdMiddleware))
     app.add_middleware(
         _middleware(RequireAuthMiddleware),

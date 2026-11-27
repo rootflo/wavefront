@@ -101,3 +101,15 @@ async def test_account_changed_during_login_is_refused(current):
     assert response.status_code == 403
     sessions.delete_all.assert_not_awaited()
     sessions.create.assert_not_awaited()
+
+
+async def test_failed_login_logs_no_email(caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG):
+        response, _ = await login(None, None)
+
+    assert response.status_code == 403
+    assert 'a@b.c' not in caplog.text
+    failed = [r for r in caplog.records if 'Authentication failed' in r.getMessage()]
+    assert failed and all(r.levelno == logging.WARNING for r in failed)

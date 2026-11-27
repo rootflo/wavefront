@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import logging
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -169,6 +170,29 @@ async def test_validate_hmac_signature_rejects_missing_headers():
     assert await validate_hmac_signature(request, AsyncMock(), _cipher(False)) is False
 
 
+@pytest.mark.asyncio
+async def test_validate_hmac_signature_does_not_log_an_unknown_client_key(caplog):
+    client_key = 'abcd-unknown-client-key-value'
+    request = MagicMock()
+    request.headers = Headers(
+        {
+            RootfloHeaders.CLIENT_KEY: client_key,
+            RootfloHeaders.SIGNATURE: 'sig',
+            RootfloHeaders.TIMESTAMP: str(int(time.time())),
+            RootfloHeaders.NONCE: 'n' * 32,
+        }
+    )
+    request.state = SimpleNamespace(request_id='r1')
+    repo = AsyncMock()
+    repo.find_one = AsyncMock(return_value=None)
+
+    with caplog.at_level(logging.DEBUG):
+        assert await validate_hmac_signature(request, repo, _cipher(False)) is False
+
+    assert client_key not in caplog.text
+    assert f'abcd... ({len(client_key)} chars)' in caplog.text
+
+
 CLIENT_APPS_PREFIXES = mtls_principal_prefixes(['client-applications'])
 
 
@@ -204,6 +228,19 @@ def _passthrough_request(header_value):
     request.headers = Headers({RootfloHeaders.PASSTHROUGH: header_value})
     request.state = SimpleNamespace()
     return request
+
+
+@pytest.mark.parametrize('header_value', ['shared-secret', 'wrong-guess'])
+def test_validate_passthrough_auth_does_not_log_the_header_value(caplog, header_value):
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with caplog.at_level(logging.DEBUG):
+        validate_passthrough_auth(
+            _passthrough_request(header_value), formatter, 'shared-secret'
+        )
+
+    assert header_value not in caplog.text
+    assert 'PASSTHROUGH header present: True' in caplog.text
 
 
 def test_validate_passthrough_auth_success():
@@ -710,3 +747,32 @@ async def test_unreachable_kms_answers_503_not_401():
 
     assert response.status_code == 503
     assert 'Retry-After' in response.headers
+
+
+# -- log levels and content -----------------------------------------------------
+
+
+def test_rejected_passthrough_is_a_warning_not_an_error(caplog):
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with caplog.at_level(logging.DEBUG):
+        validate_passthrough_auth(
+            _passthrough_request('wrong'), formatter, 'shared-secret'
+        )
+
+    rejected = [
+        r for r in caplog.records if 'Invalid passthrough secret' in r.getMessage()
+    ]
+    assert rejected and all(r.levelno == logging.WARNING for r in rejected)
+
+
+@pytest.mark.asyncio
+async def test_unusable_xfcc_header_is_not_logged(caplog):
+    xfcc = 'Hash=abc;Subject="CN=private-client";URI=not-a-spiffe-id'
+    with caplog.at_level(logging.DEBUG):
+        assert (
+            await validate_mtls_auth(_xfcc_request(xfcc), CLIENT_APPS_PREFIXES) is False
+        )
+
+    assert 'private-client' not in caplog.text
+    assert f'({len(xfcc)} chars)' in caplog.text

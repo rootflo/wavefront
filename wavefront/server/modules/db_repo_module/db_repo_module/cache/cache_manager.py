@@ -242,7 +242,7 @@ class CacheManager(BaseCache):
                 self.redis.set(f'{self.namespace}/{key}', value, ex=expiry, nx=nx)
             )
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error adding key: {key} to cache: {e}')
+            logger.warning(f'Error adding key: {key} to cache: {e}')
             raise
 
     @_with_retry
@@ -252,7 +252,7 @@ class CacheManager(BaseCache):
             return value if value is not None else default
 
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error getting key: {key} from cache: {e}')
+            logger.warning(f'Error getting key: {key} from cache: {e}')
             raise
 
     def get_int(self, key: str, default: int = 0) -> int:
@@ -274,7 +274,7 @@ class CacheManager(BaseCache):
                 value, _ = pipe.execute()
             return value if value is not None else default
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error popping key: {key} from cache: {e}')
+            logger.warning(f'Error popping key: {key} from cache: {e}')
             raise
 
     @_with_retry
@@ -288,7 +288,7 @@ class CacheManager(BaseCache):
             count, _ = pipe.execute()
             return int(count)
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error incrementing key: {key} in cache: {e}')
+            logger.warning(f'Error incrementing key: {key} in cache: {e}')
             raise
 
     # Retries on the same terms as add()/get_str(). A dropped delete is the one
@@ -300,7 +300,7 @@ class CacheManager(BaseCache):
         try:
             return bool(self.redis.delete(f'{self.namespace}/{key}'))
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error removing key: {key} from cache: {e}')
+            logger.warning(f'Error removing key: {key} from cache: {e}')
             raise
 
     _INVALIDATE_BATCH = 500
@@ -352,7 +352,7 @@ class CacheManager(BaseCache):
             logger.info(f'Publishing message to channel: {full_channel}')
             return self.redis.publish(full_channel, message)
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error publishing to channel {channel}: {e}')
+            logger.warning(f'Error publishing to channel {channel}: {e}')
             raise
 
     def subscribe(
@@ -411,7 +411,7 @@ class CacheManager(BaseCache):
         try:
             return self.redis.xadd(f'{self.namespace}/{stream}', fields, maxlen=maxlen)
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error appending to stream {stream}: {e}')
+            logger.warning(f'Error appending to stream {stream}: {e}')
             raise
 
     def xgroup_create(
@@ -459,7 +459,7 @@ class CacheManager(BaseCache):
                 or []
             )
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error reading from stream group {group}: {e}')
+            logger.warning(f'Error reading from stream group {group}: {e}')
             raise
 
     @_with_retry
@@ -468,7 +468,7 @@ class CacheManager(BaseCache):
         try:
             return self.redis.xack(f'{self.namespace}/{stream}', group, *message_ids)
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error acknowledging messages on stream {stream}: {e}')
+            logger.warning(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
     @_with_retry
@@ -496,7 +496,7 @@ class CacheManager(BaseCache):
                 idle=min_idle_ms,
             )
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error listing pending entries on stream {stream}: {e}')
+            logger.warning(f'Error listing pending entries on stream {stream}: {e}')
             raise
 
     @_with_retry
@@ -522,7 +522,7 @@ class CacheManager(BaseCache):
                 count=count,
             )
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error claiming idle entries on stream {stream}: {e}')
+            logger.warning(f'Error claiming idle entries on stream {stream}: {e}')
             raise
         # [next_start_id, claimed, deleted_ids] (Redis 7) or the first two (6.2)
         return result[1] if result and len(result) > 1 else []
