@@ -150,16 +150,35 @@ async def test_overrides_still_receive_the_full_history():
     assert 'QUJDQUJD' not in prompt
 
 
+def _corrupt_docx() -> DocumentMessageContent:
+    return DocumentMessageContent(
+        base64=base64.b64encode(b'not a docx').decode(), mime_type=DOCX
+    )
+
+
 async def test_unreadable_document_fails_without_analysis():
     """Analysing a corrupt upload cannot fix it, and retrying fails the same way."""
     llm = AnalysingLLM()
     agent = Agent(name='reader', system_prompt='Read.', llm=llm, max_retries=2)
-    corrupt = DocumentMessageContent(
-        base64=base64.b64encode(b'not a docx').decode(), mime_type=DOCX
-    )
 
     with pytest.raises(AgentError) as raised:
-        await agent.run([UserMessage(content=corrupt)])
+        await agent.run([UserMessage(content=_corrupt_docx())])
 
     assert isinstance(raised.value.original_error, DocumentExtractionError)
     assert llm.calls == 0
+
+
+async def test_rejected_document_is_not_kept_for_later_runs():
+    """Kept in the history, it would fail every later run of the agent too."""
+    llm = AnalysingLLM()
+    agent = Agent(name='reader', system_prompt='Read.', llm=llm)
+
+    with pytest.raises(AgentError):
+        await agent.run([UserMessage(content=_corrupt_docx())])
+    await agent.run('hello')
+
+    assert llm.calls == 1
+    assert not any(
+        isinstance(m.content, DocumentMessageContent)
+        for m in agent.conversation_history
+    )

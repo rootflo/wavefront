@@ -19,6 +19,7 @@ from flo_ai.models.chat_message import (
 )
 from flo_ai.tool.base_tool import Tool, ToolCallFailed, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
+from flo_ai.utils.document_text_extraction import DocumentExtractionError
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
     extract_variables_from_inputs,
@@ -29,7 +30,6 @@ from flo_ai.utils.variable_extractor import (
 from flo_ai.telemetry.instrumentation import (
     trace_agent_execution,
     agent_metrics,
-    result_length,
 )
 from flo_ai.telemetry import get_tracer
 
@@ -123,6 +123,11 @@ class Agent(BaseAgent):
         system_prompt_before_turn = self.system_prompt
         resolved_variables_before_turn = self.resolved_variables
 
+        def undo_turn():
+            self.conversation_history = history_before_turn
+            self.system_prompt = system_prompt_before_turn
+            self.resolved_variables = resolved_variables_before_turn
+
         # Perform runtime variable validation if not already resolved (single agent usage)
         if not self.resolved_variables:
             # Extract variables from inputs and system prompt
@@ -193,9 +198,13 @@ class Agent(BaseAgent):
             # already ran, whose result must stay so a resend doesn't repeat it.
             if isinstance(error, LLMProviderError) and self._tool_executed:
                 raise
-            self.conversation_history = history_before_turn
-            self.system_prompt = system_prompt_before_turn
-            self.resolved_variables = resolved_variables_before_turn
+            undo_turn()
+            raise
+        except AgentError as error:
+            # An unreadable or oversized document fails the same way on every
+            # turn; kept in the history, it would fail each later run too.
+            if isinstance(error.original_error, DocumentExtractionError):
+                undo_turn()
             raise
 
     async def _handle_response_with_parser(
@@ -416,9 +425,11 @@ class Agent(BaseAgent):
                                     function_response = await tool.run(
                                         inputs=[], variables=None, **function_args
                                     )
+                                    # A tool result is not a message history; its
+                                    # text is built for the history below anyway.
                                     tool_span.set_attribute(
                                         'tool.result.length',
-                                        result_length(function_response),
+                                        len(str(function_response)),
                                     )
                             else:
                                 function_response = await tool.run(

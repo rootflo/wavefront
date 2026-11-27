@@ -10,9 +10,10 @@ from typing import Literal
 
 from flo_ai import UserMessage
 from flo_ai.agent import Agent
+from flo_ai.arium.arium import Arium
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import MessageMemory
-from flo_ai.arium.nodes import FunctionNode
+from flo_ai.arium.nodes import AriumNode, FunctionNode
 from flo_ai.llm.base_llm import BaseLLM
 
 
@@ -123,7 +124,35 @@ async def test_first_visit_is_handed_everything():
     assert _turns(llm.calls[0], 'user') == ['the brief']
 
 
-async def test_each_run_starts_from_a_clean_count():
+async def test_revisit_with_nothing_new_does_not_end_on_the_agents_reply():
+    """A retry loop whose filter shows only what the agent already holds."""
+    llm = RecordingLLM()
+    writer = Agent(name='writer', system_prompt='Write.', llm=llm)
+    writer.input_filter = ['input']
+    done = FunctionNode(name='done', function=lambda **kwargs: 'ok')
+
+    def retry_once(memory, execution_context) -> Literal['writer', 'done']:
+        visits = execution_context['node_visit_count'].get('writer', 0)
+        return 'done' if visits >= 2 else 'writer'
+
+    retry_once.supports_self_reference = True
+    arium = (
+        AriumBuilder()
+        .add_agent(writer)
+        .add_function_node(done)
+        .start_with(writer)
+        .add_edge(writer, [done], retry_once)
+        .end_with(done)
+        .build()
+    )
+
+    await arium.run([UserMessage('the brief')])
+
+    second = [(role, content) for role, content in llm.calls[1] if role != 'system']
+    assert second[-1] == ('user', 'the brief')
+
+
+async def test_a_second_run_is_handed_its_new_input():
     llm = RecordingLLM()
     arium = _review_loop(llm)
 
@@ -133,3 +162,35 @@ async def test_each_run_starts_from_a_clean_count():
     # The agent keeps its history across runs, as before; what matters is that
     # the second run's first visit is handed that run's input.
     assert 'second brief' in _turns(llm.calls[2], 'user')
+
+
+async def test_revisited_sub_workflow_adds_only_the_new_input():
+    """The sub-workflow runs afresh on each visit, but its agent is the same
+    object and still holds what the first run handed it."""
+    llm = RecordingLLM()
+    writer = Agent(name='writer', system_prompt='Write.', llm=llm)
+    drafting = (
+        AriumBuilder().add_agent(writer).start_with(writer).end_with(writer).build()
+    )
+    reviewer = FunctionNode(name='reviewer', function=lambda **kwargs: 'tighten it')
+    done = FunctionNode(name='done', function=lambda **kwargs: 'ok')
+
+    def after_drafting(memory, execution_context) -> Literal['reviewer', 'done']:
+        visits = execution_context['node_visit_count'].get('drafting', 0)
+        return 'done' if visits >= 2 else 'reviewer'
+
+    drafting_node = AriumNode('drafting', drafting)
+    arium = Arium(MessageMemory())
+    arium.add_nodes([drafting_node, reviewer, done])
+    arium.start_at(drafting_node)
+    arium.add_edge('drafting', ['reviewer', 'done'], after_drafting)
+    arium.add_edge('reviewer', ['drafting'])
+    arium.add_end_to(done)
+    arium.compile()
+
+    await arium.run([UserMessage('the brief')])
+
+    first, second = llm.calls
+    assert _turns(first, 'user') == ['the brief']
+    assert _turns(second, 'user') == ['the brief', 'tighten it']
+    assert _turns(second, 'assistant') == ['draft 1']

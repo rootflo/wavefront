@@ -1,7 +1,7 @@
 from flo_ai.arium.base import BaseArium
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.models import BaseMessage, UserMessage, TextMessageContent
-from typing import List, Dict, Any, Optional, Callable, Set
+from typing import List, Dict, Any, Optional, Callable
 from flo_ai.agent.agent import Agent
 from flo_ai.arium.base import AriumNodeType
 from flo_ai.arium.models import StartNode, EndNode
@@ -71,13 +71,16 @@ def resolve_max_iterations() -> int:
     return max_iterations
 
 
+def _message_identity(message: Any) -> int:
+    """Identity of a message, shared with the copies memory makes to retag it."""
+    return id(getattr(message, '_retagged_from', message))
+
+
 class Arium(BaseArium):
     def __init__(self, memory: MessageMemory):
         super().__init__()
         self.is_compiled = False
         self.memory = memory if memory else MessageMemory()
-        # Per run: agent nodes already visited, whose next visit is deduplicated.
-        self._agents_visited: Set[str] = set()
 
     def compile(self):
         self.validate_graph()
@@ -205,7 +208,7 @@ class Arium(BaseArium):
                 finally:
                     # Failed and cancelled runs too, or the next run starts on
                     # this one's items and the inputs stay held until then.
-                    self.memory = MessageMemory()
+                    self.memory = self._fresh_memory()
         else:
             # No telemetry, execute without tracing
             try:
@@ -242,7 +245,15 @@ class Arium(BaseArium):
                 )
                 raise
             finally:
-                self.memory = MessageMemory()
+                self.memory = self._fresh_memory()
+
+    def _fresh_memory(self) -> MessageMemory:
+        """An empty memory of the configured type. One whose constructor needs
+        arguments can't be rebuilt here, so it is replaced by a MessageMemory."""
+        try:
+            return type(self.memory)()
+        except TypeError:
+            return MessageMemory()
 
     def _emit_event(
         self,
@@ -288,7 +299,6 @@ class Arium(BaseArium):
         forwarded_from_parent: bool = False,
     ):
         variables = variables if variables is not None else {}
-        self._agents_visited = set()
         # A parent hands its nodes' outputs straight to a sub-workflow, so the
         # same BaseMessage objects land in this memory as 'input'. Retagging them
         # there would erase the producer the parent recorded, and an input_filter
@@ -697,18 +707,23 @@ class Arium(BaseArium):
     def _not_held_by_agent(
         self, agent: Agent, memory_items: List[MessageMemoryItem]
     ) -> List[MessageMemoryItem]:
-        """On a revisit, the items whose message the agent's history lacks.
+        """The items whose message the agent's history lacks.
 
-        Re-handing the whole memory appended every earlier input, files
-        included, and the agent's own reply a second time. Checking the history
-        itself, by message identity, never drops what the agent no longer holds:
-        a cleared history or a memory that is not append-only gets it re-sent.
+        Re-handing the whole memory on a revisit appended every earlier input,
+        files included, and the agent's own reply a second time - also when a
+        parent re-runs the sub-workflow the agent is in, or the agent is shared
+        between sub-workflows. Checking the history itself, by message identity,
+        never drops what the agent no longer holds: a cleared history or a
+        memory that is not append-only gets it re-sent.
+
+        With nothing new, everything is handed again: an empty turn would send
+        a request ending on the agent's own reply, which some providers reject.
         """
-        if agent.name not in self._agents_visited:
-            self._agents_visited.add(agent.name)
-            return memory_items
-        held = {id(message) for message in agent.conversation_history}
-        return [item for item in memory_items if id(item.result) not in held]
+        held = {_message_identity(message) for message in agent.conversation_history}
+        new = [
+            item for item in memory_items if _message_identity(item.result) not in held
+        ]
+        return new or memory_items
 
     async def _dispatch_node_run(
         self,

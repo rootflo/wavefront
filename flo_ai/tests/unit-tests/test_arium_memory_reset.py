@@ -11,6 +11,7 @@ import pytest
 from flo_ai import UserMessage
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.events import AriumEventType
+from flo_ai.arium.memory import MessageMemory
 from flo_ai.arium.nodes import FunctionNode
 
 
@@ -71,6 +72,54 @@ async def test_memory_is_empty_after_a_cancelled_run():
         await task
 
     assert arium.memory.get() == []
+
+
+class CustomMemory(MessageMemory):
+    pass
+
+
+class MemoryWithArguments(MessageMemory):
+    def __init__(self, label):
+        super().__init__()
+        self.label = label
+
+
+def _with_memory(memory, function):
+    node = FunctionNode(name='step', function=function)
+    return (
+        AriumBuilder()
+        .with_memory(memory)
+        .add_function_node(node)
+        .start_with(node)
+        .end_with(node)
+        .build()
+    )
+
+
+@pytest.mark.parametrize('fails', [False, True])
+async def test_reset_keeps_the_configured_memory_type(fails):
+    def step(**kwargs):
+        if fails:
+            raise RuntimeError('step failed')
+        return 'ok'
+
+    arium = _with_memory(CustomMemory(), step)
+
+    try:
+        await arium.run([UserMessage('first')])
+    except RuntimeError:
+        pass
+
+    assert type(arium.memory) is CustomMemory
+    assert arium.memory.get() == []
+
+
+async def test_memory_needing_arguments_is_replaced_by_a_plain_one():
+    arium = _with_memory(MemoryWithArguments('x'), lambda **kwargs: 'ok')
+
+    await arium.run([UserMessage('first')])
+
+    assert type(arium.memory) is MessageMemory
 
 
 async def test_failure_callback_still_sees_the_runs_memory():

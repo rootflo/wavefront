@@ -14,10 +14,13 @@ from flo_ai import (
     TextMessageContent,
     UserMessage,
 )
+from flo_ai.agent import Agent
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import MessageMemoryItem
 from flo_ai.arium.nodes import FunctionNode
+from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.telemetry.instrumentation import result_length
+from flo_ai.tool.base_tool import Tool
 
 
 class Sentinel:
@@ -69,6 +72,59 @@ class FakeTracer:
     @contextmanager
     def start_as_current_span(self, name, attributes=None):
         yield FakeSpan(self.attributes)
+
+
+class OneToolCallLLM(BaseLLM):
+    """Calls `fetch_rows` once, then answers."""
+
+    def __init__(self):
+        super().__init__(model='fake-model', api_key='key')
+        self.calls = 0
+
+    async def generate(self, messages, functions=None, output_schema=None):
+        self.calls += 1
+        if self.calls == 1:
+            return {'function_call': {'name': 'fetch_rows', 'arguments': '{}'}}
+        return {'content': 'Final Answer: done'}
+
+    async def get_function_call(self, response):
+        return response.get('function_call')
+
+    async def stream(self, messages, functions=None, output_schema=None, **kwargs):
+        yield {'content': ''}
+
+    def get_message_content(self, response):
+        return response.get('content', '')
+
+    def format_tool_for_llm(self, tool):
+        return {'name': tool.name}
+
+    def format_tools_for_llm(self, tools):
+        return [{'name': t.name} for t in tools]
+
+    def format_image_in_message(self, image):
+        return image
+
+
+async def test_tool_span_records_the_whole_results_length(monkeypatch):
+    """A tool result is not a message history: a list of rows is measured whole."""
+    tracer = FakeTracer()
+    monkeypatch.setattr('flo_ai.agent.agent.get_tracer', lambda: tracer)
+    rows = [{'id': i, 'name': f'row {i}'} for i in range(100)]
+
+    async def fetch_rows(**kwargs):
+        return rows
+
+    tool = Tool(
+        name='fetch_rows', description='Rows.', function=fetch_rows, parameters={}
+    )
+    agent = Agent(
+        name='reader', system_prompt='Read.', llm=OneToolCallLLM(), tools=[tool]
+    )
+
+    await agent.run('fetch them')
+
+    assert tracer.attributes['tool.result.length'] == len(str(rows))
 
 
 async def test_workflow_span_records_the_final_text_length(monkeypatch):

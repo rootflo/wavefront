@@ -4,6 +4,8 @@ The rate-limit gate registry kept a gate for every provider, model, endpoint
 and key ever seen; the profiler kept every duration it recorded.
 """
 
+from collections import defaultdict
+
 import pytest
 
 from flo_ai.llm.rate_limits import gate as gates
@@ -79,18 +81,21 @@ class TestGatePruning:
         assert _scope(0) in registry
 
 
-def test_profiler_keeps_totals_not_every_sample(tmp_path):
-    profiler.enable_profiling(tmp_path / 'profile.log')
-    try:
-        for duration in (0.1, 0.3, 0.2):
-            profiler.record('section', duration)
+def test_profiler_keeps_totals_not_every_sample(tmp_path, monkeypatch):
+    # Patched, not enabled, so a session profiling the suite is left untouched.
+    log = open(tmp_path / 'profile.log', 'w', encoding='utf-8')
+    monkeypatch.setattr(profiler, '_enabled', True)
+    monkeypatch.setattr(profiler, '_file_handle', log)
+    monkeypatch.setattr(profiler, '_totals', defaultdict(profiler._SectionStats))
 
-        stats = profiler._totals['section']
-        assert (stats.count, round(stats.total, 6), stats.max) == (3, 0.6, 0.3)
-        assert not hasattr(stats, '__dict__')  # fixed size, no sample list
+    for duration in (0.1, 0.3, 0.2):
+        profiler.record('section', duration)
 
-        profiler.write_summary()
-        summary = (tmp_path / 'profile.log').read_text()
-        assert '600.00       3      200.00      300.00  section' in summary
-    finally:
-        profiler.disable_profiling()
+    stats = profiler._totals['section']
+    assert (stats.count, round(stats.total, 6), stats.max) == (3, 0.6, 0.3)
+    assert not hasattr(stats, '__dict__')  # fixed size, no sample list
+
+    profiler.write_summary()
+    log.close()
+    summary = (tmp_path / 'profile.log').read_text()
+    assert '600.00       3      200.00      300.00  section' in summary
