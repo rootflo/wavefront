@@ -224,8 +224,9 @@ async def lifespan(app: FastAPI):
         stop_loop_block_reporting()
         if loop_monitor is not None:
             await loop_monitor.stop()
-        # Sends pending Sentry events; waits up to 2s, so off the event loop.
-        await asyncio.to_thread(shutdown_error_reporting)
+        # Sends pending Sentry events, waiting up to 2s. Blocking is fine here:
+        # serving has stopped, and shutdown_telemetry() below does the same.
+        shutdown_error_reporting()
         # In a `finally` so buffered spans and metrics are still flushed when
         # shutdown takes an error path or startup fails before `yield`.
         shutdown_telemetry()

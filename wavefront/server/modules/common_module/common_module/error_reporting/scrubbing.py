@@ -6,18 +6,23 @@ Runs after the SDK's own filtering (``send_default_pii=False`` and the
 - request headers: only an allowlist keeps its values, because credentials
   arrive under many names (``x-auth-token``, ``api-key``, provider signature
   headers) that an exact-match denylist cannot anticipate;
+- request URLs: reduced to scheme, host and the matched route template, so
+  path values (phone numbers, ids, tokens) are not sent;
 - a second event for an exception that was already reported (log, then
   re-raise);
-- URLs anywhere in the text: the query string, fragment and any
-  ``user:password@`` part are cut, for every scheme (``https``, ``wss``,
-  ``s3``, ``postgresql``, ...);
-- email addresses in messages, exception text, log ``extra`` and breadcrumb
-  data;
-- outbound HTTP breadcrumbs keep only the scheme and host, since paths can
-  hold secrets too (webhook URLs).
+- free text (messages, exception values, breadcrumbs, log ``extra``), via
+  ``redact_text``: URLs reduced to scheme and host, SQL parameters, input
+  values from validation errors, bearer tokens, JWTs, well-known API-key
+  formats, ``key=value`` secrets, emails and phone numbers;
+- dict values under secret-looking keys (any key containing ``token``,
+  ``secret``, ``password``, ...), at any depth.
 
 Both hooks fail closed: if scrubbing raises, the event or breadcrumb is
 dropped rather than sent unscrubbed.
+
+Every pattern is anchored and length-bounded, and text is cut to
+``MAX_TEXT_LENGTH`` first, so the cost is linear in the input. This runs on
+the logging thread, usually the event loop.
 
 Nothing here imports ``sentry_sdk``; the hooks are plain functions over the
 event dictionaries, so they can be tested without a client.
@@ -31,6 +36,7 @@ from urllib.parse import urlsplit
 
 from opentelemetry import trace as otel_trace
 
+from common_module.error_reporting import throttle
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 
@@ -60,6 +66,22 @@ EXTRA_DENYLIST: list[str] = [
     'client_secret',
 ]
 
+# Our own key check, by substring: catches `id_token`, `custom_secret`, ...
+_SECRET_KEY_PARTS = (
+    'password',
+    'passwd',
+    'secret',
+    'token',
+    'api_key',
+    'apikey',
+    'api-key',
+    'authorization',
+    'cookie',
+    'credential',
+    'private_key',
+    'session',
+)
+
 # Request headers whose values are kept. Every other header keeps its name
 # (useful when debugging) but not its value.
 HEADER_ALLOWLIST: frozenset[str] = frozenset(
@@ -77,46 +99,125 @@ HEADER_ALLOWLIST: frozenset[str] = frozenset(
 )
 
 FILTERED = '[Filtered]'
-_EMAIL_MASK = '[email]'
+# Text longer than this is cut before any pattern runs: events keep at most
+# 4096 characters per value anyway (`max_value_length` in bootstrap).
+MAX_TEXT_LENGTH = 4096
+_TRUNCATED = '...[truncated]'
 _NO_REQUEST_ID = 'NO-REQUEST-ID'
 # Set on an exception object once an event for it has been sent.
 _REPORTED_ATTR = '_wf_sentry_reported'
 # Nested containers deeper than this are replaced rather than walked.
 _MAX_DEPTH = 10
 
-_SCHEME = r'[a-z][a-z0-9+.\-]*://'
-# `scheme://user:password@host`: the credentials part.
-_URL_USERINFO_RE = re.compile(rf'({_SCHEME})[^\s/?#@\'"<>]+@', re.IGNORECASE)
-# Keeps scheme, host and path; drops the query string and fragment.
-_URL_QUERY_RE = re.compile(rf'({_SCHEME}[^\s?#\'"<>]+)[?#][^\s\'"<>]*', re.IGNORECASE)
-_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+# (pattern, replacement), applied in order. Each starts at a word boundary or
+# a literal and bounds every repetition, so none is quadratic.
+_REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Any URL, any scheme, to `scheme://host[:port]`: drops credentials, path,
+    # query and fragment. Paths carry secrets too (webhook and bot-token URLs).
+    (
+        re.compile(
+            r'\b([a-z][a-z0-9+.\-]{0,31})://'
+            r'(?:[^\s/?#@\'"<>]{0,256}@)?'
+            r'([^\s/?#@\'"<>:]{1,253})'
+            r'(:\d{1,5})?'
+            r'[^\s\'"<>]{0,4096}',
+            re.IGNORECASE,
+        ),
+        r'\1://\2\3',
+    ),
+    # SQLAlchemy errors quote the statement's parameter values.
+    (re.compile(r'\[parameters: [^\n]{0,8192}'), f'[parameters: {FILTERED}]'),
+    # Pydantic validation errors quote the rejected input.
+    (
+        re.compile(r'input_value=[^\n]{0,8192}?(?=, input_type=|$)', re.MULTILINE),
+        f'input_value={FILTERED}',
+    ),
+    (
+        re.compile(
+            r'\b(bearer|basic)\s{1,4}[A-Za-z0-9\-._~+/]{8,4096}=*', re.IGNORECASE
+        ),
+        rf'\1 {FILTERED}',
+    ),
+    # JWTs (also covers our own access tokens).
+    (
+        re.compile(
+            r'\beyJ[A-Za-z0-9_\-]{4,4096}\.[A-Za-z0-9_\-]{4,4096}\.[A-Za-z0-9_\-]{0,4096}'
+        ),
+        FILTERED,
+    ),
+    # Well-known API-key formats: OpenAI/Anthropic-style, AWS, Google, GitHub, Slack.
+    (
+        re.compile(
+            r'\b(?:'
+            r'sk-[A-Za-z0-9_\-]{16,512}'
+            r'|AKIA[0-9A-Z]{16}'
+            r'|AIza[0-9A-Za-z_\-]{35}'
+            r'|gh[pousr]_[A-Za-z0-9]{36,255}'
+            r'|xox[abposr]-[A-Za-z0-9\-]{10,255}'
+            r')'
+        ),
+        FILTERED,
+    ),
+    # `password=...`, `"api_key": "..."`, `token: ...` and similar.
+    (
+        re.compile(
+            r'\b(password|passwd|pwd|secret|client_secret|token|access_token'
+            r'|refresh_token|id_token|api[_\-]?key|access[_\-]?key|private[_\-]?key'
+            r'|authorization)'
+            r'(["\']?\s{0,3}[:=]\s{0,3}["\']?)'
+            r'[^\s"\',;&}]{1,1024}',
+            re.IGNORECASE,
+        ),
+        rf'\1\2{FILTERED}',
+    ),
+    # Emails, also URL-encoded (`%40`).
+    (
+        re.compile(
+            r'[A-Za-z0-9._%+\-]{1,64}(?:@|%40)[A-Za-z0-9.\-]{1,253}\.[A-Za-z]{2,24}'
+        ),
+        '[email]',
+    ),
+    # Phone numbers: international with `+`, and 10-digit Indian mobiles.
+    (re.compile(r'(?<![\w+])\+\d{1,3}(?:[ \-]?\d){6,14}\b'), '[phone]'),
+    (re.compile(r'(?<![\w.\-])[6-9]\d{9}(?![\w.\-])'), '[phone]'),
+)
 
 
 def redact_text(text: str) -> str:
-    """Strip URL credentials, query strings and fragments; mask emails."""
-    text = _URL_USERINFO_RE.sub(rf'\1{FILTERED}@', text)
-    text = _URL_QUERY_RE.sub(r'\1', text)
-    return _EMAIL_RE.sub(_EMAIL_MASK, text)
+    """Remove credentials, personal data and customer values from free text."""
+    if len(text) > MAX_TEXT_LENGTH:
+        text = text[:MAX_TEXT_LENGTH] + _TRUNCATED
+    for pattern, replacement in _REDACTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _is_secret_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(part in lowered for part in _SECRET_KEY_PARTS)
 
 
 def _redact_value(value: Any, depth: int = 0) -> Any:
-    """``redact_text`` over every string in a nested dict or list."""
+    """``redact_text`` over every string in a nested container, keys included;
+    values under secret-looking keys are replaced."""
     if isinstance(value, str):
         return redact_text(value)
+    if isinstance(value, (bytes, bytearray)):
+        return '[bytes]'
     if depth >= _MAX_DEPTH:
         return value if isinstance(value, (int, float, bool, type(None))) else FILTERED
     if isinstance(value, dict):
-        return {key: _redact_value(item, depth + 1) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+        redacted = {}
+        for key, item in value.items():
+            name = redact_text(key) if isinstance(key, str) else key
+            if isinstance(key, str) and _is_secret_key(key):
+                redacted[name] = FILTERED
+            else:
+                redacted[name] = _redact_value(item, depth + 1)
+        return redacted
+    if isinstance(value, (list, tuple, set, frozenset)):
         return [_redact_value(item, depth + 1) for item in value]
     return value
-
-
-def _strip_url(url: str) -> str:
-    """A URL without query string, fragment or credentials, emails masked."""
-    for separator in ('?', '#'):
-        url = url.split(separator, 1)[0]
-    return redact_text(url)
 
 
 def _host_only(url: str) -> str:
@@ -211,7 +312,21 @@ def _redact_event_text(event: dict[str, Any]) -> None:
                 crumb['data'] = _sanitize_crumb_data(crumb['data'])
 
 
+def _matched_route(event: dict[str, Any]) -> str | None:
+    """The route template when the framework matched one (`/users/{id}`)."""
+    transaction = event.get('transaction')
+    source = (event.get('transaction_info') or {}).get('source')
+    if isinstance(transaction, str) and source == 'route':
+        return transaction
+    return None
+
+
 def _scrub_request(event: dict[str, Any]) -> None:
+    route = _matched_route(event)
+    if 'transaction' in event and route is None:
+        # Unmatched requests are named after their raw path.
+        event['transaction'] = 'unmatched route'
+
     request = event.get('request')
     if not isinstance(request, dict):
         return
@@ -219,7 +334,7 @@ def _scrub_request(event: dict[str, Any]) -> None:
         request['query_string'] = FILTERED
     url = request.get('url')
     if isinstance(url, str):
-        request['url'] = _strip_url(url)
+        request['url'] = _host_only(url) + (route or '')
     headers = request.get('headers')
     if isinstance(headers, dict):
         request['headers'] = {
@@ -261,6 +376,8 @@ def _add_tags(event: dict[str, Any]) -> None:
 def before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
     try:
         if _already_reported(hint):
+            return None
+        if not throttle.allow_event(event, hint):
             return None
         _scrub_request(event)
         _redact_event_text(event)

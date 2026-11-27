@@ -401,3 +401,27 @@ def test_redis_py_does_not_retry_timeouts_on_its_own():
     manager = CacheManager(namespace='test')
 
     assert manager.pool.connection_kwargs['retry_on_timeout'] is False
+
+
+def test_exhausted_retries_log_one_error(monkeypatch, caplog):
+    """Each attempt is a warning; one error when the call fails for good, so a
+    Redis outage is one error event per call, not one per attempt."""
+    import logging
+
+    manager = make_manager()
+    monkeypatch.setattr(module.time, 'sleep', lambda seconds: None)
+
+    def down(*_args, **_kwargs):
+        raise ConnectionError('down')
+
+    monkeypatch.setattr(manager.redis, 'set', down)
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(RetryError):
+        manager.add('key', 'value')
+
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    attempts = [r for r in caplog.records if 'Error adding key' in r.getMessage()]
+    assert len(errors) == 1
+    assert 'add failed after retries' in errors[0].getMessage()
+    assert len(attempts) == 3
+    assert all(r.levelno == logging.WARNING for r in attempts)

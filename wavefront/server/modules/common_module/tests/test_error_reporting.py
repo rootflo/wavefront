@@ -664,7 +664,9 @@ def test_urls_in_messages_lose_their_query():
         logger.error(f'upstream error from {url}')
 
     serialized = runtime_data(only_event(transport))
-    assert 'https://h.example/p' in serialized
+    # Reduced to scheme and host: paths can hold secrets too.
+    assert 'https://h.example' in serialized
+    assert 'https://h.example/p' not in serialized
     assert 'url-secret' not in serialized
 
 

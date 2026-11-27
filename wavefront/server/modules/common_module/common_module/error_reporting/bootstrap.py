@@ -14,7 +14,7 @@ import logging
 import threading
 from typing import Any, Sequence
 
-from common_module.error_reporting import scrubbing
+from common_module.error_reporting import scrubbing, throttle
 from common_module.error_reporting.settings import ErrorReportingSettings
 from common_module.log.logger import logger
 
@@ -99,9 +99,12 @@ def configure_error_reporting(
 def shutdown_error_reporting(timeout: float = 2.0) -> None:
     """Send pending events, waiting at most ``timeout`` seconds.
 
-    Blocking: from async code run it with ``asyncio.to_thread``. The client is
-    left open, so errors raised later in shutdown are still captured (and
-    flushed again at interpreter exit). Safe when never configured.
+    Blocking, bounded by ``timeout``. Call it from shutdown code once serving
+    has stopped, like ``shutdown_telemetry()``; never from a request path. This
+    is the flush that counts: uvicorn re-raises SIGTERM after shutdown, so the
+    SDK's own flush at interpreter exit does not run then. The client is left
+    open, so errors raised later in shutdown are still captured. Safe when
+    never configured.
     """
     if not error_reporting_enabled():
         return
@@ -126,16 +129,17 @@ def _configure(
         import sentry_sdk
         from sentry_sdk.integrations.argv import ArgvIntegration
         from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
+        from sentry_sdk.integrations.modules import ModulesIntegration
         from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
-        integrations: list[Any] = [
-            LoggingIntegration(
-                level=settings.breadcrumb_level,
-                event_level=logging.ERROR,
-                # Never ship log lines to Sentry Logs; events and breadcrumbs only.
-                sentry_logs_level=None,
-            )
-        ]
+        logging_integration = LoggingIntegration(
+            level=settings.breadcrumb_level,
+            event_level=logging.ERROR,
+            # Never ship log lines to Sentry Logs; events and breadcrumbs only.
+            sentry_logs_level=None,
+        )
+        _throttle_log_events(logging_integration, settings.max_events_per_minute)
+        integrations: list[Any] = [logging_integration]
         otlp = _otlp_integration()
         if otlp is not None:
             integrations.append(otlp)
@@ -150,8 +154,10 @@ def _configure(
             # The default would switch on about 20 integrations, OpenAI,
             # Anthropic, httpx, SQLAlchemy and Redis among them.
             'auto_enabling_integrations': False,
-            # The process command line adds nothing and could hold secrets.
-            'disabled_integrations': [ArgvIntegration()],
+            # Argv: the command line adds nothing and could hold secrets.
+            # Modules: scans every installed package on the first event, on
+            # the event loop (about 250 ms), to list versions nobody reads.
+            'disabled_integrations': [ArgvIntegration(), ModulesIntegration()],
             # Errors only: no per-request session (release health) envelopes.
             'auto_session_tracking': False,
             'integrations': integrations,
@@ -161,6 +167,8 @@ def _configure(
             # Locals hold prompts, documents and tokens.
             'include_local_variables': False,
             'max_request_body_size': 'never',
+            # Cap every string in an event; also bounds what scrubbing sees.
+            'max_value_length': 4096,
             'attach_stacktrace': False,
             'event_scrubber': EventScrubber(
                 denylist=DEFAULT_DENYLIST + scrubbing.EXTRA_DENYLIST,
@@ -176,6 +184,9 @@ def _configure(
         # Access lines carry the full request line (query string included) and
         # the client address; they would become breadcrumbs at INFO.
         ignore_logger('uvicorn.access')
+        # OTel's own failures (a collector that is down) log at ERROR on every
+        # export attempt: that is a telemetry outage, not an application error.
+        ignore_logger('opentelemetry*')
         # Before init, so no event can go out without it.
         sentry_sdk.get_global_scope().set_tag('service', settings.service_name)
         sentry_sdk.init(**options)
@@ -190,6 +201,24 @@ def _configure(
         f'(environment {settings.environment})'
     )
     return True
+
+
+def _throttle_log_events(logging_integration: Any, per_minute: int) -> None:
+    """Drop excess error logs before the SDK turns them into events.
+
+    The SDK's event handler is a plain ``logging.Handler``, so a filter on it
+    runs before any event is built. If a future SDK renames it, events are
+    still capped in ``before_send``, only later.
+    """
+    throttle.configure(per_minute)
+    handler = getattr(logging_integration, '_handler', None)
+    if isinstance(handler, logging.Handler):
+        handler.addFilter(throttle.LogThrottleFilter())
+    else:
+        logger.warning(
+            'Sentry log events are capped only after they are built: '
+            'the SDK has no event handler to filter'
+        )
 
 
 def _otlp_integration() -> Any:
@@ -224,7 +253,12 @@ def _framework_integrations(frameworks: Sequence[str]) -> list[Any]:
                 from sentry_sdk.integrations.fastapi import FastApiIntegration
                 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-                integrations += [StarletteIntegration(), FastApiIntegration()]
+                # Events are named after the route template (`/users/{id}`),
+                # which scrubbing uses in place of the raw path.
+                integrations += [
+                    StarletteIntegration(transaction_style='url'),
+                    FastApiIntegration(transaction_style='url'),
+                ]
             elif name == 'celery':
                 from sentry_sdk.integrations.celery import CeleryIntegration
 
@@ -250,6 +284,7 @@ def _reset_for_tests() -> None:
     with _lock:
         _configured = None
         _active_settings = None
+        throttle.reset()
         try:
             import sentry_sdk
 

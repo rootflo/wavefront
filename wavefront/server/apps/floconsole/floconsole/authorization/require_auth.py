@@ -73,7 +73,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             try:
                 decoded = await token_service.decode_token_async(token)
             except ValueError as e:
-                logger.error(f'Token validation error: {e}')
+                logger.warning(f'Token validation error: {e}')
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content=response_formatter.buildErrorResponse(
@@ -81,7 +81,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     ),
                 )
             if 'session_id' not in decoded:
-                logger.error('Invalid token: missing session_id')
+                logger.warning('Invalid token: missing session_id')
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content=response_formatter.buildErrorResponse(
@@ -90,7 +90,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             if 'role_id' not in decoded or decoded['role_id'] != AUTH_ROLE_ID:
-                logger.error('Invalid token: Not the console user')
+                logger.warning('Invalid token: Not the console user')
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content=response_formatter.buildErrorResponse(
@@ -101,7 +101,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             # If not in cache, fetch from DB
             session = await session_repository.find_one(id=decoded['session_id'])
             if not session:
-                logger.error('Invalid session: session not found in database')
+                logger.warning('Invalid session: session not found in database')
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content=response_formatter.buildErrorResponse(
@@ -110,7 +110,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             if str(session.user_id) != decoded['user_id']:
-                logger.error('Invalid session: session does not belong to user')
+                logger.warning('Invalid session: session does not belong to user')
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content=response_formatter.buildErrorResponse(
@@ -150,7 +150,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 ),
             )
         except jwt.ExpiredSignatureError as exc:
-            logger.error(f'ExpiredSignatureError in require_auth middleware: {exc}')
+            logger.warning(f'ExpiredSignatureError in require_auth middleware: {exc}')
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content=response_formatter.buildErrorResponse(

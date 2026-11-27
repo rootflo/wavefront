@@ -747,3 +747,32 @@ async def test_unreachable_kms_answers_503_not_401():
 
     assert response.status_code == 503
     assert 'Retry-After' in response.headers
+
+
+# -- log levels and content -----------------------------------------------------
+
+
+def test_rejected_passthrough_is_a_warning_not_an_error(caplog):
+    formatter = MagicMock()
+    formatter.buildErrorResponse.return_value = {'error': 'x'}
+    with caplog.at_level(logging.DEBUG):
+        validate_passthrough_auth(
+            _passthrough_request('wrong'), formatter, 'shared-secret'
+        )
+
+    rejected = [
+        r for r in caplog.records if 'Invalid passthrough secret' in r.getMessage()
+    ]
+    assert rejected and all(r.levelno == logging.WARNING for r in rejected)
+
+
+@pytest.mark.asyncio
+async def test_unusable_xfcc_header_is_not_logged(caplog):
+    xfcc = 'Hash=abc;Subject="CN=private-client";URI=not-a-spiffe-id'
+    with caplog.at_level(logging.DEBUG):
+        assert (
+            await validate_mtls_auth(_xfcc_request(xfcc), CLIENT_APPS_PREFIXES) is False
+        )
+
+    assert 'private-client' not in caplog.text
+    assert f'({len(xfcc)} chars)' in caplog.text

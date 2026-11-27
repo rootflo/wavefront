@@ -174,7 +174,8 @@ def test_one_event_per_group_per_cooldown(start_sentry):
 
 
 def test_hourly_cap_across_groups(start_sentry):
-    transport = start_sentry()
+    # Lift the process-wide per-minute cap so only the hourly cap is tested.
+    transport = start_sentry(max_events_per_minute=1000)
     clock = _Clock()
     reporter = LoopBlockReporter(clock=clock)
 

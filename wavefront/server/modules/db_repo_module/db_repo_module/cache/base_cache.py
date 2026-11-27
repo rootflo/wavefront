@@ -84,7 +84,17 @@ def _with_retry(method: F) -> F:
         attempts = _attempts_override.get()
         if attempts:
             policy = policy.copy(stop=stop_after_attempt(attempts))
-        return policy(method, self, *args, **kwargs)
+        try:
+            return policy(method, self, *args, **kwargs)
+        except Exception as exc:
+            # Each attempt logs a warning; one error when the call has failed
+            # for good, so a Redis outage is one error per call, not per attempt.
+            if isinstance(exc, RetryError) or _is_retryable_redis_error(exc):
+                logger.error(
+                    f'Redis {getattr(method, "__name__", "call")} failed after retries: '
+                    f'{type(exc).__name__}'
+                )
+            raise
 
     return wrapper  # type: ignore[return-value]
 

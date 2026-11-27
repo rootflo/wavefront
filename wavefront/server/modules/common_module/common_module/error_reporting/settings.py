@@ -67,7 +67,29 @@ def _breadcrumb_level(value: Any) -> int:
             f'got {text!r}; using WARNING'
         )
         return logging.WARNING
+    if level < logging.WARNING:
+        logger.warning(
+            f'[sentry] breadcrumb_level={text}: INFO and DEBUG logs carry personal '
+            'data in places; only lower it where that data may leave the deployment'
+        )
     return level
+
+
+def _max_events_per_minute(value: Any) -> int:
+    text = _text(value)
+    if text is None:
+        return 30
+    try:
+        count = int(text)
+    except ValueError:
+        count = 0
+    if count < 1:
+        logger.warning(
+            f'[sentry] max_events_per_minute must be a whole number of at least 1, '
+            f'got {text!r}; using 30'
+        )
+        return 30
+    return count
 
 
 @dataclass(frozen=True)
@@ -84,6 +106,9 @@ class ErrorReportingSettings:
     # Report event-loop blocks (from the loop monitor) as Sentry issues. Off
     # switch for that one feature; the rest of error reporting is unaffected.
     report_loop_blocks: bool = True
+    # Per-process cap on events per minute (each source is also capped at
+    # 5 a minute; see throttle.py). Protects the quota during incidents.
+    max_events_per_minute: int = 30
 
     @classmethod
     def from_config(
@@ -106,5 +131,8 @@ class ErrorReportingSettings:
             breadcrumb_level=_breadcrumb_level(sentry.get('breadcrumb_level')),
             report_loop_blocks=_flag(
                 'loop_blocks', sentry.get('loop_blocks'), default=True
+            ),
+            max_events_per_minute=_max_events_per_minute(
+                sentry.get('max_events_per_minute')
             ),
         )
