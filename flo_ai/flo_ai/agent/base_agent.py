@@ -17,6 +17,49 @@ from flo_ai.utils.profiler import aprofile
 # Media formatted asynchronously (PDF rasterising, video frame sampling).
 ASYNC_MEDIA_TYPES = ('document', 'video')
 
+# Error analysis sees the tail of the conversation as text; media goes in as a
+# label. Unbounded, one attached file made the prompt larger than any context.
+ERROR_ANALYSIS_MESSAGES = 5
+ERROR_ANALYSIS_MESSAGE_CHARS = 1_000
+ERROR_ANALYSIS_ERROR_CHARS = 2_000
+ERROR_ANALYSIS_CONTEXT_CHARS = 8_000
+
+
+def _clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return f'{text[:limit]} [truncated, {len(text)} characters in total]'
+
+
+def _message_preview(message: BaseMessage) -> Dict[str, Any]:
+    content = message.content
+    if isinstance(content, TextMessageContent):
+        text = content.text
+    elif isinstance(content, MediaMessageContent):
+        text = f'[{content.type}: {content.mime_type or "unknown type"}]'
+    else:
+        text = str(content)
+
+    preview: Dict[str, Any] = {
+        'role': message.role,
+        'content': _clip(text, ERROR_ANALYSIS_MESSAGE_CHARS),
+    }
+    if isinstance(message, FunctionMessage):
+        preview['name'] = message.name
+    return preview
+
+
+def _history_preview(history: Any) -> Any:
+    """The last few messages of a history, clipped, with media as a label."""
+    if not isinstance(history, list):
+        return history
+    return [
+        _message_preview(message)
+        if isinstance(message, BaseMessage)
+        else _clip(str(message), ERROR_ANALYSIS_MESSAGE_CHARS)
+        for message in history[-ERROR_ANALYSIS_MESSAGES:]
+    ]
+
 
 class AgentType(Enum):
     CONVERSATIONAL = 'conversational'
@@ -59,21 +102,29 @@ class BaseAgent(ABC):
         # Errors that declare themselves final skip LLM analysis entirely.
         # Two reasons: retrying a policy decision only re-derives the same
         # verdict at the cost of another provider call, and the prompt below
-        # embeds `context` — which carries the full conversation history — so
+        # embeds `context` — which carries the conversation history — so
         # analysing a guardrail block would send the very content that was
         # just blocked to the model.
         if getattr(error, 'retryable', True) is False:
             return False, str(error)
 
         # The model can't fix its provider's failure, and the prompt below
-        # would re-send the whole conversation to a provider already failing.
+        # would re-send the conversation to a provider already failing.
         # The LLM layer has already retried it, so it is final here.
         if isinstance(error, LLMProviderError):
             return False, str(error)
 
+        # `context` keeps the full history for overrides; the model gets its tail.
+        shown = dict(context)
+        if 'conversation_history' in shown:
+            shown['conversation_history'] = _history_preview(
+                shown['conversation_history']
+            )
+        error_text = _clip(str(error), ERROR_ANALYSIS_ERROR_CHARS)
+        context_text = _clip(str(shown), ERROR_ANALYSIS_CONTEXT_CHARS)
         error_prompt = (
-            f'An error occurred while processing the request: {str(error)}\n'
-            f'Context: {context}\n'
+            f'An error occurred while processing the request: {error_text}\n'
+            f'Context: {context_text}\n'
             'Please analyze the error and suggest a correction. '
             'If the error is not recoverable, explain why.'
         )

@@ -20,6 +20,10 @@ from flo_ai.llm.rate_limits import RateLimitScope
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
+    MAX_PDF_PAGE_SIDE,
+    MAX_PDF_PAGES,
+    DocumentExtractionError,
+    DocumentTooLarge,
     extract_document_text,
 )
 from flo_ai.utils.video_frames import sample_video_frames, video_to_bytes
@@ -484,6 +488,9 @@ class BaseLLM(ABC):
         """
         try:
             return await asyncio.to_thread(self._rasterize_pdf_to_images, document)
+        except DocumentExtractionError:
+            # Kept typed, as on the extraction path: it is the upload's fault.
+            raise
         except Exception as e:
             logger.error(
                 f'Error formatting document for {self.__class__.__name__}: {e}'
@@ -499,6 +506,10 @@ class BaseLLM(ABC):
         detection entirely — vision-capable models read the page image
         directly. DPI is configurable via the LLM kwargs `pdf_raster_dpi`
         (default 150).
+
+        A PDF over ``MAX_PDF_PAGES`` raises ``DocumentTooLarge`` before any page
+        is rendered. A page whose longer side would exceed ``MAX_PDF_PAGE_SIDE``
+        pixels at that DPI is rendered smaller to fit.
         """
         import pymupdf
 
@@ -513,11 +524,18 @@ class BaseLLM(ABC):
         dpi = int((getattr(self, 'kwargs', None) or {}).get('pdf_raster_dpi', 150))
         doc = pymupdf.open(stream=data, filetype='pdf')
         try:
+            if doc.page_count > MAX_PDF_PAGES:
+                raise DocumentTooLarge(
+                    f'PDF has {doc.page_count} pages; the limit is {MAX_PDF_PAGES}.'
+                )
+
             blocks: List[Dict[str, Any]] = []
             for page_idx in range(doc.page_count):
                 page = doc.load_page(page_idx)
+                longest_side = max(page.rect.width, page.rect.height, 1)
+                zoom = min(dpi / 72, MAX_PDF_PAGE_SIDE / longest_side)
                 with _sync_profile(f'pdf.rasterize_page[dpi={dpi},page={page_idx}]'):
-                    pix = page.get_pixmap(dpi=dpi)
+                    pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
                     png_bytes = pix.tobytes('png')
                     b64 = _base64.b64encode(png_bytes).decode('utf-8')
                 blocks.append(

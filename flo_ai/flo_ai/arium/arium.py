@@ -14,7 +14,7 @@ from flo_ai.utils.variable_extractor import (
     validate_multi_agent_variables,
     resolve_variables,
 )
-from flo_ai.telemetry.instrumentation import workflow_metrics
+from flo_ai.telemetry.instrumentation import result_length, workflow_metrics
 from flo_ai.telemetry import get_tracer
 from flo_ai.utils.profiler import aprofile, record as _profile_record
 from opentelemetry.trace import Status, StatusCode
@@ -69,6 +69,11 @@ def resolve_max_iterations() -> int:
         return MAX_ALLOWED_ITERATIONS
 
     return max_iterations
+
+
+def _message_identity(message: Any) -> int:
+    """Identity of a message, shared with the copies memory makes to retag it."""
+    return id(getattr(message, '_retagged_from', message))
 
 
 class Arium(BaseArium):
@@ -168,15 +173,13 @@ class Arium(BaseArium):
 
                     workflow_span.set_status(Status(StatusCode.OK))
                     workflow_span.set_attribute(
-                        'workflow.result.length', len(str(result))
+                        'workflow.result.length', result_length(result)
                     )
 
                     # Emit workflow completed event
                     self._emit_event(
                         AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
                     )
-
-                    self.memory = MessageMemory()  # cleanup the graph
 
                     return result
 
@@ -202,6 +205,10 @@ class Arium(BaseArium):
                         error=str(e),
                     )
                     raise
+                finally:
+                    # Failed and cancelled runs too, or the next run starts on
+                    # this one's items and the inputs stay held until then.
+                    self.memory = self._fresh_memory()
         else:
             # No telemetry, execute without tracing
             try:
@@ -226,8 +233,6 @@ class Arium(BaseArium):
                     AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
                 )
 
-                self.memory = MessageMemory()  # cleanup the graph
-
                 return result
 
             except Exception as e:
@@ -239,6 +244,16 @@ class Arium(BaseArium):
                     error=str(e),
                 )
                 raise
+            finally:
+                self.memory = self._fresh_memory()
+
+    def _fresh_memory(self) -> MessageMemory:
+        """An empty memory of the configured type. One whose constructor needs
+        arguments can't be rebuilt here, so it is replaced by a MessageMemory."""
+        try:
+            return type(self.memory)()
+        except TypeError:
+            return MessageMemory()
 
     def _emit_event(
         self,
@@ -569,6 +584,8 @@ class Arium(BaseArium):
             if getattr(node, 'input_filter', None)
             else self.memory.get()
         )
+        if isinstance(node, Agent):
+            memory_items = self._not_held_by_agent(node, memory_items)
         inputs = [item.result for item in memory_items]
 
         if tracer and node_type not in ['start', 'end']:
@@ -686,6 +703,27 @@ class Arium(BaseArium):
 
                 # Re-raise the exception
                 raise e
+
+    def _not_held_by_agent(
+        self, agent: Agent, memory_items: List[MessageMemoryItem]
+    ) -> List[MessageMemoryItem]:
+        """The items whose message the agent's history lacks.
+
+        Re-handing the whole memory on a revisit appended every earlier input,
+        files included, and the agent's own reply a second time - also when a
+        parent re-runs the sub-workflow the agent is in, or the agent is shared
+        between sub-workflows. Checking the history itself, by message identity,
+        never drops what the agent no longer holds: a cleared history or a
+        memory that is not append-only gets it re-sent.
+
+        With nothing new, everything is handed again: an empty turn would send
+        a request ending on the agent's own reply, which some providers reject.
+        """
+        held = {_message_identity(message) for message in agent.conversation_history}
+        new = [
+            item for item in memory_items if _message_identity(item.result) not in held
+        ]
+        return new or memory_items
 
     async def _dispatch_node_run(
         self,

@@ -77,6 +77,8 @@ class MessageMemoryItem:
 
         tagged = copy.copy(result)
         tagged.metadata = {**metadata, 'node': node}
+        # Still the same message to a revisited agent that holds the original.
+        tagged._retagged_from = getattr(result, '_retagged_from', result)
         return tagged
 
     def to_dict(self) -> Dict[str, Any]:

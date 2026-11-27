@@ -34,7 +34,7 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 __all__ = [
     'enable_profiling',
@@ -59,8 +59,29 @@ _depth: contextvars.ContextVar[int] = contextvars.ContextVar(
     'flo_ai_profile_depth', default=0
 )
 
-_totals: Dict[str, List[float]] = defaultdict(list)
+
+class _SectionStats:
+    """Running totals for one section; keeping every sample grew without bound."""
+
+    __slots__ = ('count', 'total', 'max')
+
+    def __init__(self) -> None:
+        self.count = 0
+        self.total = 0.0
+        self.max = 0.0
+
+
+_totals: Dict[str, _SectionStats] = defaultdict(_SectionStats)
 _process_start: float = time.perf_counter()
+
+
+def _add_sample(name: str, elapsed: float) -> None:
+    # Locked: sync sections run in worker threads too (PDF rasterization).
+    with _lock:
+        stats = _totals[name]
+        stats.count += 1
+        stats.total += elapsed
+        stats.max = max(stats.max, elapsed)
 
 
 def _truthy(val: Optional[str]) -> bool:
@@ -140,7 +161,7 @@ def record(name: str, duration_sec: float) -> None:
     """
     if not _enabled:
         return
-    _totals[name].append(duration_sec)
+    _add_sample(name, duration_sec)
 
 
 def _emit_enter(name: str, depth: int) -> None:
@@ -176,7 +197,7 @@ async def aprofile(name: str):
     finally:
         elapsed = time.perf_counter() - start
         _depth.reset(token)
-        _totals[name].append(elapsed)
+        _add_sample(name, elapsed)
         _emit_exit(name, depth, elapsed, err)
 
 
@@ -200,7 +221,7 @@ def profile(name: str):
     finally:
         elapsed = time.perf_counter() - start
         _depth.reset(token)
-        _totals[name].append(elapsed)
+        _add_sample(name, elapsed)
         _emit_exit(name, depth, elapsed, err)
 
 
@@ -247,21 +268,17 @@ def write_summary() -> None:
     if not _enabled or _file_handle is None:
         return
 
-    rows = []
-    for name, durations in _totals.items():
-        total = sum(durations)
-        rows.append((total, len(durations), name))
-    rows.sort(reverse=True)
-
     with _lock:
+        rows = sorted(
+            ((s.total, s.count, s.max, name) for name, s in _totals.items()),
+            reverse=True,
+        )
         _file_handle.write('\n=== SUMMARY (sections sorted by total wall time) ===\n')
         _file_handle.write(
             f"{'total_ms':>12}  {'count':>6}  {'avg_ms':>10}  {'max_ms':>10}  name\n"
         )
-        for total, count, name in rows:
-            durations = _totals[name]
+        for total, count, mx, name in rows:
             avg = total / count if count else 0.0
-            mx = max(durations) if durations else 0.0
             _file_handle.write(
                 f'{total * 1000:>12.2f}  {count:>6}  {avg * 1000:>10.2f}  '
                 f'{mx * 1000:>10.2f}  {name}\n'
