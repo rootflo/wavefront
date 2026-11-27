@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import json
+from typing import Optional
 import hashlib
 import hmac
 import time
@@ -8,10 +9,12 @@ from collections.abc import Sequence
 
 from auth_module.auth_container import AuthContainer
 from auth_module.services.token_service import TokenService
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.session import Session
@@ -461,7 +464,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             error='Token missing in request'
                         ),
                     )
-                decoded = token_service.decode_token(token)
+                decoded = await token_service.decode_token_async(token)
                 if 'session_id' not in decoded:
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
@@ -476,79 +479,49 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                         ),
                     )
 
-                # Try to get session from cache
+                # Session lookup through the generation-checked cache. A slow or
+                # unreachable Redis falls back to the database (the source of
+                # truth) instead of failing the request, and a fill that raced a
+                # logout or revocation can never bring the session back.
                 session_cache_key = get_session_cache_key(decoded['session_id'])
-                cached_session = cache_manager.get_str(session_cache_key)
-                if cached_session:
-                    try:
-                        session_data = json.loads(cached_session)
-                        if session_data.get('user_id') != decoded['user_id']:
-                            request_id = getattr(
-                                request.state, 'request_id', get_current_request_id()
-                            )
-                            logger.error(
-                                f'Invalid session: session does not belong to user [Request ID: {request_id}]'
-                            )
-                            return JSONResponse(
-                                status_code=status.HTTP_401_UNAUTHORIZED,
-                                content=response_formatter.buildErrorResponse(
-                                    error='Invalid session'
-                                ),
-                            )
-                    except json.JSONDecodeError:
-                        request_id = getattr(
-                            request.state, 'request_id', get_current_request_id()
-                        )
-                        logger.error(
-                            f'Failed to decode cached session data, fetching from DB [Request ID: {request_id}]'
-                        )
-                        cached_session = None
 
-                if not cached_session:
-                    # If not in cache, fetch from DB
+                async def load_session() -> Optional[str]:
                     session = await session_repository.find_one(
                         id=decoded['session_id']
                     )
                     if not session:
-                        request_id = getattr(
-                            request.state, 'request_id', get_current_request_id()
-                        )
-                        logger.error(
-                            f'Invalid session: session not found in database [Request ID: {request_id}]'
-                        )
-                        return JSONResponse(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            content=response_formatter.buildErrorResponse(
-                                error='Invalid session'
-                            ),
-                        )
-
-                    # Cache the session data
-                    session_data = {
-                        'id': str(session.id),
-                        'user_id': str(session.user_id),
-                        'device_info': session.device_info,
-                    }
-
-                    cache_manager.add(
-                        session_cache_key,
-                        json.dumps(session_data),
-                        token_service.token_expiry,
+                        return None
+                    return json.dumps(
+                        {
+                            'id': str(session.id),
+                            'user_id': str(session.user_id),
+                            'device_info': session.device_info,
+                        }
                     )
 
-                    if str(session.user_id) != decoded['user_id']:
-                        request_id = getattr(
-                            request.state, 'request_id', get_current_request_id()
-                        )
-                        logger.error(
-                            f'Invalid session: session does not belong to user [Request ID: {request_id}]'
-                        )
-                        return JSONResponse(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            content=response_formatter.buildErrorResponse(
-                                error='Invalid session'
-                            ),
-                        )
+                session_json = await cache_manager.read_through(
+                    session_cache_key, load_session, ttl=token_service.token_expiry
+                )
+                try:
+                    session_data = json.loads(session_json) if session_json else None
+                except json.JSONDecodeError:
+                    session_data = None
+                if (
+                    not session_data
+                    or session_data.get('user_id') != decoded['user_id']
+                ):
+                    request_id = getattr(
+                        request.state, 'request_id', get_current_request_id()
+                    )
+                    logger.error(
+                        f"Invalid session: not found or not this user's [Request ID: {request_id}]"
+                    )
+                    return JSONResponse(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        content=response_formatter.buildErrorResponse(
+                            error='Invalid session'
+                        ),
+                    )
 
                 session_obj = UserSession(
                     role_id=decoded['role_id'],
@@ -576,6 +549,33 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Auth busy on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='The server is busy. Please try again shortly.'
+                ),
+            )
+        except PublicKeyUnavailableError as exc:
+            # KMS is down: the token may be valid, so 503 (retry), never 401,
+            # which clients treat as "logged out".
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.error(
+                f'Token key unavailable on {request.method} {request.url.path!r}: {exc} [Request ID: {request_id}]'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='Authentication is temporarily unavailable. Please try again shortly.'
+                ),
+            )
         except jwt.ExpiredSignatureError as exc:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(
@@ -586,4 +586,15 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 content=response_formatter.buildErrorResponse(
                     error='Token has expired. Please log in again.'
                 ),
+            )
+        except jwt.InvalidTokenError as exc:
+            # Malformed token, wrong algorithm, issuer or audience: the caller's
+            # mistake, so 401 and a warning, never a 500.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__} [Request ID: {request_id}]'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=response_formatter.buildErrorResponse(error='Invalid token'),
             )

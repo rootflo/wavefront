@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Request
@@ -69,7 +71,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             try:
-                decoded = token_service.decode_token(token)
+                decoded = await token_service.decode_token_async(token)
             except ValueError as e:
                 logger.error(f'Token validation error: {e}')
                 return JSONResponse(
@@ -126,6 +128,27 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            logger.warning(f'Auth busy on {request.method} {request.url.path!r}: {exc}')
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='The server is busy. Please try again shortly.'
+                ),
+            )
+        except PublicKeyUnavailableError as exc:
+            # KMS is down: the token may be valid, so 503 (retry), never 401,
+            # which clients treat as "logged out".
+            logger.error(f'Token key unavailable: {exc}')
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={'Retry-After': str(retry_after_seconds())},
+                content=response_formatter.buildErrorResponse(
+                    error='Authentication is temporarily unavailable. Please try again shortly.'
+                ),
+            )
         except jwt.ExpiredSignatureError as exc:
             logger.error(f'ExpiredSignatureError in require_auth middleware: {exc}')
             return JSONResponse(
@@ -133,4 +156,14 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 content=response_formatter.buildErrorResponse(
                     error='Token has expired. Please log in again.'
                 ),
+            )
+        except jwt.InvalidTokenError as exc:
+            # Malformed token, wrong algorithm, issuer or audience: the caller's
+            # mistake, so 401 and a warning, never a 500.
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__}'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=response_formatter.buildErrorResponse(error='Invalid token'),
             )

@@ -1,4 +1,3 @@
-import asyncio
 import time
 from typing import Any, Dict, List, Optional, Callable, Tuple
 import yaml
@@ -13,6 +12,7 @@ from agents_module.utils.agent_guardrails import (
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
+from common_module.blocking_io import BlockingPoolBusyError, Pool, run_in_pool
 from common_module.log.logger import logger
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
 from agents_module.utils.cache_utils import (
@@ -100,7 +100,6 @@ class WorkflowInferenceService:
             cache_key=get_workflow_current_version_cache_key(namespace, workflow_name),
             ttl=self.current_version_cache_ttl,
             not_found_message=f'Workflow not found: {namespace}/{workflow_name}',
-            use_to_thread=True,
         )
 
     async def fetch_workflow_yaml(
@@ -147,25 +146,16 @@ class WorkflowInferenceService:
             namespace, workflow_name, resolved_version
         )
 
-        # Try to get from cache first
-        cached_result = await asyncio.to_thread(self.cache_manager.get_str, cache_key)
-        if cached_result:
-            logger.info(
-                f'Cache hit fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
+        async def load() -> str:
+            yaml_bytes: bytes = await run_in_pool(
+                Pool.STORAGE,
+                self.cloud_storage_manager.read_file,
+                self.bucket_name,
+                yaml_key,
             )
-            return cached_result
+            return yaml_bytes.decode('utf-8')
 
-        logger.info(
-            f'Fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
-        )
-        yaml_bytes: bytes = await asyncio.to_thread(
-            self.cloud_storage_manager.read_file, self.bucket_name, yaml_key
-        )
-        yaml_content = yaml_bytes.decode('utf-8')
-
-        await asyncio.to_thread(
-            self.cache_manager.add, cache_key, yaml_content, expiry=3600
-        )
+        yaml_content = await self.cache_manager.read_through(cache_key, load, ttl=3600)
 
         logger.info(
             f'Successfully fetched workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
@@ -227,6 +217,8 @@ class WorkflowInferenceService:
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent: {agent_ref}')
 
+            except BlockingPoolBusyError:
+                raise  # retryable overload: the app answers 503, not a build error
             except Exception as e:
                 logger.error(f'Error building referenced agent {agent_ref}: {str(e)}')
                 raise ValueError(
@@ -296,6 +288,8 @@ class WorkflowInferenceService:
                 agents_dict[agent_name] = agent
                 logger.info(f'Successfully built inline agent: {agent_name}')
 
+            except BlockingPoolBusyError:
+                raise  # retryable overload: the app answers 503, not a build error
             except Exception as e:
                 logger.error(f'Error building inline agent {agent_name}: {str(e)}')
                 raise ValueError(f'Failed to build inline agent {agent_name}: {str(e)}')

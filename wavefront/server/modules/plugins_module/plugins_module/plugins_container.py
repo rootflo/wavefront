@@ -107,6 +107,8 @@ class PluginsContainer(containers.DeclarativeContainer):
         message_processor_repository=message_processor_repository,
         hermes_url=config.hermes.url,
         bucket_name=config.storage.application_bucket,
+        cache_manager=cache_manager,
+        yaml_cache_seconds=config.message_processor.yaml_cache_seconds,
     )
 
     # Email: OAuth apps hold client secrets and connections hold mailbox tokens.

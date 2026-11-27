@@ -151,7 +151,8 @@ class MockApiServicesRepository:
             setattr(record, key, value)
         return record
 
-    def delete_all(self, filters: Dict[str, Any]):
+    def delete_all(self, **filters):
+        # Same call shape as SQLAlchemyRepository.delete_all(**filters)
         self._data.pop(filters.get('id'), None)
 
 
@@ -167,7 +168,7 @@ class MockApiServicesManager:
     async def get_all_api_services(self):
         return self._repository.find()
 
-    def fetch_service_def(self, service_record):
+    async def fetch_service_def(self, service_record):
         return self._yaml_map[service_record.id]
 
     async def get_api_service(self, id: str):
@@ -183,7 +184,7 @@ class MockApiServicesManager:
 
     async def delete_api_service(self, id: str):
         self._yaml_map.pop(id, None)
-        self._repository.delete_all({'id': id})
+        self._repository.delete_all(id=id)
 
 
 @pytest.fixture

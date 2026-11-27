@@ -1,8 +1,10 @@
 """Service registry for managing service definitions."""
 
+import itertools
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 from ..models.service import ServiceDefinition
 from .parser import ServiceDefinitionParser
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
 from ..core.manager import ApiServicesManager
 from ..secrets.references import find_definition_refs, substitute_definition
@@ -49,6 +51,14 @@ class ServiceRegistry:
         self._definitions: Dict[str, ServiceDefinition] = {}
         # secret name -> ids of the services that reference it
         self._secret_refs: Dict[str, Set[str]] = {}
+        # One registry-wide counter, ticked by every load start and removal; per
+        # service id, the tick of the last removal and of the load that
+        # registered last. A load registers only if it started after both, so a
+        # slow, older fetch can't bring back a removed service or overwrite a
+        # newer definition. Loads of ids that don't exist leave nothing behind.
+        self._seq = itertools.count(1)
+        self._removed_at: Dict[str, int] = {}
+        self._registered_seq: Dict[str, int] = {}
         self.parser = ServiceDefinitionParser()
 
     def register_service(
@@ -70,11 +80,15 @@ class ServiceRegistry:
 
     def deregister_service(self, service_id: str):
         """
-        Register a service definition.
+        Remove a service from the runtime registry.
+
+        Also fences it: a load of this id that started before now is dropped,
+        so a slow, older fetch can't bring the service back.
 
         Args:
-            service_definition: Service definition to register
+            service_id: Service identifier
         """
+        self._removed_at[service_id] = next(self._seq)
         self._services.pop(service_id, None)
         self._definitions.pop(service_id, None)
         self._index_refs(service_id, set())
@@ -125,6 +139,7 @@ class ServiceRegistry:
         if service_id in self._services:
             self.deregister_service(service_id)
             return True
+        self._removed_at[service_id] = next(self._seq)
         return False
 
     def _ensure_manager(self):
@@ -138,8 +153,17 @@ class ServiceRegistry:
         self.clear_all()
 
         for service in services:
-            yaml_content = self.api_service_manager.fetch_service_def(service)
-            service_definition = self.parser.parse_yaml_string(yaml_content)
+            try:
+                yaml_content = await self.api_service_manager.fetch_service_def(service)
+                service_definition = self.parser.parse_yaml_string(yaml_content)
+            except BlockingPoolBusyError:
+                raise  # retryable overload: don't silently drop services
+            except Exception as e:
+                # One unreadable definition must not keep the others from loading.
+                logger.error(
+                    f'Skipping service {getattr(service, "id", service)}: definition unreadable: {e}'
+                )
+                continue
             try:
                 execution_definition = await self.resolve_secrets(service_definition)
             except Exception as e:
@@ -161,15 +185,22 @@ class ServiceRegistry:
 
     async def load_service_from_db(self, service_id: str):
         self._ensure_manager()
+        seq = next(self._seq)
 
         service = await self.api_service_manager.get_api_service(id=service_id)
         if not service:
             raise ServiceNotFoundError(
                 f'No service definition found for service: {service_id}'
             )
-        service_def_yaml = self.api_service_manager.fetch_service_def(service)
+        service_def_yaml = await self.api_service_manager.fetch_service_def(service)
         service_def = self.parser.parse_yaml_string(service_def_yaml)
         execution_def = await self.resolve_secrets(service_def)
+        if seq <= self._removed_at.get(service_id, 0) or seq <= (
+            self._registered_seq.get(service_id, 0)
+        ):
+            logger.info(f'Dropped a stale load of service: {service_id}')
+            return
+        self._registered_seq[service_id] = seq
         self.register_service(service_def, execution_def)
 
         logger.info(f'Loaded service from db: {service_id}')

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 
 from agents_module.controllers.agent_controller import validate_agent
@@ -639,6 +640,18 @@ class TestAgentCreateUsesTheSameValidation:
                 await agent_service._validate_yaml_content(
                     body, 'default', 'test-agent', tool_available=[]
                 )
+
+    async def test_busy_storage_pool_is_not_reported_as_an_invalid_definition(
+        self, agent_service
+    ):
+        agent_service._check_yaml_content = AsyncMock(
+            side_effect=BlockingPoolBusyError('storage', 10.0)
+        )
+
+        with pytest.raises(BlockingPoolBusyError):
+            await agent_service._validate_yaml_content(
+                VALID_AGENT_YAML, 'default', 'test-agent', tool_available=[]
+            )
 
     async def test_valid_agent_is_built_with_its_resolved_tools(self, agent_service):
         body = VALID_AGENT_YAML + '  tools:\n    - name: search\n'

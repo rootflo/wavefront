@@ -17,15 +17,21 @@ async def start_redis_listener(
     """
     queue = asyncio.Queue()
 
-    pubsub = cache_manager.subscribe(channels=[REDIS_API_SERVICE_UPDATES_CHANNEL])
-    logger.info('Subscribed to Redis channel: %s', REDIS_API_SERVICE_UPDATES_CHANNEL)
-
     # Capture the running loop from the main thread
     loop = asyncio.get_running_loop()
 
-    # Run the blocking pubsub.listen() inside a thread
+    # Subscribe AND listen on the listener's own thread. Subscribing opens a
+    # connection whose setup (AUTH, SUBSCRIBE replies) is read with no socket
+    # timeout, so a Redis that accepts TCP but stalls would otherwise hold the
+    # event loop.
     def run_pubsub():
         try:
+            pubsub = cache_manager.subscribe(
+                channels=[REDIS_API_SERVICE_UPDATES_CHANNEL]
+            )
+            logger.info(
+                'Subscribed to Redis channel: %s', REDIS_API_SERVICE_UPDATES_CHANNEL
+            )
             for message in pubsub.listen():
                 if message['type'] == 'message':
                     asyncio.run_coroutine_threadsafe(queue.put(message['data']), loop)

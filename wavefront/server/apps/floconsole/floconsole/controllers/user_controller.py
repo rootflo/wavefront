@@ -19,7 +19,7 @@ from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyReposito
 from floconsole.di.application_container import ApplicationContainer
 from floconsole.services.user_service import UserService
 from floconsole.utils.user_utils import get_current_user
-from floconsole.utils.password_utils import hash_password
+from floconsole.utils.password_utils import hash_password_async
 
 
 user_router = APIRouter(prefix='/v1')
@@ -80,7 +80,7 @@ async def create_user(
             content=response_formatter.buildErrorResponse('Email already exists'),
         )
 
-    hashed_password = hash_password(user_data.password)
+    hashed_password = await hash_password_async(user_data.password)
 
     created_user = await user_repository.create(
         email=user_data.email,

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import yaml
 from fastapi import HTTPException
+from flo_testing import add_async_cache_methods
 
 from api_services_module.config.registry import ServiceRegistry
 from api_services_module.core.manager import ApiServicesManager
@@ -24,6 +25,7 @@ from api_services_module.secrets.secret_store_service import (
     SecretNotFound,
     SecretStoreService,
 )
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 from common_module.security.secret_cipher import SECRET_MASK, SecretCipher
 from db_repo_module.models.secret import Secret
@@ -144,7 +146,7 @@ class FakeApiServicesManager:
     async def get_api_service(self, id):
         return SimpleNamespace(id=id) if id in self.yaml_by_id else None
 
-    def fetch_service_def(self, service):
+    async def fetch_service_def(self, service):
         return self.yaml_by_id[service.id]
 
     async def create_api_service(self, id, service_def_yaml):
@@ -460,7 +462,14 @@ async def test_update_that_cannot_resolve_is_not_saved():
     proxy.api_change_publisher.publish_message.assert_not_called()
 
 
-async def test_update_restores_previous_definition_when_reload_fails():
+@pytest.mark.parametrize(
+    'failure, raised',
+    [
+        (RuntimeError('reload failed'), HTTPException),  # answered 500
+        (BlockingPoolBusyError('storage', 5), BlockingPoolBusyError),  # 503
+    ],
+)
+async def test_update_restores_previous_definition_when_reload_fails(failure, raised):
     original = _service_yaml()
     proxy, manager = await _proxy(
         enabled=True, yaml_by_id={'acme': original}, secrets=('ACME_TOKEN', 'OTHER')
@@ -472,12 +481,12 @@ async def test_update_restores_previous_definition_when_reload_fails():
     async def reload_failing_once(service_id):
         calls.append(service_id)
         if len(calls) == 1:
-            raise RuntimeError('reload failed')
+            raise failure
         await real_reload(service_id)
 
     registry.reload_service = reload_failing_once
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(raised):
         await proxy.update_api_services(
             'acme',
             _service_yaml(
@@ -533,7 +542,7 @@ async def test_read_paths_show_references_and_mask_literals():
 
 
 async def test_delete_api_service_removes_cache_key():
-    cache_manager = Mock()
+    cache_manager = add_async_cache_methods(Mock())
     manager = ApiServicesManager(
         api_services_repository=AsyncMock(),
         cloud_storage_manager=Mock(),
@@ -543,7 +552,8 @@ async def test_delete_api_service_removes_cache_key():
 
     await manager.delete_api_service('acme')
 
-    cache_manager.remove.assert_called_once_with('api_services/acme.yaml')
+    # Invalidated before and after the delete.
+    assert cache_manager.remove.call_args_list == [(('api_services/acme.yaml',),)] * 2
 
 
 # ---- admin API ---------------------------------------------------------------------

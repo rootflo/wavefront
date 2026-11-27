@@ -1,4 +1,4 @@
-from typing import List
+from typing import Optional, List
 import json
 
 from db_repo_module.cache.cache_manager import CacheManager
@@ -38,27 +38,16 @@ class NamespaceService:
         """
         cache_key = get_namespace_cache_key(name)
 
-        # Try cache first
-        cached_namespace = self.cache_manager.get_str(cache_key)
-        if cached_namespace:
-            logger.info(f'Cache hit for namespace: {name}')
-            return json.loads(cached_namespace)
+        async def load() -> Optional[str]:
+            namespace = await self.namespace_repository.find_one(name=name)
+            return json.dumps(namespace.to_dict()) if namespace else None
 
-        # Fetch from DB
-        logger.info(f'Fetching namespace from DB: {name}')
-        namespace = await self.namespace_repository.find_one(name=name)
-
-        if not namespace:
-            raise ValueError(f'Namespace not found: {name}')
-
-        namespace_dict = namespace.to_dict()
-
-        # Cache the result
-        self.cache_manager.add(
-            cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
+        cached = await self.cache_manager.read_through(
+            cache_key, load, ttl=self.cache_ttl
         )
-
-        return namespace_dict
+        if cached is None:
+            raise ValueError(f'Namespace not found: {name}')
+        return json.loads(cached)
 
     async def create_namespace(self, name: str) -> dict:
         """
@@ -79,25 +68,16 @@ class NamespaceService:
             logger.warning(f'Namespace already exists: {name}')
             raise ValueError(f'Namespace already exists: {name}')
 
-        # Create namespace
         logger.info(f'Creating namespace: {name}')
-        namespace = Namespace(name=name)
-        created_namespace = await self.namespace_repository.save(namespace)
-
-        namespace_dict = created_namespace.to_dict()
-
-        # Cache the new namespace
-        cache_key = get_namespace_cache_key(name)
-        self.cache_manager.add(
-            cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
-        )
-
-        # Invalidate list cache
-        list_cache_key = get_namespaces_list_cache_key()
-        self.cache_manager.remove(list_cache_key)
+        async with self.cache_manager.invalidating(
+            get_namespace_cache_key(name), get_namespaces_list_cache_key()
+        ):
+            created_namespace = await self.namespace_repository.save(
+                Namespace(name=name)
+            )
 
         logger.info(f'Successfully created namespace: {name}')
-        return namespace_dict
+        return created_namespace.to_dict()
 
     async def get_or_create_namespace(self, name: str) -> dict:
         """
@@ -109,42 +89,19 @@ class NamespaceService:
         Returns:
             dict: Namespace details
         """
-        cache_key = get_namespace_cache_key(name)
+        try:
+            return await self.get_namespace(name)
+        except ValueError:
+            pass
 
-        # Try cache first
-        cached_namespace = self.cache_manager.get_str(cache_key)
-        if cached_namespace:
-            logger.info(f'Cache hit for namespace: {name}')
-            return json.loads(cached_namespace)
-
-        # Check DB
-        namespace = await self.namespace_repository.find_one(name=name)
-
-        if namespace:
-            # Namespace exists
-            namespace_dict = namespace.to_dict()
-            self.cache_manager.add(
-                cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
-            )
-            return namespace_dict
-        else:
-            # Create new namespace
-            logger.info(f'Creating namespace: {name}')
+        logger.info(f'Creating namespace: {name}')
+        async with self.cache_manager.invalidating(
+            get_namespace_cache_key(name), get_namespaces_list_cache_key()
+        ):
             created_namespace = await self.namespace_repository.create(name=name)
 
-            namespace_dict = created_namespace.to_dict()
-
-            # Cache the new namespace
-            self.cache_manager.add(
-                cache_key, json.dumps(namespace_dict), expiry=self.cache_ttl
-            )
-
-            # Invalidate list cache
-            list_cache_key = get_namespaces_list_cache_key()
-            self.cache_manager.remove(list_cache_key)
-
-            logger.info(f'Successfully created namespace: {name}')
-            return namespace_dict
+        logger.info(f'Successfully created namespace: {name}')
+        return created_namespace.to_dict()
 
     async def list_namespaces(self) -> List[dict]:
         """
@@ -153,24 +110,14 @@ class NamespaceService:
         Returns:
             List[dict]: List of all namespaces
         """
-        cache_key = get_namespaces_list_cache_key()
 
-        # Try cache first
-        cached_list = self.cache_manager.get_str(cache_key)
-        if cached_list:
-            logger.info('Cache hit for namespaces list')
-            return json.loads(cached_list)
+        async def load() -> Optional[str]:
+            namespaces = await self.namespace_repository.find()
+            return json.dumps([ns.to_dict() for ns in namespaces])
 
-        # Fetch from DB
-        logger.info('Fetching namespaces list from DB')
-        namespaces = await self.namespace_repository.find()
-
-        namespaces_list = [ns.to_dict() for ns in namespaces]
-
-        # Cache the result
-        self.cache_manager.add(
-            cache_key, json.dumps(namespaces_list), expiry=self.cache_ttl
+        cached = await self.cache_manager.read_through(
+            get_namespaces_list_cache_key(), load, ttl=self.cache_ttl
         )
-
-        logger.info(f'Successfully retrieved {len(namespaces_list)} namespaces')
+        namespaces_list = json.loads(cached)
+        logger.info(f'Retrieved {len(namespaces_list)} namespaces')
         return namespaces_list

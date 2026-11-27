@@ -7,6 +7,7 @@ import uuid
 
 from sqlalchemy import func, select
 
+from common_module.blocking_io import Pool, run_in_pool
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -492,8 +493,12 @@ async def get_document_with_id(
         )
     if signed_url:
         bucket = config['storage']['application_bucket']
-        presigned_url = cloude_storage_manager.generate_presigned_url(
-            bucket, existing_document.file_path, 'GET'
+        presigned_url = await run_in_pool(
+            Pool.STORAGE,
+            cloude_storage_manager.generate_presigned_url,
+            bucket,
+            existing_document.file_path,
+            'GET',
         )
         response_data = existing_document.to_dict()
         response_data['signed_url'] = presigned_url
