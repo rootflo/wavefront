@@ -77,6 +77,92 @@ async def test_agent_run_publishes_failed_and_reraises():
 
 
 @pytest.mark.asyncio
+async def test_agent_run_resolves_llm_config_by_id_from_floware():
+    services = _services_mock()
+    config_id = str(uuid4())
+    services.llm_config_client.get_runtime_config = AsyncMock(
+        return_value={'id': config_id, 'llm_model': 'gpt-4o', 'api_key': 'sk-live'}
+    )
+    payload = {
+        'execution_id': str(uuid4()),
+        'entity_type': 'agent',
+        'entity_id': str(uuid4()),
+        'inputs': 'hello',
+        'variables': {},
+        'output_prefix': 'exec/',
+        'execution_bucket': 'app-bucket',
+        'llm_inference_config_id': config_id,
+    }
+
+    with (
+        patch.object(agent_task, 'get_services', return_value=services),
+        patch.object(agent_task, 'reconstruct_inputs', return_value='hello'),
+        patch.object(agent_task, 'save_json'),
+    ):
+        await agent_task._run(MagicMock(), payload)
+
+    services.llm_config_client.get_runtime_config.assert_awaited_once_with(config_id)
+    llm_config = services.agent_inference.perform_inference_v2.await_args.kwargs[
+        'llm_config'
+    ]
+    assert llm_config.llm_model == 'gpt-4o'
+    assert llm_config.api_key == 'sk-live'
+
+
+@pytest.mark.asyncio
+async def test_agent_run_without_config_id_does_not_fetch():
+    services = _services_mock()
+    services.llm_config_client.get_runtime_config = AsyncMock()
+    payload = {
+        'execution_id': str(uuid4()),
+        'entity_type': 'agent',
+        'entity_id': str(uuid4()),
+        'inputs': 'hello',
+        'variables': {},
+        'output_prefix': 'exec/',
+        'execution_bucket': 'app-bucket',
+    }
+
+    with (
+        patch.object(agent_task, 'get_services', return_value=services),
+        patch.object(agent_task, 'reconstruct_inputs', return_value='hello'),
+        patch.object(agent_task, 'save_json'),
+    ):
+        await agent_task._run(MagicMock(), payload)
+
+    services.llm_config_client.get_runtime_config.assert_not_called()
+    kwargs = services.agent_inference.perform_inference_v2.await_args.kwargs
+    assert kwargs['llm_config'] is None
+
+
+@pytest.mark.asyncio
+async def test_agent_run_fails_when_llm_config_is_missing():
+    services = _services_mock()
+    config_id = str(uuid4())
+    services.llm_config_client.get_runtime_config = AsyncMock(return_value=None)
+    payload = {
+        'execution_id': str(uuid4()),
+        'entity_type': 'agent',
+        'entity_id': str(uuid4()),
+        'inputs': 'hello',
+        'variables': {},
+        'output_prefix': 'exec/',
+        'execution_bucket': 'app-bucket',
+        'llm_inference_config_id': config_id,
+    }
+
+    with (
+        patch.object(agent_task, 'get_services', return_value=services),
+        patch.object(agent_task, 'reconstruct_inputs', return_value='hello'),
+    ):
+        with pytest.raises(ValueError, match='LLM inference configuration not found'):
+            await agent_task._run(MagicMock(), payload)
+
+    services.agent_inference.perform_inference_v2.assert_not_called()
+    assert services.cache.xadd.call_args_list[-1].args[1]['status'] == 'failed'
+
+
+@pytest.mark.asyncio
 async def test_workflow_run_publishes_completed():
     services = _services_mock()
     payload = {

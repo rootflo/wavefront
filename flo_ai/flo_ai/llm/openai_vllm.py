@@ -2,6 +2,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from .base_llm import flatten_extra_body
 from .openai_llm import OpenAI
 from flo_ai.telemetry.instrumentation import trace_llm_stream
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 
 
 class OpenAIVLLM(OpenAI):
@@ -27,6 +28,7 @@ class OpenAIVLLM(OpenAI):
         self.base_url = base_url
 
     # overriden
+    @rate_limited(provider='openai_vllm')
     async def generate(
         self,
         messages: list[dict],
@@ -45,11 +47,16 @@ class OpenAIVLLM(OpenAI):
             }
 
             # Add JSON format instruction to the system prompt
+            # A copy: rate-limit retries resend the caller's list.
+            messages = list(messages)
             if messages and messages[0]['role'] == 'system':
-                messages[0]['content'] = (
-                    messages[0]['content']
-                    + f'\n\nPlease provide your response in JSON format according to the specified schema. \n\n {output_schema}'
-                )
+                messages[0] = {
+                    **messages[0],
+                    'content': (
+                        messages[0]['content']
+                        + f'\n\nPlease provide your response in JSON format according to the specified schema. \n\n {output_schema}'
+                    ),
+                }
             else:
                 messages.insert(
                     0,
@@ -79,6 +86,7 @@ class OpenAIVLLM(OpenAI):
         # Return the full message object instead of just the content
         return message
 
+    @rate_limited_stream(provider='openai_vllm')
     @trace_llm_stream(provider='openai_vllm')
     async def stream(
         self,

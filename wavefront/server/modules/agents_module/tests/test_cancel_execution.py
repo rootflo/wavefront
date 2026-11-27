@@ -15,6 +15,7 @@ from user_management_module.authorization.legacy_resolver import (
     FlowareLegacyResolver,
 )
 from user_management_module.utils import user_utils
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.response_formatter import ResponseFormatter
 
 from agents_module.controllers import async_inference_controller as controller
@@ -255,6 +256,25 @@ async def test_status_read_cannot_overwrite_a_cancel_already_in_the_cache():
     await service.get_execution_status(record.id)
 
     assert service.cache.add.call_args.kwargs == {'nx': True}
+
+
+async def test_status_survives_a_busy_pool_when_presigning_output_urls():
+    record = _record(output_file='executions/x/output.json')
+    service, _ = _service(record)
+    service.cache.get_str.return_value = json.dumps(
+        _cancelled_row(record).to_dict.return_value
+        | {'output_file': 'executions/x/output.json', 'input_bucket': 'bucket'}
+    )
+    service.cloud_storage.generate_presigned_url = MagicMock()
+
+    async def busy(*_args, **_kwargs):
+        raise BlockingPoolBusyError('storage', 10.0)
+
+    with patch.object(svc_module, 'run_in_pool', busy):
+        result = await service.get_execution_status(record.id)
+
+    assert result.status == 'cancelled'  # the status still comes back
+    service.cloud_storage.generate_presigned_url.assert_not_called()
 
 
 async def test_row_no_longer_pending_after_removal_leaves_the_cache_alone():

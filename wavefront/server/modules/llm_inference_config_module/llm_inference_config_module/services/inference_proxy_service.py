@@ -68,7 +68,9 @@ class InferenceProxyService:
             model_uuid = uuid.UUID(model_id)
         except ValueError:
             return None
-        model_config = await self.llm_inference_config_service.get_config(model_uuid)
+        model_config = await self.llm_inference_config_service.get_runtime_config(
+            model_uuid
+        )
         if not model_config:
             return None
 

@@ -17,6 +17,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
@@ -55,6 +56,8 @@ class AzureOpenAI(OpenAIToolCallingMixin, BaseLLM):
         client_kwargs, request_kwargs = split_client_kwargs(
             AsyncAzureOpenAI, kwargs, reserved=('default_headers',)
         )
+        # llm.rate_limits owns retries; the SDK's own would hide 429s from it.
+        client_kwargs.setdefault('max_retries', 0)
 
         super().__init__(
             model=model,
@@ -95,6 +98,7 @@ class AzureOpenAI(OpenAIToolCallingMixin, BaseLLM):
             declared['extra_body'] = extra
         return declared
 
+    @rate_limited(provider='azureopenai')
     @trace_llm_call(provider='azureopenai')
     async def generate(
         self,
@@ -108,11 +112,16 @@ class AzureOpenAI(OpenAIToolCallingMixin, BaseLLM):
             kwargs['response_format'] = {'type': 'json_object'}
             kwargs.update(self._tool_request_kwargs(None, output_schema))
 
+            # A copy: rate-limit retries resend the caller's list.
+            messages = list(messages)
             if messages and messages[0]['role'] == 'system':
-                messages[0]['content'] = (
-                    messages[0]['content']
-                    + '\n\nPlease provide your response in JSON format according to the specified schema.'
-                )
+                messages[0] = {
+                    **messages[0],
+                    'content': (
+                        messages[0]['content']
+                        + '\n\nPlease provide your response in JSON format according to the specified schema.'
+                    ),
+                }
             else:
                 messages.insert(
                     0,
@@ -161,6 +170,7 @@ class AzureOpenAI(OpenAIToolCallingMixin, BaseLLM):
 
         return message
 
+    @rate_limited_stream(provider='azureopenai')
     @trace_llm_stream(provider='azureopenai')
     async def stream(
         self,

@@ -14,6 +14,7 @@ from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
     CancellationIncomplete,
     ExecutionNotCancellable,
+    ExecutionNotRetryable,
 )
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
@@ -170,19 +171,19 @@ async def async_agent_inference(
         )
     resolved_version = agent_data['version']
 
-    llm_config: Optional[dict] = None
+    # Only the id is enqueued; the worker fetches the config, key included,
+    # from floware when it runs. Checked here so a bad id is a 404, not a
+    # failed execution.
     if payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
+        if not await llm_inference_config_service.get_public_config(
             payload.llm_inference_config_id
-        )
-        if not llm_config_dict:
+        ):
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content=response_formatter.buildErrorResponse(
                     f'LLM inference configuration not found: {payload.llm_inference_config_id}'
                 ),
             )
-        llm_config = llm_config_dict
 
     try:
         result = await async_agentic_execution_service.create_and_enqueue_agent(
@@ -192,7 +193,7 @@ async def async_agent_inference(
             output_json_enabled=payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,
-            llm_config=llm_config,
+            llm_inference_config_id=payload.llm_inference_config_id,
             version=resolved_version,
         )
     except QueueBackpressure as e:
@@ -420,6 +421,124 @@ async def cancel_execution(
                     if result.completed_at
                     else None,
                 },
+            }
+        ),
+    )
+
+
+@async_router.post(
+    '/v1/agentic-executions/{execution_id}/retry',
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(
+            requires(
+                'agents:RetryExecution',
+                resource=from_path('agent_execution', 'execution_id'),
+                legacy=Legacy.AUTHENTICATED,
+            )
+        )
+    ],
+)
+@inject
+async def retry_execution(
+    request: Request,
+    execution_id: UUID,
+    async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
+        Provide[AgentsContainer.async_agentic_execution_service]
+    ),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    llm_inference_config_service: LlmInferenceConfigService = Depends(
+        Provide[LlmInferenceConfigContainer.llm_inference_config_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Re-run a failed execution with its stored inputs and variables.
+
+    Runs the entity's current version. Only the newest run of a chain can be
+    retried, up to the configured number of attempts.
+    """
+    logger.info(f'Retry requested for execution: {execution_id}')
+
+    access_token, app_key = extract_auth_credentials(request)
+
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
+    try:
+        parent = await async_agentic_execution_service.get_retryable_execution(
+            execution_id
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ExecutionNotRetryable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    workflow_name = namespace = None
+    try:
+        if parent.entity_type == 'agent':
+            entity_data = await agent_crud_service.get_agent(parent.entity_id)
+        else:
+            entity_data = await workflow_crud_service.get_workflow(parent.entity_id)
+            workflow_name = entity_data['name']
+            namespace = entity_data['namespace']
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    if parent.llm_inference_config_id:
+        if not await llm_inference_config_service.get_public_config(
+            parent.llm_inference_config_id
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content=response_formatter.buildErrorResponse(
+                    f'LLM inference configuration not found: {parent.llm_inference_config_id}'
+                ),
+            )
+
+    try:
+        result = await async_agentic_execution_service.retry_execution(
+            parent,
+            access_token=access_token,
+            app_key=app_key,
+            version=entity_data.get('version'),
+            workflow_name=workflow_name,
+            namespace=namespace,
+        )
+    except QueueBackpressure as e:
+        logger.warning(f'Refusing retry at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
+    except ExecutionNotRetryable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    logger.info(f'Execution {execution_id} retried as {result.execution_id}')
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Execution retry queued successfully',
+                'data': result.model_dump(mode='json'),
             }
         ),
     )

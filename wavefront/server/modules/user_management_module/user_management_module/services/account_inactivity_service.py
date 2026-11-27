@@ -69,7 +69,7 @@ class AccountInactivityService:
         )
         if updated:
             # Keep GET /users/{id} on the same cache entry as lockout writes.
-            self.cache_manager.add(
+            await self.cache_manager.try_aadd(
                 user_by_id_cache_key(str(updated.id)),
                 json.dumps(updated.to_dict()),
                 expiry=USER_CACHE_TTL_SECONDS,

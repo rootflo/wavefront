@@ -20,8 +20,10 @@ from authz_module import (
 )
 from authz_module.default import DefaultAuthorizer
 from authz_module.middleware import AuthzMiddleware
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from dependency_injector.wiring import Provide, inject
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -38,9 +40,12 @@ PUBLIC_PATHS = ('/', '/docs', '/openapi.json')
 TOKEN_EXPIRED = 'Token has expired. Please log in again.'
 
 
-def render_error(status_code: int, message: str) -> JSONResponse:
+def render_error(
+    status_code: int, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
+        headers=headers,
         content=ResponseFormatter().buildErrorResponse(error=message),
     )
 
@@ -63,13 +68,20 @@ class ConsoleAuthenticator:
             return None
 
         try:
-            decoded = token_service.decode_token(token)
+            decoded = await token_service.decode_token_async(token)
         except ValueError as e:
             logger.error(f'Token validation error: {e}')
             raise AuthenticationError('Invalid token format')
         except jwt.ExpiredSignatureError as exc:
             logger.error(f'ExpiredSignatureError in require_auth middleware: {exc}')
             raise AuthenticationError(TOKEN_EXPIRED)
+        except jwt.InvalidTokenError as exc:
+            # Malformed token, wrong algorithm, issuer or audience: the caller's
+            # mistake, so 401 and a warning, never a 500.
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__}'
+            )
+            raise AuthenticationError('Invalid token')
 
         if 'session_id' not in decoded:
             logger.error('Invalid token: missing session_id')
@@ -155,6 +167,28 @@ class RequireAuthMiddleware(AuthzMiddleware):
     async def dispatch(self, request: Request, call_next):
         try:
             return await super().dispatch(request, call_next)
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            logger.warning(f'Auth busy on {request.method} {request.url.path!r}: {exc}')
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'The server is busy. Please try again shortly.',
+                headers={'Retry-After': str(retry_after_seconds())},
+            )
+        except PublicKeyUnavailableError as exc:
+            # KMS is down: the token may be valid, so 503 (retry), never 401,
+            # which clients treat as "logged out".
+            logger.error(f'Token key unavailable: {exc}')
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'Authentication is temporarily unavailable. Please try again shortly.',
+                headers={'Retry-After': str(retry_after_seconds())},
+            )
         except jwt.ExpiredSignatureError as exc:
             logger.error(f'ExpiredSignatureError in require_auth middleware: {exc}')
             return render_error(status.HTTP_401_UNAUTHORIZED, TOKEN_EXPIRED)
+        except jwt.InvalidTokenError as exc:
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__}'
+            )
+            return render_error(status.HTTP_401_UNAUTHORIZED, 'Invalid token')

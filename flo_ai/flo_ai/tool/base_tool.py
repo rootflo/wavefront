@@ -9,6 +9,15 @@ class ToolExecutionError(AgentError):
     pass
 
 
+class ToolCallFailed(Exception):
+    """The tool ran but could not do what it was called for.
+
+    An agent records the call as failed and gives the model the message as the
+    tool's result, without error analysis or retry. Anywhere else, such as a
+    function node, it propagates like any other exception.
+    """
+
+
 class Tool:
     def __init__(
         self,
@@ -36,6 +45,9 @@ class Tool:
             tool_result = await self.function(**kwargs)
             logger.info(f'Tool {self.name} returned: {tool_result}')
             return tool_result
+        except ToolCallFailed as e:
+            logger.warning(f'Tool {self.name} failed: {e}')
+            raise
         except Exception as e:
             logger.error(f'Error executing tool {self.name}: {str(e)}', exc_info=True)
             raise ToolExecutionError(

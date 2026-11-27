@@ -1,12 +1,3 @@
 # CVEs accepted by the Docker vulnerability scan (.github/workflows/docker-vulnerability-scan.yml).
 # One ID per line, with a comment saying why and until when, e.g.
 # CVE-2026-12345  # no fixed release yet; revisit 2026-12-01
-
-# Fixed only in releases still inside uv's 7-day exclude-newer cooldown
-# (wavefront/server/pyproject.toml). Bump once it passes; the `exp:` makes the
-# scan fail again after that date if they are still unfixed.
-# pyasn1 0.6.4 -> 0.6.5 (published 2026-10-27): BER/DER decoder DoS issues.
-CVE-2026-119194 exp:2026-11-03
-CVE-2026-119195 exp:2026-11-03
-CVE-2026-119196 exp:2026-11-03
-CVE-2026-119197 exp:2026-11-03

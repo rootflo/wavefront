@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, fields
 
 
 @dataclass(frozen=True)
@@ -10,14 +11,24 @@ class RedisSettings:
     db: int | str = 0
     pool_size: int | str = 20
     pool_timeout: float | str = 2.0
+    # Total attempts per call (first try included), and the exponential wait
+    # between attempts in seconds: initial_backoff, doubling, capped at max_backoff.
     max_retries: int | str = 3
-    initial_backoff: int | str = 1
-    max_backoff: int | str = 10
-    connection_timeout: int | str = 60
-    socket_timeout: int | str = 60
+    initial_backoff: float | str = 1
+    max_backoff: float | str = 10
+    connection_timeout: float | str = 60
+    socket_timeout: float | str = 60
     socket_keepalive: bool | str = True
+    # The async client (a* methods): its own connection pool, and a time limit
+    # for one whole a* call, retries included.
+    async_pool_size: int | str = 20
+    async_command_timeout: float | str = 1.0
 
     def __post_init__(self) -> None:
+        # A key missing from config.ini arrives as None: use the field default.
+        for field in fields(self):
+            if field.name != 'password' and getattr(self, field.name) is None:
+                object.__setattr__(self, field.name, field.default)
         if self.password == '':
             object.__setattr__(self, 'password', None)
         if isinstance(self.socket_keepalive, str):
@@ -25,4 +36,13 @@ class RedisSettings:
                 self,
                 'socket_keepalive',
                 self.socket_keepalive.strip().lower() in ('1', 'true', 'yes'),
+            )
+        if int(self.async_pool_size) < 1:
+            raise ValueError(
+                f'async_pool_size must be at least 1, got {self.async_pool_size!r}'
+            )
+        timeout = float(self.async_command_timeout)
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError(
+                f'async_command_timeout must be finite and positive, got {self.async_command_timeout!r}'
             )

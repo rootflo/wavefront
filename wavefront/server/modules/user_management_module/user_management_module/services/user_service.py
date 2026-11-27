@@ -14,8 +14,9 @@ from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from user_management_module.constants.cache import USER_DATA_PATTERN
 from user_management_module.constants.cache import get_session_cache_key
 from common_module.response_formatter import ResponseFormatter
+from common_module.blocking_io import BlockingPoolBusyError
 from common_module.log.logger import logger
-from user_management_module.utils.password_utils import hash_password
+from user_management_module.utils.password_utils import hash_password_async
 from user_management_module.models.user_schema import NewUser
 from fastapi.responses import JSONResponse
 from fastapi import status
@@ -322,6 +323,48 @@ class UserService:
             result: Result = await session.execute(statement)
             return result.scalar()
 
+    async def is_login_still_valid(
+        self, user_id: str, role_id: str, password_hash: Optional[str] = None
+    ) -> bool:
+        """Whether a login that read the user earlier may still create a session.
+
+        Login waits on bcrypt and token signing after it reads the user, the
+        password and the console role. This asks again, right before the session
+        is created: the account must still be enabled, the password unchanged
+        (when one was checked) and the console role the token carries unchanged.
+        """
+        user = await self.user_repository.find_one(id=user_id)
+        if not user or user.deleted:
+            return False
+        if password_hash is not None and user.password != password_hash:
+            return False
+        current_role = await self.get_user_role_for_scope(
+            user_id=user_id, scope=ResourceScope.CONSOLE
+        )
+        return current_role == role_id
+
+    async def confirm_new_session(
+        self,
+        session_id: str,
+        user_id: str,
+        role_id: str,
+        password_hash: Optional[str] = None,
+    ) -> bool:
+        """Re-check a login after its session row exists; drop the row if stale.
+
+        The check before creation leaves a gap: a password reset or disable can
+        commit between that check and the insert, and its session revocation
+        then runs before the new row exists. Checking again after the insert
+        closes it. Either this read sees the change and the row is removed here,
+        or the change commits after this read, so its revocation runs after the
+        insert and removes the row.
+        """
+        if await self.is_login_still_valid(user_id, role_id, password_hash):
+            return True
+        async with self.cache_manager.invalidating(get_session_cache_key(session_id)):
+            await self.session_repository.delete_all(id=session_id)
+        return False
+
     async def invalidate_user_sessions(self, user_id: str) -> None:
         """Drop every live session for a user, cache and DB alike.
 
@@ -334,13 +377,16 @@ class UserService:
         its session, so a user normally has a single session row. If a cache
         remove still fails after CacheManager's retries, the exception propagates
         before the DB rows are deleted, so the caller fails rather than reporting
-        success with a live session.
+        success with a live session. The removes are async with a short cap, so
+        a Redis outage fails the request fast (CacheUnavailableError, a 503)
+        instead of holding the event loop.
         """
         sessions = await self.session_repository.find(user_id=user_id, limit=100)
-        for s in sessions:
-            self.cache_manager.remove(get_session_cache_key(s.id))
-        self.cache_manager.remove(str(user_id))
-        await self.session_repository.delete_all(user_id=user_id)
+        keys = [get_session_cache_key(s.id) for s in sessions] + [str(user_id)]
+        # Strict before the delete (CacheUnavailableError: a 503, rows kept),
+        # best-effort after; a fill racing the revocation can't revive a session.
+        async with self.cache_manager.invalidating(*keys):
+            await self.session_repository.delete_all(user_id=user_id)
 
     async def delete_user(self, user_id: str) -> bool:
         await self.user_role_repository.delete_all(user_id=user_id)
@@ -411,7 +457,7 @@ class UserService:
 
                 user_updates: dict[str, Any] = {
                     'deleted': False,
-                    'password': hash_password(new_user_data.password),
+                    'password': await hash_password_async(new_user_data.password),
                     'first_name': new_user_data.first_name,
                     'last_name': new_user_data.last_name,
                     'username': new_user_data.username,
@@ -461,6 +507,9 @@ class UserService:
                     ),
                 )
 
+        except BlockingPoolBusyError:
+            # Retryable: let the app's 503 handler answer instead of a 500.
+            raise
         except Exception as e:
             logger.error(f'Failed to reactivate user {existing_user.id}: {str(e)}')
             return JSONResponse(

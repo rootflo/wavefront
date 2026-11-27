@@ -30,6 +30,12 @@ import { VOICE_PROVIDER_KINDS } from './kinds';
 
 export type VoiceProviderConfig = SttConfig | TtsConfig;
 
+/** The stored key is never sent back; the placeholder shows whether one is set. */
+const apiKeyPlaceholder = (config?: VoiceProviderConfig): string => {
+  if (!config) return 'Enter your API key';
+  return config.has_api_key ? '******** (set) - enter a new key to replace it' : 'Enter new API key to update';
+};
+
 const buildSchema = (kind: VoiceProviderKind, isEdit: boolean) =>
   z
     .object({
@@ -222,11 +228,7 @@ const VoiceProviderConfigFormDialog: React.FC<VoiceProviderConfigFormDialogProps
                     )}
                   </FormLabel>
                   <FormControl>
-                    <Input
-                      type="password"
-                      placeholder={isEdit ? 'Enter new API key to update' : 'Enter your API key'}
-                      {...field}
-                    />
+                    <Input type="password" placeholder={apiKeyPlaceholder(config)} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

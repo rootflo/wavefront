@@ -78,6 +78,29 @@ def is_file_storage_type(datasource_type: str | DataSourceType | None) -> bool:
         return False
 
 
+# Config keys holding credentials: stored through SecretCipher and masked in
+# API responses.
+DATASOURCE_SECRET_FIELDS: dict[DataSourceType, tuple[str, ...]] = {
+    DataSourceType.POSTGRES: ('password',),
+    DataSourceType.MSSQL: ('password',),
+    DataSourceType.AWS_REDSHIFT: ('password',),
+    DataSourceType.GCP_BIGQUERY: ('credentials_json', 'credentials_path'),
+    DataSourceType.AWS_S3: ('aws_secret_access_key',),
+    DataSourceType.GCS: ('credentials_json',),
+    DataSourceType.AZURE_BLOB_STORAGE: ('client_secret',),
+}
+
+
+def get_datasource_secret_fields(
+    datasource_type: str | DataSourceType | None,
+) -> tuple[str, ...]:
+    """Secret config keys for ``datasource_type``; empty for an unknown type."""
+    try:
+        return DATASOURCE_SECRET_FIELDS.get(DataSourceType(datasource_type), ())
+    except ValueError:
+        return ()
+
+
 class FileStorageABC(ABC):
     @abstractmethod
     async def test_connection(self) -> bool:

@@ -43,15 +43,15 @@ async def test_get_model_config_success(
 ):
     """Test successful model config retrieval."""
     model_id = str(sample_model_config.id)
-    config_dict = sample_model_config.to_dict(exclude_api_key=False)
-    mock_llm_inference_config_service.get_config.return_value = config_dict
+    config_dict = sample_model_config.to_stored_dict()
+    mock_llm_inference_config_service.get_runtime_config.return_value = config_dict
 
     result = await inference_proxy_service.get_model_config(model_id)
 
     assert str(result.id) == str(sample_model_config.id)
     assert result.llm_model == sample_model_config.llm_model
     assert result.api_key == sample_model_config.api_key
-    mock_llm_inference_config_service.get_config.assert_called_once_with(
+    mock_llm_inference_config_service.get_runtime_config.assert_called_once_with(
         sample_model_config.id
     )
 
@@ -62,7 +62,7 @@ async def test_get_model_config_not_found(
 ):
     """Test model config not found."""
     model_id = str(uuid.uuid4())
-    mock_llm_inference_config_service.get_config.return_value = None
+    mock_llm_inference_config_service.get_runtime_config.return_value = None
 
     result = await inference_proxy_service.get_model_config(model_id)
 
@@ -79,7 +79,7 @@ async def test_get_model_config_invalid_uuid(
     result = await inference_proxy_service.get_model_config(model_id)
 
     assert result is None
-    mock_llm_inference_config_service.get_config.assert_not_called()
+    mock_llm_inference_config_service.get_runtime_config.assert_not_called()
 
 
 def test_construct_target_url(inference_proxy_service):
@@ -325,3 +325,41 @@ def test_extract_azure_openai_model(inference_proxy_service):
         parsed_data, model_call_path
     )
     assert result == 'gpt-4'
+
+
+async def _call_controller(side_effect):
+    from fastapi import Request
+    from common_module.response_formatter import ResponseFormatter
+    from llm_inference_config_module.controllers.inference_proxy_controller import (
+        proxy_inference_request,
+    )
+
+    service = Mock()
+    service.proxy_inference_request = AsyncMock(side_effect=side_effect)
+    return await proxy_inference_request(
+        model_id=str(uuid.uuid4()),
+        model_call_path='chat/completions',
+        request=Mock(spec=Request),
+        inference_proxy_service=service,
+        response_formatter=ResponseFormatter(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_controller_keeps_http_exception_status():
+    """A 404 must stay a 404: clients retry a 500 as transient."""
+    from fastapi import HTTPException
+
+    response = await _call_controller(
+        HTTPException(status_code=404, detail='Model configuration not found')
+    )
+
+    assert response.status_code == 404
+    assert b'Model configuration not found' in response.body
+
+
+@pytest.mark.asyncio
+async def test_controller_unexpected_error_is_500():
+    response = await _call_controller(RuntimeError('boom'))
+
+    assert response.status_code == 500

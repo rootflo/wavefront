@@ -48,6 +48,7 @@ class PluginsContainer(containers.DeclarativeContainer):
     cloud_storage_manager = providers.Dependency()
 
     kms_cipher = providers.Dependency()
+    secret_cipher = providers.Dependency()
 
     feature_flags = providers.Dependency(default=FeatureFlags())
 
@@ -106,6 +107,8 @@ class PluginsContainer(containers.DeclarativeContainer):
         message_processor_repository=message_processor_repository,
         hermes_url=config.hermes.url,
         bucket_name=config.storage.application_bucket,
+        cache_manager=cache_manager,
+        yaml_cache_seconds=config.message_processor.yaml_cache_seconds,
     )
 
     # Email: OAuth apps hold client secrets and connections hold mailbox tokens.

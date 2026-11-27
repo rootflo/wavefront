@@ -25,7 +25,7 @@ export const SubworkflowProperties = ({
           className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none"
           value={(selectedNode.data.yaml_file as string) || (selectedNode.data.ref as string) || ''}
           onChange={(e) => handleChanges({ yaml_file: e.target.value, ref: e.target.value })}
-          placeholder="e.g. riskcovry-bridge/1a_doc_type_classifier"
+          placeholder="e.g. my-namespace/document_classifier"
         />
         <datalist id="workflows-list">
           {workflows.map((w: { namespace?: string; name: string }) => (

@@ -43,7 +43,7 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -65,6 +65,7 @@ from pipecat.utils.string import (
 
 from call_processing.log.logger import logger
 from call_processing.services.common.language_switch import queue_language_update
+from call_processing.services.common.prompt_layout import build_system_prompt
 from call_processing.services.common.prompts import language_instruction
 from call_processing.services.common.session_events import SessionEvents
 from call_processing.services.webrtc.room_service import (
@@ -563,10 +564,23 @@ class ClientSessionMessenger(SessionEvents):
     async def _apply_prompt(self, ctx: SetContext, overlay: str) -> None:
         messages = list(self._context.get_messages())
         original = self._language_state.get('original_system_prompt')
+        parts = self._language_state.get('prompt_parts')
 
-        if original:
-            # Multi-language agent: the language tool rebuilds the system prompt
-            # from ``original_system_prompt``, so the overlay must live there too.
+        if parts is not None:
+            # Laid-out multi-language prompt: the overlay joins the call details,
+            # so the language pack and the last line still follow each switch
+            parts = replace(parts, suffix=apply_step_overlay(parts.suffix, overlay))
+            self._language_state['prompt_parts'] = parts
+            if original:
+                self._language_state['original_system_prompt'] = apply_step_overlay(
+                    original, overlay
+                )
+            language = self._resolve_language(ctx.language)
+            content = build_system_prompt(parts, language)
+            await self._switch_services_language(language)
+        elif original:
+            # No parts (room-context language): the language tool rebuilds the
+            # system prompt from ``original_system_prompt``, so the overlay lives there.
             new_original = apply_step_overlay(original, overlay)
             self._language_state['original_system_prompt'] = new_original
             language = self._resolve_language(ctx.language)

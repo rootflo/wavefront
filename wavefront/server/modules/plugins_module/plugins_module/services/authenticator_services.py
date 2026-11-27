@@ -1,30 +1,26 @@
 from typing import Dict, Any, Optional, List
 from uuid import UUID
 
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.models.authenticator import Authenticator
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from authenticator import AuthenticatorType
 from authenticator.factory import get_authenticator_factory
 from authenticator.types import AuthenticatorABC
+from plugins_module.utils.authenticator_helper import get_authenticator_secret_fields
 
 
-async def get_authenticator_config(
-    auth_id: UUID, authenticator_repository: SQLAlchemyRepository[Authenticator]
-) -> Optional[Dict[str, Any]]:
-    """Get authenticator configuration by ID."""
-    authenticator = await authenticator_repository.find_one(
-        auth_id=auth_id, is_deleted=False
-    )
-
-    if not authenticator:
-        return None
-
+def _authenticator_to_dict(authenticator: Authenticator) -> Dict[str, Any]:
+    """Response form of an authenticator, with its secrets masked."""
     return {
         'auth_id': str(authenticator.auth_id),
         'auth_name': authenticator.auth_name,
         'auth_type': authenticator.auth_type,
         'auth_desc': authenticator.auth_desc,
-        'config': authenticator.config,
+        'config': SecretCipher.mask_fields(
+            authenticator.config,
+            get_authenticator_secret_fields(authenticator.auth_type),
+        ),
         'is_enabled': authenticator.is_enabled,
         'created_at': authenticator.created_at.isoformat()
         if authenticator.created_at
@@ -33,6 +29,29 @@ async def get_authenticator_config(
         if authenticator.updated_at
         else None,
     }
+
+
+async def _plain_config(
+    authenticator: Authenticator, secret_cipher: SecretCipher
+) -> Optional[Dict[str, Any]]:
+    """The stored config with its secrets decrypted, for the factory."""
+    return await secret_cipher.areveal_fields(
+        authenticator.config, get_authenticator_secret_fields(authenticator.auth_type)
+    )
+
+
+async def get_authenticator_config(
+    auth_id: UUID, authenticator_repository: SQLAlchemyRepository[Authenticator]
+) -> Optional[Dict[str, Any]]:
+    """Get authenticator configuration by ID, with its secrets masked."""
+    authenticator = await authenticator_repository.find_one(
+        auth_id=auth_id, is_deleted=False
+    )
+
+    if not authenticator:
+        return None
+
+    return _authenticator_to_dict(authenticator)
 
 
 async def validate_authenticator_type(
@@ -51,6 +70,7 @@ async def create_authenticator_config(
     auth_desc: Optional[str],
     config: Dict[str, Any],
     authenticator_repository: SQLAlchemyRepository[Authenticator],
+    secret_cipher: SecretCipher,
 ) -> Dict[str, Any]:
     """Create new authenticator configuration."""
 
@@ -69,6 +89,10 @@ async def create_authenticator_config(
     if existing and not existing.is_deleted:
         raise ValueError(f"Authenticator with name '{auth_name}' already exists")
 
+    stored_config = await secret_cipher.aprotect_fields(
+        config, get_authenticator_secret_fields(auth_type)
+    )
+
     # Create or update authenticator
     if existing:
         # Reactivate deleted authenticator
@@ -77,7 +101,7 @@ async def create_authenticator_config(
             refresh=True,
             auth_type=auth_type,
             auth_desc=auth_desc,
-            config=config,
+            config=stored_config,
             is_enabled=True,
             is_deleted=False,
         )
@@ -89,26 +113,13 @@ async def create_authenticator_config(
             auth_name=auth_name,
             auth_type=auth_type,
             auth_desc=auth_desc,
-            config=config,
+            config=stored_config,
             is_enabled=True,
         )
         # Add to factory with auth_id
         factory.get_authenticator(str(authenticator.auth_id), auth_type_enum, config)
 
-    return {
-        'auth_id': str(authenticator.auth_id),
-        'auth_name': authenticator.auth_name,
-        'auth_type': authenticator.auth_type,
-        'auth_desc': authenticator.auth_desc,
-        'config': authenticator.config,
-        'is_enabled': authenticator.is_enabled,
-        'created_at': authenticator.created_at.isoformat()
-        if authenticator.created_at
-        else None,
-        'updated_at': authenticator.updated_at.isoformat()
-        if authenticator.updated_at
-        else None,
-    }
+    return _authenticator_to_dict(authenticator)
 
 
 async def update_authenticator_config(
@@ -116,6 +127,7 @@ async def update_authenticator_config(
     config: Dict[str, Any],
     auth_desc: Optional[str] = None,
     authenticator_repository: SQLAlchemyRepository[Authenticator] = None,
+    secret_cipher: SecretCipher = None,
 ) -> Optional[Dict[str, Any]]:
     """Update existing authenticator configuration."""
 
@@ -129,11 +141,18 @@ async def update_authenticator_config(
     factory = get_authenticator_factory()
     auth_type_enum = AuthenticatorType(authenticator.auth_type)
 
+    # A secret sent back masked (or left out) keeps the stored one; merge it
+    # back before validating so required-field checks see the whole config.
+    secret_fields = get_authenticator_secret_fields(authenticator.auth_type)
+    config = SecretCipher.merge_masked(
+        config, await _plain_config(authenticator, secret_cipher), secret_fields
+    )
+
     # Validate config without creating instance
     factory.validate_config(auth_type_enum, config)
 
     # Update authenticator
-    update_data = {'config': config}
+    update_data = {'config': await secret_cipher.aprotect_fields(config, secret_fields)}
     if auth_desc is not None:
         update_data['auth_desc'] = auth_desc
 
@@ -141,23 +160,10 @@ async def update_authenticator_config(
         {'auth_id': auth_id}, refresh=True, **update_data
     )
 
-    # Update factory with auth_id
+    # Replaces the cached instance, so a changed secret takes effect
     factory.update_authenticator(str(auth_id), auth_type_enum, config)
 
-    return {
-        'auth_id': str(updated_authenticator.auth_id),
-        'auth_name': updated_authenticator.auth_name,
-        'auth_type': updated_authenticator.auth_type,
-        'auth_desc': updated_authenticator.auth_desc,
-        'config': updated_authenticator.config,
-        'is_enabled': updated_authenticator.is_enabled,
-        'created_at': updated_authenticator.created_at.isoformat()
-        if updated_authenticator.created_at
-        else None,
-        'updated_at': updated_authenticator.updated_at.isoformat()
-        if updated_authenticator.updated_at
-        else None,
-    }
+    return _authenticator_to_dict(updated_authenticator)
 
 
 async def delete_authenticator_config(
@@ -183,13 +189,15 @@ async def delete_authenticator_config(
 
 
 async def test_authenticator_health(
-    auth_id: UUID, authenticator_repository: SQLAlchemyRepository[Authenticator]
+    auth_id: UUID,
+    authenticator_repository: SQLAlchemyRepository[Authenticator],
+    secret_cipher: SecretCipher,
 ) -> Dict[str, Any]:
     """Test authenticator health and connectivity by auth_id."""
 
     # Get authenticator instance and config to distinguish not found vs disabled
     authenticator, config_data = await get_authenticator_with_config(
-        auth_id, authenticator_repository
+        auth_id, authenticator_repository, secret_cipher
     )
 
     # Authenticator not found
@@ -222,7 +230,9 @@ async def test_authenticator_health(
 
 
 async def get_authenticator_instance(
-    auth_id: UUID, authenticator_repository: SQLAlchemyRepository[Authenticator]
+    auth_id: UUID,
+    authenticator_repository: SQLAlchemyRepository[Authenticator],
+    secret_cipher: SecretCipher,
 ) -> Optional[AuthenticatorABC]:
     """
     Get authenticator instance by ID.
@@ -232,26 +242,32 @@ async def get_authenticator_instance(
     between missing and disabled authenticators.
     """
 
-    config_data = await get_authenticator_config(auth_id, authenticator_repository)
-    if not config_data:
+    authenticator = await authenticator_repository.find_one(
+        auth_id=auth_id, is_deleted=False
+    )
+    if not authenticator:
         return None
 
     # Return None if disabled (don't raise exception to keep function side-effect-free)
-    if not config_data['is_enabled']:
+    if not authenticator.is_enabled:
         return None
 
-    auth_type_enum = AuthenticatorType(config_data['auth_type'])
+    auth_type_enum = AuthenticatorType(authenticator.auth_type)
     factory = get_authenticator_factory()
     return factory.get_authenticator(
-        str(auth_id), auth_type_enum, config_data['config']
+        str(auth_id), auth_type_enum, await _plain_config(authenticator, secret_cipher)
     )
 
 
 async def get_authenticator_with_config(
-    auth_id: UUID, authenticator_repository: SQLAlchemyRepository[Authenticator]
+    auth_id: UUID,
+    authenticator_repository: SQLAlchemyRepository[Authenticator],
+    secret_cipher: SecretCipher,
 ) -> tuple[Optional[AuthenticatorABC], Optional[Dict[str, Any]]]:
     """
     Get authenticator instance and its configuration by ID.
+
+    config_data has its secrets masked; only the instance sees them.
 
     Returns:
         tuple: (authenticator_instance, config_data)
@@ -260,25 +276,29 @@ async def get_authenticator_with_config(
             - (authenticator_instance, config_data): Authenticator is enabled and ready
     """
 
-    config_data = await get_authenticator_config(auth_id, authenticator_repository)
-    if not config_data:
+    stored = await authenticator_repository.find_one(auth_id=auth_id, is_deleted=False)
+    if not stored:
         return None, None
 
+    config_data = _authenticator_to_dict(stored)
+
     # If disabled, return config but no instance
-    if not config_data['is_enabled']:
+    if not stored.is_enabled:
         return None, config_data
 
-    auth_type_enum = AuthenticatorType(config_data['auth_type'])
+    auth_type_enum = AuthenticatorType(stored.auth_type)
     factory = get_authenticator_factory()
     authenticator = factory.get_authenticator(
-        str(auth_id), auth_type_enum, config_data['config']
+        str(auth_id), auth_type_enum, await _plain_config(stored, secret_cipher)
     )
 
     return authenticator, config_data
 
 
 async def get_authenticator_instance_by_name(
-    auth_name: str, authenticator_repository: SQLAlchemyRepository[Authenticator]
+    auth_name: str,
+    authenticator_repository: SQLAlchemyRepository[Authenticator],
+    secret_cipher: SecretCipher,
 ) -> Optional[AuthenticatorABC]:
     """Get authenticator instance by name."""
 
@@ -292,7 +312,9 @@ async def get_authenticator_instance_by_name(
     auth_type_enum = AuthenticatorType(authenticator.auth_type)
     factory = get_authenticator_factory()
     return factory.get_authenticator(
-        str(authenticator.auth_id), auth_type_enum, authenticator.config
+        str(authenticator.auth_id),
+        auth_type_enum,
+        await _plain_config(authenticator, secret_cipher),
     )
 
 

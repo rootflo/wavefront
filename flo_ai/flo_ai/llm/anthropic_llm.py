@@ -13,6 +13,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
+from flo_ai.llm.rate_limits import rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
@@ -32,6 +33,8 @@ class Anthropic(BaseLLM):
         client_kwargs, request_kwargs = split_client_kwargs(
             AsyncAnthropic, kwargs, reserved=('default_headers',)
         )
+        # llm.rate_limits owns retries; the SDK's own would hide 429s from it.
+        client_kwargs.setdefault('max_retries', 0)
 
         super().__init__(
             model=model,
@@ -47,6 +50,7 @@ class Anthropic(BaseLLM):
             **client_kwargs,
         )
 
+    @rate_limited(provider='anthropic')
     @trace_llm_call(provider='anthropic')
     async def generate(
         self,
@@ -163,8 +167,9 @@ class Anthropic(BaseLLM):
             return {'content': text_content}
 
         except Exception as e:
-            raise Exception(f'Error in Claude API call: {str(e)}')
+            raise Exception(f'Error in Claude API call: {str(e)}') from e
 
+    @rate_limited_stream(provider='anthropic')
     @trace_llm_stream(provider='anthropic')
     async def stream(
         self,

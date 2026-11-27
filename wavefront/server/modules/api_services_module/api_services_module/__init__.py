@@ -14,7 +14,6 @@ from .auth.manager import AuthManager
 from .models.service import ServiceDefinition, AuthConfig, ApiConfig, ProxyResponse
 from .models.pipeline import PipelineContext, PipelineStage, CompositePipelineStage
 from .api_services_container import ApiServicesContainer, create_api_services_container
-from .execution.execute import execute_api_service
 
 __version__ = '1.0.0'
 __author__ = 'Floware Team'
@@ -39,6 +38,4 @@ __all__ = [
     # Dependency Injection
     'ApiServicesContainer',
     'create_api_services_container',
-    # Utility Functions
-    'execute_api_service',
 ]

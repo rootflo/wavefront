@@ -15,6 +15,7 @@ from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.secret_cipher import SecretCipher
 from dependency_injector import providers
 from authz_module import user_principal
 from plugins_module.controllers import datasource_controller
@@ -581,9 +582,13 @@ class TestUpdateFileStorageDatasource:
         existing = SimpleNamespace(type='aws_s3', config=dict(self.S3_STORED))
         repository = SimpleNamespace(
             find_one=AsyncMock(return_value=existing),
-            find_one_and_update=AsyncMock(return_value=SimpleNamespace(id='x')),
+            find_one_and_update=AsyncMock(
+                return_value=SimpleNamespace(id='x', type='aws_s3')
+            ),
         )
-        with patch.object(datasource_controller.Datasource, 'to_dict', return_value={}):
+        with patch.object(
+            datasource_controller.Datasource, 'to_dict', return_value={'config': {}}
+        ):
             yield repository
 
     async def _patch(self, repository, existing_type=None, **payload):
@@ -600,6 +605,7 @@ class TestUpdateFileStorageDatasource:
                 response_formatter=ResponseFormatter(),
                 datasource_repository=repository,
                 cache_manager=None,
+                secret_cipher=SecretCipher(enabled=False),
             )
 
     async def test_rename_allowed(self, admin, repository):

@@ -13,9 +13,11 @@ import jwt
 from authz_module import AuthzProvider, install, load_provider
 from authz_module.default import DefaultAuthorizer
 from authz_module.middleware import AuthzMiddleware
+from common_module.blocking_io import BlockingPoolBusyError, retry_after_seconds
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.security.public_key_cache import PublicKeyUnavailableError
 from fastapi import status
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
@@ -40,9 +42,12 @@ from user_management_module.authorization.legacy_resolver import (
 PUBLIC_PATHS = ('/', '/docs', '/openapi.json')
 
 
-def render_error(status_code: int, message: str) -> JSONResponse:
+def render_error(
+    status_code: int, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
+        headers=headers,
         content=ResponseFormatter().buildErrorResponse(error=message),
     )
 
@@ -116,6 +121,31 @@ class RequireAuthMiddleware(AuthzMiddleware):
         # answered as an expired session, not a server error.
         try:
             return await super().dispatch(request, call_next)
+        except BlockingPoolBusyError as exc:
+            # Middleware errors skip the app's exception handlers, so answer here.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Auth busy on {request.method} {request.url.path!r}: {exc} '
+                f'[Request ID: {request_id}]'
+            )
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'The server is busy. Please try again shortly.',
+                headers={'Retry-After': str(retry_after_seconds())},
+            )
+        except PublicKeyUnavailableError as exc:
+            # KMS is down: the token may be valid, so 503 (retry), never 401,
+            # which clients treat as "logged out".
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.error(
+                f'Token key unavailable on {request.method} {request.url.path!r}: '
+                f'{exc} [Request ID: {request_id}]'
+            )
+            return render_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'Authentication is temporarily unavailable. Please try again shortly.',
+                headers={'Retry-After': str(retry_after_seconds())},
+            )
         except jwt.ExpiredSignatureError as exc:
             request_id = getattr(request.state, 'request_id', get_current_request_id())
             logger.error(
@@ -123,6 +153,15 @@ class RequireAuthMiddleware(AuthzMiddleware):
                 f'[Request ID: {request_id}]'
             )
             return render_error(status.HTTP_401_UNAUTHORIZED, TOKEN_EXPIRED)
+        except jwt.InvalidTokenError as exc:
+            # Malformed token, wrong algorithm, issuer or audience: the caller's
+            # mistake, so 401 and a warning, never a 500.
+            request_id = getattr(request.state, 'request_id', get_current_request_id())
+            logger.warning(
+                f'Invalid token in require_auth middleware: {type(exc).__name__} '
+                f'[Request ID: {request_id}]'
+            )
+            return render_error(status.HTTP_401_UNAUTHORIZED, 'Invalid token')
 
 
 __all__ = [

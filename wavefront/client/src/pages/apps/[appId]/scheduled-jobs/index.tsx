@@ -17,6 +17,7 @@ import {
 } from '@app/hooks';
 import { cn } from '@app/lib/utils';
 import { useDashboardStore } from '@app/store';
+import { JOB_TYPE_LABELS, JOB_TYPE_SCHEDULED_QUERY, isScheduledJobType } from '@app/constants/scheduled-job';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router';
@@ -103,7 +104,12 @@ const ScheduledJobsPage: React.FC = () => {
   /** Disables just the row whose pause/resume is in flight. */
   const isActing = (jobId: string) => setJobPaused.isPending && setJobPaused.variables?.jobId === jobId;
 
+  const getJobTypeLabel = (job: ScheduledJob) =>
+    isScheduledJobType(job.job_type) ? JOB_TYPE_LABELS[job.job_type] : job.job_type;
+
   const getRecipientSummary = (job: ScheduledJob) => {
+    // Scheduled query jobs email nobody.
+    if (job.job_type === JOB_TYPE_SCHEDULED_QUERY) return '—';
     const ids = extractRecipientUserIdsFromPayload(job.payload || {});
     const users = resolveUsersFromRecipientIds(ids, appUsers);
     if (users.length === 0) return `${ids.length} recipient(s)`;
@@ -120,7 +126,7 @@ const ScheduledJobsPage: React.FC = () => {
       <ListHeader
         title="Scheduled Jobs"
         count={filteredJobs.length || undefined}
-        subtitle={<>Manage email report schedules for {selectedApp?.app_name}</>}
+        subtitle={<>Manage scheduled query jobs and email reports for {selectedApp?.app_name}</>}
         search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search scheduled jobs' }}
         filters={
           <FilterSelect
@@ -147,7 +153,7 @@ const ScheduledJobsPage: React.FC = () => {
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
             title="No scheduled jobs"
-            description="Create a schedule to email dynamic query reports on a cron"
+            description="Create a schedule to run dynamic queries, or email their results, on a cron"
             actionText="Create Schedule"
             onActionClick={handleCreate}
           />
@@ -173,6 +179,7 @@ const ScheduledJobsPage: React.FC = () => {
                       value: job.status,
                       className: cn('capitalize', statusBadgeClass[job.status] || ''),
                     },
+                    { label: 'Type', value: getJobTypeLabel(job) },
                     { label: 'Cron', value: job.cron_expr, isMono: true },
                     { label: 'Recipients', value: getRecipientSummary(job) },
                     { label: 'Next run', value: formatDateTime(job.next_run_at) },
@@ -202,6 +209,7 @@ const ScheduledJobsPage: React.FC = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Datasource</TableHead>
                   <TableHead>Queries</TableHead>
                   <TableHead>Cron</TableHead>
@@ -226,6 +234,7 @@ const ScheduledJobsPage: React.FC = () => {
                           {job.status}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{getJobTypeLabel(job)}</TableCell>
                       <TableCell className="max-w-[160px] truncate" title={datasourceId}>
                         {datasourceNameById.get(datasourceId) || datasourceId || '—'}
                       </TableCell>

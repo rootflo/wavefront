@@ -1,8 +1,9 @@
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from google import genai
 from google.genai import types
 from flo_ai.llm.gemini_llm import Gemini
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm.rate_limits import RateLimitScope
 
 
 class VertexAI(Gemini):
@@ -39,3 +40,13 @@ class VertexAI(Gemini):
 
         # Create VertexAI-specific client
         self.client = genai.Client(**client_kwargs)
+
+    def rate_limit_scope(self) -> RateLimitScope:
+        # Authenticated by ADC rather than a key; quotas are per project.
+        return RateLimitScope(
+            provider='vertex',
+            model=self.model,
+            base_url=self.base_url or '',
+            region=self.location or '',
+            account=self.project or '',
+        )

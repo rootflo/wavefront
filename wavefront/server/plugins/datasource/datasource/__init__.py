@@ -1,11 +1,13 @@
 from .types import (
     BooleanResult,
+    DATASOURCE_SECRET_FIELDS,
     DataSourceABC,
     DataSourceType,
     FILE_STORAGE_TYPES,
     FileStorageABC,
     TableListResult,
     QueryResult,
+    get_datasource_secret_fields,
     is_file_storage_type,
 )
 from dataclasses import replace
@@ -39,6 +41,7 @@ from .validation import InvalidQueryError, InvalidResourceError
 __all__ = [
     'AzureBlobStorageConfig',
     'BigQueryConfig',
+    'DATASOURCE_SECRET_FIELDS',
     'DataSourceType',
     'DatasourcePlugin',
     'FILE_STORAGE_TYPES',
@@ -55,6 +58,7 @@ __all__ = [
     'RedshiftConfig',
     'S3FileStorageConfig',
     'build_file_storage_config',
+    'get_datasource_secret_fields',
     'is_file_storage_type',
 ]
 

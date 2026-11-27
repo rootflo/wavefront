@@ -16,6 +16,7 @@ import json
 import re
 import time
 from collections.abc import Sequence
+from typing import Optional
 
 import jwt
 from auth_module.auth_container import AuthContainer
@@ -23,7 +24,9 @@ from auth_module.services.token_service import TokenService
 from authz_module import AuthenticationError, Principal, PrincipalType
 from authz_module.principal import service_principal, user_principal
 from common_module.log.logger import logger
+from common_module.common_container import CommonContainer
 from common_module.middleware.request_id_middleware import get_current_request_id
+from common_module.security.secret_cipher import SecretCipher
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.session import Session
@@ -149,16 +152,20 @@ def validate_mtls_auth(
         if not xfcc:
             return None
 
-        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID
+        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID.
+        # The sidecar appends the peer it authenticated as the last entry; earlier
+        # entries arrived as request headers and can be forged.
         spiffe_id = None
-        match = re.search(r'URI=(spiffe://[^;,]+)', xfcc)
-        if match:
-            spiffe_id = match.group(1)
+        uris = re.findall(r'URI=(spiffe://[^;,"]+)', xfcc)
+        if uris:
+            spiffe_id = uris[-1]
         elif xfcc.startswith('spiffe://'):
             spiffe_id = xfcc
 
         if spiffe_id:
-            if not spiffe_id.startswith(allowed_principal_prefixes):
+            if not spiffe_id.startswith(
+                tuple(f'{prefix}/' for prefix in allowed_principal_prefixes)
+            ):
                 logger.error(f'Invalid mTLS authentication. Principal: {spiffe_id}')
                 return None
 
@@ -185,6 +192,7 @@ def validate_mtls_auth(
 async def validate_hmac_signature(
     request: Request,
     auth_secrets_repository: SQLAlchemyRepository[AuthSecrets],
+    secret_cipher: SecretCipher,
 ) -> bool:
     """Validate HMAC signature from request headers."""
     try:
@@ -249,8 +257,9 @@ async def validate_hmac_signature(
                 return False
 
         message_to_sign = f'{nonce}:{timestamp}'
+        client_secret = await secret_cipher.areveal(auth_secret.client_secret)
         expected_signature = hmac.new(
-            auth_secret.client_secret.encode('utf-8'),
+            client_secret.encode('utf-8'),
             message_to_sign.encode('utf-8'),
             hashlib.sha256,
         ).hexdigest()
@@ -284,13 +293,21 @@ async def validate_session_token(
 ) -> Principal:
     """The user principal for a session token whose session is still live."""
     try:
-        decoded = token_service.decode_token(token)
+        decoded = await token_service.decode_token_async(token)
     except jwt.ExpiredSignatureError as exc:
         logger.error(
             f'ExpiredSignatureError in require_auth middleware: {exc} '
             f'[Request ID: {_request_id(request)}]'
         )
         raise AuthenticationError(TOKEN_EXPIRED)
+    except jwt.InvalidTokenError as exc:
+        # Malformed token, wrong algorithm, issuer or audience: the caller's
+        # mistake, so 401 and a warning, never a 500.
+        logger.warning(
+            f'Invalid token in require_auth middleware: {type(exc).__name__} '
+            f'[Request ID: {_request_id(request)}]'
+        )
+        raise AuthenticationError('Invalid token')
 
     if 'session_id' not in decoded:
         logger.error(
@@ -298,50 +315,37 @@ async def validate_session_token(
         )
         raise AuthenticationError('Invalid token: session not found')
 
+    # Session lookup through the generation-checked cache. A slow or
+    # unreachable Redis falls back to the database (the source of truth)
+    # instead of failing the request, and a fill that raced a logout or
+    # revocation can never bring the session back.
     session_cache_key = get_session_cache_key(decoded['session_id'])
-    cached_session = cache_manager.get_str(session_cache_key)
-    if cached_session:
-        try:
-            session_data = json.loads(cached_session)
-            if session_data.get('user_id') != decoded['user_id']:
-                logger.error(
-                    'Invalid session: session does not belong to user '
-                    f'[Request ID: {_request_id(request)}]'
-                )
-                raise AuthenticationError('Invalid session')
-        except json.JSONDecodeError:
-            logger.error(
-                'Failed to decode cached session data, fetching from DB '
-                f'[Request ID: {_request_id(request)}]'
-            )
-            cached_session = None
 
-    if not cached_session:
+    async def load_session() -> Optional[str]:
         session = await session_repository.find_one(id=decoded['session_id'])
         if not session:
-            logger.error(
-                'Invalid session: session not found in database '
-                f'[Request ID: {_request_id(request)}]'
-            )
-            raise AuthenticationError('Invalid session')
-
-        session_data = {
-            'id': str(session.id),
-            'user_id': str(session.user_id),
-            'device_info': session.device_info,
-        }
-        cache_manager.add(
-            session_cache_key,
-            json.dumps(session_data),
-            token_service.token_expiry,
+            return None
+        return json.dumps(
+            {
+                'id': str(session.id),
+                'user_id': str(session.user_id),
+                'device_info': session.device_info,
+            }
         )
 
-        if str(session.user_id) != decoded['user_id']:
-            logger.error(
-                'Invalid session: session does not belong to user '
-                f'[Request ID: {_request_id(request)}]'
-            )
-            raise AuthenticationError('Invalid session')
+    session_json = await cache_manager.read_through(
+        session_cache_key, load_session, ttl=token_service.token_expiry
+    )
+    try:
+        session_data = json.loads(session_json) if session_json else None
+    except json.JSONDecodeError:
+        session_data = None
+    if not session_data or session_data.get('user_id') != decoded['user_id']:
+        logger.error(
+            "Invalid session: not found or not this user's "
+            f'[Request ID: {_request_id(request)}]'
+        )
+        raise AuthenticationError('Invalid session')
 
     return Principal(
         # The token's own claim, unconverted: handlers have always received
@@ -386,7 +390,12 @@ class FlowareAuthenticator:
         auth_secrets_repository: SQLAlchemyRepository[AuthSecrets] = Provide[
             UserContainer.auth_secrets_repository
         ],
+        secret_cipher: SecretCipher = Provide[CommonContainer.secret_cipher],
     ) -> Principal | None:
+        # Whether the caller may receive plaintext secrets (?include_secrets=true).
+        # Only internal service callers (mTLS, or passthrough outside production).
+        request.state.secret_access = False
+
         authorization = request.headers.get('Authorization')
         token = None
         if authorization and authorization.startswith('Bearer '):
@@ -395,7 +404,9 @@ class FlowareAuthenticator:
         if self.app_env != 'production' and request.headers.get(
             RootfloHeaders.PASSTHROUGH
         ):
-            return validate_passthrough_auth(request, self.passthrough_secret)
+            principal = validate_passthrough_auth(request, self.passthrough_secret)
+            request.state.secret_access = True
+            return principal
 
         # mTLS only when the caller presents neither a token nor HMAC headers.
         mtls_header = request.headers.get('X-Forwarded-Client-Cert')
@@ -409,12 +420,15 @@ class FlowareAuthenticator:
                 raise AuthenticationError(
                     'Invalid mTLS authentication', status.HTTP_403_FORBIDDEN
                 )
+            request.state.secret_access = True
             return principal
 
         if not authorization and matches_any_route(
             request.url.path, self.required_hmac_apis
         ):
-            if not await validate_hmac_signature(request, auth_secrets_repository):
+            if not await validate_hmac_signature(
+                request, auth_secrets_repository, secret_cipher
+            ):
                 logger.error(
                     f'HMAC validation failed for {request.url.path} '
                     f'[Request ID: {_request_id(request)}]'

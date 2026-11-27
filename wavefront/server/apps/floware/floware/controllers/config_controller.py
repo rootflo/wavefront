@@ -1,4 +1,4 @@
-from authz_module import Legacy, public_route, requires
+from authz_module import Legacy, requires
 from typing import Annotated
 
 from fastapi import APIRouter, Request
@@ -74,7 +74,12 @@ async def set_config(
     )
 
 
-@config_router.get('/settings/config', dependencies=[Depends(public_route)])
+@config_router.get(
+    '/settings/config',
+    dependencies=[
+        Depends(requires('settings:GetAppConfig', legacy=Legacy.AUTHENTICATED))
+    ],
+)
 @inject
 async def get_config(
     config_service: Annotated[

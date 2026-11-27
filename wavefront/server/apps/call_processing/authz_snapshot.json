@@ -39,6 +39,19 @@
         "user_with_flags": 200
       }
     },
+    "POST /api/calls/prepare": {
+      "resolves_to": [
+        "calls:PrepareCall"
+      ],
+      "status": {
+        "admin": 200,
+        "anonymous": 401,
+        "console_user": 200,
+        "manager": 200,
+        "user": 200,
+        "user_with_flags": 200
+      }
+    },
     "POST /api/webrtc/offer": {
       "resolves_to": [
         "calls:ConnectWebRtc"
@@ -122,6 +135,13 @@
       "service": "calls"
     },
     {
+      "action": "calls:PrepareCall",
+      "description": "",
+      "legacy": "AUTHENTICATED",
+      "resource_type": null,
+      "service": "calls"
+    },
+    {
       "action": "calls:StreamCallAudio",
       "description": "",
       "legacy": "PUBLIC",
@@ -142,6 +162,20 @@
         "POST"
       ],
       "path": "/api/cache/invalidate",
+      "public": false
+    },
+    {
+      "actions": [
+        "calls:PrepareCall"
+      ],
+      "endpoint": "call_processing.controllers.context_controller.prepare_call",
+      "legacy": [
+        "AUTHENTICATED"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/calls/prepare",
       "public": false
     },
     {

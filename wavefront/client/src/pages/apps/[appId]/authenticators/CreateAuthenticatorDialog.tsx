@@ -302,7 +302,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({ i
           {paramConfig.required && <span className="text-red-500">*</span>}
         </label>
         <Input
-          type="text"
+          type={paramConfig.sensitive ? 'password' : 'text'}
           value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
           placeholder={paramConfig.placeholder}

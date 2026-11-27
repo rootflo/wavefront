@@ -11,6 +11,7 @@ from flo_ai import ImageMessageContent, VideoMessageContent
 
 from tools_module.datasources import datasource_api_tools
 from tools_module.datasources.provider import DatasourceToolDetailsProvider
+from tools_module.errors import ToolCallFailed
 from tools_module.floware_api import FlowareApiClient
 from tools_module.registry.function_registry import build_function_registry
 from tools_module.registry.tool_loader import ToolLoader
@@ -44,6 +45,12 @@ def _download():
         FlowareApiClient('http://floware', passthrough_secret='s3cret')
     )
     return registry['datasource_download_file']
+
+
+async def _failure(call) -> str:
+    with pytest.raises(ToolCallFailed) as raised:
+        await call
+    return str(raised.value)
 
 
 def _error(status: int, message: str) -> httpx.Response:
@@ -95,7 +102,7 @@ class TestDatasourceDownloadFile:
         monkeypatch.setattr(datasource_api_tools, 'MAX_DOWNLOAD_BYTES', 4)
         http.reply = lambda request: httpx.Response(200, content=b'12345')
 
-        result = await _download()('ds-1', 'big.bin')
+        result = await _failure(_download()('ds-1', 'big.bin'))
 
         assert (
             result == "File 'big.bin' is 5 bytes, over the 4-byte limit for this tool"
@@ -152,28 +159,28 @@ class TestDatasourceDownloadFile:
         http.reply = lambda request: httpx.Response(
             200, content=b'123456789', headers={'content-type': 'video/mp4'}
         )
-        assert await _download()('ds-1', 'a.mp4') == (
+        assert await _failure(_download()('ds-1', 'a.mp4')) == (
             "File 'a.mp4' is 9 bytes, over the 8-byte limit for this tool"
         )
 
     async def test_not_found_quotes_server_error(self, http):
         http.reply = lambda request: _error(404, 'File not found: s3://b/missing.txt')
 
-        result = await _download()('ds-1', 'missing.txt')
+        result = await _failure(_download()('ds-1', 'missing.txt'))
 
         assert result == 'File not found: s3://b/missing.txt'
 
     async def test_not_found_without_envelope_has_fallback(self, http):
         http.reply = lambda request: httpx.Response(404, text='nope')
 
-        result = await _download()('ds-1', 'missing.txt')
+        result = await _failure(_download()('ds-1', 'missing.txt'))
 
         assert result == "File 'missing.txt' not found in datasource 'ds-1'"
 
-    async def test_bad_path_returns_server_error(self, http):
+    async def test_bad_path_raises_server_error(self, http):
         http.reply = lambda request: _error(400, 'Path escapes the base path')
 
-        result = await _download()('ds-1', '../secret')
+        result = await _failure(_download()('ds-1', '../secret'))
 
         assert result == 'File download failed (400): Path escapes the base path'
 
@@ -183,7 +190,7 @@ class TestDatasourceDownloadFile:
 
         http.reply = fail
 
-        result = await _download()('ds-1', 'a.txt')
+        result = await _failure(_download()('ds-1', 'a.txt'))
 
         assert result.startswith("Failed to reach datasource API for 'ds-1'")
 

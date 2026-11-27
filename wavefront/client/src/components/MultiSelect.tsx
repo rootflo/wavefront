@@ -26,6 +26,10 @@ interface MultiSelectProps<T> {
   selectedGroupHeading?: string;
   allItemsGroupHeading?: string;
   selectedCountLabel?: (count: number) => string;
+  /** Forwarded to the trigger, so a label (htmlFor) and validation message (e.g. from FormControl) attach to it. */
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean;
 }
 
 function MultiSelect<T>({
@@ -46,6 +50,9 @@ function MultiSelect<T>({
   selectedGroupHeading = 'Selected',
   allItemsGroupHeading = 'All items',
   selectedCountLabel = (count) => `${count} selected`,
+  id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: MultiSelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -144,8 +151,11 @@ function MultiSelect<T>({
         <PopoverTrigger asChild>
           <button
             type="button"
+            id={id}
             role="combobox"
             aria-expanded={open}
+            aria-describedby={ariaDescribedBy}
+            aria-invalid={ariaInvalid}
             disabled={disabled || loading}
             className={cn(
               'frost-control ring-frost-border focus:border-brand/40 focus:ring-brand/25 flex min-h-9 w-full items-center justify-between rounded-md border px-3 py-2 text-[13px] tracking-normal normal-case ring-1 transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',

@@ -33,6 +33,12 @@ class FlowareLegacyResolver:
             return False
         return await user_utils.check_is_manager(principal.role_id)
 
+    async def can_write_datasource_rows(self, principal: Principal) -> bool:
+        """TEMPORARY HACK until RBAC: admin, manager or editor by role name."""
+        if principal.role_id is None:
+            return False
+        return await user_utils.can_write_datasource_rows(principal.role_id)
+
     async def is_console_user(self, principal: Principal) -> bool:
         return False
 

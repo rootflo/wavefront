@@ -15,6 +15,12 @@ from .gemini_llm import Gemini
 from .anthropic_llm import Anthropic
 from .openai_vllm import OpenAIVLLM
 from flo_ai.helpers.generation_params import merge_generation_params
+from flo_ai.llm.rate_limits import (
+    RATE_LIMIT_OPTIONS,
+    LLMProviderError,
+    RateLimitScope,
+    apply_rate_limit_options,
+)
 from flo_ai.tool.base_tool import Tool
 
 
@@ -44,7 +50,8 @@ RESERVED_CONFIG_PARAMETERS = frozenset(
         'temperature',
         'custom_headers',
     }
-)
+) | RATE_LIMIT_OPTIONS  # flo_ai's own, applied to the wrapper instead
+
 
 
 class RootFloLLM(BaseLLM):
@@ -124,6 +131,32 @@ class RootFloLLM(BaseLLM):
         # setter below and would otherwise mark the default as explicit. A
         # caller-supplied temperature outranks the fetched configuration's.
         self._temperature_explicit = temperature is not None
+        self._rate_limit_options: Dict[str, Any] = {}
+
+    @property
+    def rate_limit_max_wait(self) -> Optional[float]:
+        """Seconds one call may stall on rate limits; see llm.rate_limits."""
+        return self._rate_limit_options.get('rate_limit_max_wait')
+
+    @rate_limit_max_wait.setter
+    def rate_limit_max_wait(self, seconds: Optional[float]) -> None:
+        self._set_rate_limit_option('rate_limit_max_wait', seconds)
+
+    @property
+    def rate_limit_retries(self) -> Optional[int]:
+        """Retries one call may make on rate limits; see llm.rate_limits."""
+        return self._rate_limit_options.get('rate_limit_retries')
+
+    @rate_limit_retries.setter
+    def rate_limit_retries(self, retries: Optional[int]) -> None:
+        self._set_rate_limit_option('rate_limit_retries', retries)
+
+    def _set_rate_limit_option(self, name: str, value: Any) -> None:
+        # The wrapper is built lazily; _ensure_initialized() hands these over,
+        # and they outrank the fetched configuration's.
+        self._rate_limit_options[name] = value
+        if getattr(self, '_llm', None) is not None:
+            setattr(self._llm, name, value)
 
     @property
     def temperature(self) -> float:
@@ -155,6 +188,7 @@ class RootFloLLM(BaseLLM):
         """
         clone = super().__copy__()
         clone._kwargs = dict(self._kwargs)
+        clone._rate_limit_options = dict(self._rate_limit_options)
         clone._llm = None
         clone._initialized = False
         clone._init_lock = asyncio.Lock()
@@ -221,7 +255,8 @@ class RootFloLLM(BaseLLM):
             Dict containing llm_model, type and the configured generation parameters
 
         Raises:
-            Exception: If API call fails or response is invalid
+            LLMProviderError: If the API call fails
+            Exception: If the response is invalid
         """
         config_url = f'{base_url}/v1/llm-inference-configs/{model_id}'
 
@@ -258,12 +293,24 @@ class RootFloLLM(BaseLLM):
                     'parameters': config_data.get('parameters') or {},
                 }
 
+        # Typed so the agent treats a failed fetch like a failed inference call,
+        # instead of sending it to the LLM for analysis.
         except httpx.HTTPStatusError as e:
-            raise Exception(
-                f'API request failed with status {e.response.status_code}: {e.response.text}'
+            status = e.response.status_code
+            raise LLMProviderError(
+                f'API request failed with status {status}: {e.response.text}',
+                provider='rootflo',
+                status=status,
+                transient=status >= 500 or status in (408, 429),
+                original_error=e,
             ) from e
         except httpx.RequestError as e:
-            raise Exception(f'API request failed: {str(e)}') from e
+            raise LLMProviderError(
+                f'API request failed: {str(e)}',
+                provider='rootflo',
+                transient=True,
+                original_error=e,
+            ) from e
         except Exception as e:
             raise Exception(f'Failed to fetch LLM config: {str(e)}') from e
 
@@ -393,6 +440,17 @@ class RootFloLLM(BaseLLM):
                 )
             else:
                 raise ValueError(f'Unsupported LLM provider: {llm_provider}')
+
+            # The configuration's first, so values set on this instance win.
+            apply_rate_limit_options(self._llm, config_parameters)
+            for name, value in self._rate_limit_options.items():
+                if value is not None:
+                    setattr(self._llm, name, value)
+            # Pinned: the api_token is a fresh JWT per instance, so a key hash
+            # would give every instance its own gate.
+            self._llm._rate_limit_scope = RateLimitScope(
+                provider='rootflo', model=self._model_id, base_url=self._base_url
+            )
 
             # Mark as initialized
             self._initialized = True
