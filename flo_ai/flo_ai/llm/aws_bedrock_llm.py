@@ -2,6 +2,7 @@ import json
 import re
 from typing import Dict, Any, List, AsyncIterator, Optional
 import boto3
+from botocore.config import Config
 import asyncio
 from .base_llm import BaseLLM
 from flo_ai.models.chat_message import ImageMessageContent
@@ -12,6 +13,7 @@ from flo_ai.telemetry.instrumentation import (
     llm_metrics,
     add_span_attributes,
 )
+from flo_ai.llm.rate_limits import RateLimitScope, rate_limited, rate_limited_stream
 from flo_ai.telemetry import get_tracer
 from flo_ai.utils.logger import logger
 from opentelemetry import trace
@@ -24,10 +26,25 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         temperature: float = 0.7,
         **kwargs,
     ):
+        # llm.rate_limits owns retries; boto's own would hide throttling from it.
+        max_retries = kwargs.pop('max_retries', 0)
         super().__init__(model=model, temperature=temperature, **kwargs)
-        self.boto_client = boto3.client('bedrock-runtime')
+        self.boto_client = boto3.client(
+            'bedrock-runtime',
+            config=Config(
+                retries={'total_max_attempts': max_retries + 1, 'mode': 'standard'}
+            ),
+        )
         self.model = model
         self.kwargs = kwargs
+
+    def rate_limit_scope(self) -> RateLimitScope:
+        # Authenticated by boto credentials rather than a key; quotas are per region.
+        return RateLimitScope(
+            provider='bedrock',
+            model=self.model,
+            region=self.boto_client.meta.region_name or '',
+        )
 
     @staticmethod
     def _strip_reasoning(text: str) -> str:
@@ -61,6 +78,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
 
         return result
 
+    @rate_limited(provider='bedrock')
     @trace_llm_call(provider='bedrock')
     async def generate(
         self,
@@ -136,6 +154,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
             }
         return {'content': text_content, 'raw_message': message}
 
+    @rate_limited_stream(provider='bedrock')
     @trace_llm_stream(provider='bedrock')
     async def stream(
         self,

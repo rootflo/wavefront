@@ -325,3 +325,41 @@ def test_extract_azure_openai_model(inference_proxy_service):
         parsed_data, model_call_path
     )
     assert result == 'gpt-4'
+
+
+async def _call_controller(side_effect):
+    from fastapi import Request
+    from common_module.response_formatter import ResponseFormatter
+    from llm_inference_config_module.controllers.inference_proxy_controller import (
+        proxy_inference_request,
+    )
+
+    service = Mock()
+    service.proxy_inference_request = AsyncMock(side_effect=side_effect)
+    return await proxy_inference_request(
+        model_id=str(uuid.uuid4()),
+        model_call_path='chat/completions',
+        request=Mock(spec=Request),
+        inference_proxy_service=service,
+        response_formatter=ResponseFormatter(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_controller_keeps_http_exception_status():
+    """A 404 must stay a 404: clients retry a 500 as transient."""
+    from fastapi import HTTPException
+
+    response = await _call_controller(
+        HTTPException(status_code=404, detail='Model configuration not found')
+    )
+
+    assert response.status_code == 404
+    assert b'Model configuration not found' in response.body
+
+
+@pytest.mark.asyncio
+async def test_controller_unexpected_error_is_500():
+    response = await _call_controller(RuntimeError('boom'))
+
+    assert response.status_code == 500

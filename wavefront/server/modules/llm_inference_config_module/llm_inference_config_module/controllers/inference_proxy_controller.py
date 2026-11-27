@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from dependency_injector.wiring import Provide, inject
 from common_module.common_container import CommonContainer
@@ -48,6 +48,12 @@ async def proxy_inference_request(
         )
         return response
 
+    # Keep the service's status: callers retry a 5xx but not a 404/400.
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content=response_formatter.buildErrorResponse(str(e.detail)),
+        )
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional
-from .base_tool import Tool, ToolExecutionError
+from .base_tool import Tool, ToolCallFailed, ToolExecutionError
 from flo_ai.utils.logger import logger
 
 
@@ -60,6 +60,9 @@ class PartialTool(Tool):
             tool_result = await self.base_tool.function(**merged_params)
             logger.info(f'Partial tool {self.name} returned: {tool_result}')
             return tool_result
+        except ToolCallFailed as e:
+            logger.warning(f'Partial tool {self.name} failed: {e}')
+            raise
         except Exception as e:
             raise ToolExecutionError(
                 f'Error executing partial tool {self.name}: {str(e)}', original_error=e
