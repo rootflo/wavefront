@@ -86,7 +86,7 @@ constraint-dependencies = [
     "azure-core>=1.38.0",
     "certifi>=2026.10.18",
     "click>=8.3.3",
-    "dnspython>=2.9.0",
+    "dnspython>=2.9.2",
     "ecdsa>=0.19.2",
     "filelock>=4.2.1",
     "fsspec>=2026.6.0",
@@ -112,6 +112,8 @@ constraint-dependencies = [
     "python-multipart>=0.0.31",
     "requests>=2.33.0",
     "setuptools>=84.1.0",
+    # 4.0.0 fixes CVE-2026-126190; 4.x requires Python >=3.11.5 (the images run 3.11.x)
+    "soupsieve>=4.0.0 ; python_full_version >= '3.11.5'",
     # Forces FastAPI off 0.115.6, which caps starlette<0.42.0 and so pinned us to
     # starlette 0.41.3 and its seven advisories (CVE-2026-54282 and six more).
     # FastAPI is the only thing in the graph that depends on starlette, so this
