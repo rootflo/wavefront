@@ -7,7 +7,7 @@ from common_module.log.logger import logger
 
 from celery_worker.celery_app import app
 from celery_worker.event_loop import get_event_loop
-from celery_worker.services import get_services
+from celery_worker.services import get_result_cache, get_services
 from celery_worker.settings import MAX_RETRIES, RETRY_DELAY
 from celery_worker.tasks.helpers import (
     build_history,
@@ -19,21 +19,24 @@ from celery_worker.tasks.helpers import (
 
 
 async def _run(task, payload: Dict) -> None:
-    services = get_services()
     execution_id = payload['execution_id']
-
-    publish_result(
-        services.cache,
-        execution_id,
-        {
-            'execution_id': execution_id,
-            'status': 'in_progress',
-            'started_at': now_iso(),
-            'error': '',
-        },
-    )
+    # Set up inside the try so a failure here still reports the run as failed
+    # instead of leaving it pending.
+    services = None
 
     try:
+        services = get_services()
+        publish_result(
+            services.cache,
+            execution_id,
+            {
+                'execution_id': execution_id,
+                'status': 'in_progress',
+                'started_at': now_iso(),
+                'error': '',
+            },
+        )
+
         inputs = await asyncio.to_thread(
             reconstruct_inputs, payload, services.cloud_storage
         )
@@ -98,7 +101,7 @@ async def _run(task, payload: Dict) -> None:
         logger.error(f'Workflow execution failed: {execution_id} — {error_msg}')
 
         publish_result(
-            services.cache,
+            services.cache if services is not None else get_result_cache(),
             execution_id,
             {
                 'execution_id': execution_id,

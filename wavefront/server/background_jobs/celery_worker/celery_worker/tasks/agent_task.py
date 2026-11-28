@@ -10,7 +10,7 @@ from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 
 from celery_worker.celery_app import app
 from celery_worker.event_loop import get_event_loop
-from celery_worker.services import get_services
+from celery_worker.services import get_result_cache, get_services
 from celery_worker.settings import MAX_RETRIES, RETRY_DELAY
 from celery_worker.tasks.helpers import (
     build_history,
@@ -35,21 +35,24 @@ async def _resolve_llm_config(services, payload: Dict) -> Optional[LlmInferenceC
 
 
 async def _run(task, payload: Dict) -> None:
-    services = get_services()
     execution_id = payload['execution_id']
-
-    publish_result(
-        services.cache,
-        execution_id,
-        {
-            'execution_id': execution_id,
-            'status': 'in_progress',
-            'started_at': now_iso(),
-            'error': '',
-        },
-    )
+    # Set up inside the try so a failure here still reports the run as failed
+    # instead of leaving it pending.
+    services = None
 
     try:
+        services = get_services()
+        publish_result(
+            services.cache,
+            execution_id,
+            {
+                'execution_id': execution_id,
+                'status': 'in_progress',
+                'started_at': now_iso(),
+                'error': '',
+            },
+        )
+
         inputs = await asyncio.to_thread(
             reconstruct_inputs, payload, services.cloud_storage
         )
@@ -117,7 +120,7 @@ async def _run(task, payload: Dict) -> None:
         logger.error(f'Agent execution failed: {execution_id} — {error_msg}')
 
         publish_result(
-            services.cache,
+            services.cache if services is not None else get_result_cache(),
             execution_id,
             {
                 'execution_id': execution_id,
