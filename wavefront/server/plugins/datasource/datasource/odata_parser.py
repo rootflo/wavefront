@@ -711,6 +711,14 @@ class SQLODataParser(ODataParserABC):
         if not sql_expr:
             raise ValueError('Invalid filter expression')
 
+        # Reject leftovers instead of silently dropping part of the WHERE clause
+        # (e.g. a lowercase `and`, which the lexer reads as a field name).
+        if parser.current_token.type != TokenType.EOF:
+            raise ValueError(
+                f"Unexpected token '{parser.current_token.value}' at position "
+                f'{parser.current_token.position} in filter expression'
+            )
+
         return sql_expr, parser.params
 
     def prepare_odata_joins(
@@ -852,6 +860,10 @@ class JoinBuilder:
                             for key, value in filter_params.items():
                                 new_key = f'{table}_{key}_'
                                 all_filter_params[new_key] = value
+                    except ValueError:
+                        # A rejected filter must not be dropped: running the
+                        # join without it would return unfiltered rows.
+                        raise
                     except Exception as e:
                         # If filter parsing fails, log the error and skip it
                         print(f"Filter parsing failed for '{filter_expr}': {e}")
